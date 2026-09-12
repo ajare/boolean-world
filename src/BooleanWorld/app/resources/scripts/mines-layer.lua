@@ -1778,6 +1778,117 @@ assert(type(max_tunnel_prefab_dist) == "number" and
            max_tunnel_prefab_dist >= 0 and max_tunnel_prefab_dist <= 15,
        "layer.vars.max_tunnel_prefab_dist must be an integer from 0 to 15")
 
+local prefab_selection = {}
+local required_prefab_count = 0
+for _, prefab in ipairs(tunnel_prefabs) do
+    local vars = prefab.vars
+    local choose_pct = vars.choose_pct
+    if choose_pct == nil then
+        choose_pct = 0
+    end
+    assert(type(choose_pct) == "number" and choose_pct == choose_pct and
+               choose_pct ~= math.huge and choose_pct ~= -math.huge and
+               choose_pct >= 0,
+           string.format(
+               "Prefab '%s' choose_pct must be a finite non-negative number",
+               prefab:get_name()))
+
+    local max_count = vars.max_count
+    if max_count == nil then
+        max_count = -1
+    end
+    assert(type(max_count) == "number" and max_count == max_count and
+               max_count ~= math.huge and max_count ~= -math.huge and
+               max_count % 1 == 0,
+           string.format("Prefab '%s' max_count must be an integer",
+                         prefab:get_name()))
+
+    local min_count = vars.min_count
+    if min_count == nil then
+        min_count = 0
+    end
+    assert(type(min_count) == "number" and min_count == min_count and
+               min_count ~= math.huge and min_count ~= -math.huge and
+               min_count % 1 == 0,
+           string.format("Prefab '%s' min_count must be an integer",
+                         prefab:get_name()))
+    min_count = math.max(0, min_count)
+    assert(max_count < 0 or min_count <= max_count,
+           string.format(
+               "Prefab '%s' min_count (%d) exceeds max_count (%d)",
+               prefab:get_name(), min_count, max_count))
+
+    prefab_selection[#prefab_selection + 1] = {
+        prefab = prefab,
+        weight = choose_pct,
+        maximum = max_count,
+        minimum = min_count,
+        count = 0
+    }
+    required_prefab_count = required_prefab_count + min_count
+end
+assert(required_prefab_count <= tunnel_prefab_count,
+       string.format(
+           "tunnel_prefab_count (%d) cannot satisfy Prefab min_counts (%d)",
+           tunnel_prefab_count, required_prefab_count))
+
+local function weighted_prefab_choice(choices, permit_zero_total)
+    local maximum_weight = 0
+    for _, choice in ipairs(choices) do
+        maximum_weight = math.max(maximum_weight, choice.weight)
+    end
+    if maximum_weight == 0 then
+        if permit_zero_total then
+            return choices[math.random(#choices)]
+        end
+        error("eligible tunnel Prefab choose_pct weights total zero")
+    end
+
+    -- Scale first so even very large finite authored weights cannot overflow
+    -- their sum and distort selection.
+    local total_weight = 0
+    for _, choice in ipairs(choices) do
+        total_weight = total_weight + choice.weight / maximum_weight
+    end
+    local target = math.random() * total_weight
+    local cumulative_weight = 0
+    local last_weighted_choice = nil
+    for _, choice in ipairs(choices) do
+        if choice.weight > 0 then
+            last_weighted_choice = choice
+            cumulative_weight = cumulative_weight +
+                                    choice.weight / maximum_weight
+            if target < cumulative_weight then
+                return choice
+            end
+        end
+    end
+    return last_weighted_choice
+end
+
+local function choose_tunnel_prefab()
+    local choices = {}
+    for _, choice in ipairs(prefab_selection) do
+        if choice.count < choice.minimum then
+            choices[#choices + 1] = choice
+        end
+    end
+    if #choices > 0 then
+        -- A zero-weight Prefab must still be placeable to meet its minimum.
+        return weighted_prefab_choice(choices, true)
+    end
+
+    for _, choice in ipairs(prefab_selection) do
+        if choice.maximum < 0 or choice.count < choice.maximum then
+            choices[#choices + 1] = choice
+        end
+    end
+    if #choices == 0 then
+        return nil
+    end
+    return weighted_prefab_choice(choices, false)
+end
+
 local prefab_cells = {}
 local first_prefab_cell = math.ceil(-max_tunnel_prefab_dist - 0.5)
 local last_prefab_cell = math.floor(max_tunnel_prefab_dist - 0.5)
@@ -1802,7 +1913,11 @@ while placed_prefab_count < tunnel_prefab_count and #prefab_cells > 0 do
 
     local key = cell_key(cell.x, cell.y)
     if placements_by_cell[key] == nil and cell_is_empty(cell.x, cell.y) then
-        local prefab = tunnel_prefabs[math.random(#tunnel_prefabs)]
+        local selection = choose_tunnel_prefab()
+        if selection == nil then
+            break
+        end
+        local prefab = selection.prefab
         local angle = ANGLES[math.random(#ANGLES)]
         context:place_prefab_instance(
             prefab, cell.x, cell.y, angle,
@@ -1815,8 +1930,15 @@ while placed_prefab_count < tunnel_prefab_count and #prefab_cells > 0 do
         }
         placements_by_cell[key] = placement
         add_candidates_for_placement(placement)
+        selection.count = selection.count + 1
         placed_prefab_count = placed_prefab_count + 1
     end
+end
+for _, selection in ipairs(prefab_selection) do
+    assert(selection.count >= selection.minimum,
+           string.format(
+               "not enough valid Tiles to satisfy Prefab '%s' min_count (%d)",
+               selection.prefab:get_name(), selection.minimum))
 end
 -- Candidate discovery may have cached a Tile as empty before a later Prefab
 -- occupied it. Re-query geometry now that the Prefab phase is complete.

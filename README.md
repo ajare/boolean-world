@@ -124,8 +124,9 @@ engine libraries:
 generates `BooleanWorld.yaml` with absolute paths next to `Launcher.exe`.
 
 To override that on a given machine, put your own config in
-`src/Launcher/support/<COMPUTERNAME>/<Config>/` — the build stages that
-directory over the generated one. Only `ASTRALEMPRESS` is checked in.
+`src/Launcher/support/<host-name>/<Config>/` — the build stages that directory
+over the generated one. The host name comes from `%COMPUTERNAME%` on Windows
+and the system hostname on Linux.
 
 Other executables use their own target directories beneath
 `build-cmake/bin/<Config>/`.

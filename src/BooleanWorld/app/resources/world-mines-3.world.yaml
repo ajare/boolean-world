@@ -49,7 +49,7 @@ world:
           value: 5
         - name: max_tunnel_prefab_dist
           type: integer
-          value: 4
+          value: 3
         - name: mine_material
           type: string
           value: builtin.basalt
@@ -80,7 +80,7 @@ world:
           tilingType: 0
           prefabs:
             - id: 0
-              name: Tunnels 1
+              name: Tunnels Drill
               tileSize: 256
               tags:
                 []
@@ -90,10 +90,10 @@ world:
                   value: 25
                 - name: max_count
                   type: integer
-                  value: 0
+                  value: 1
                 - name: min_count
                   type: integer
-                  value: -1
+                  value: 1
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -504,6 +504,618 @@ world:
                                 wallMaskState: 0
                             islands:
                               []
+                - type: Regular
+                  vertexTransformerObject:
+                    id: 2
+                    parentId: -1
+                    position: [0, 0]
+                    transformOffset: [0, 0]
+                    orientation: 0
+                    vertexTransformer:
+                      followOrbitAngle: 0
+                      animators:
+                        - animatedProperty:
+                            name: Scale
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 1]
+                              scaleMax: [1, 10]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 1
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 1
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: Angle
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 360]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: OrbitAngle
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 360]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: OrbitDistance
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 500]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                    influenceEye:
+                      originOffset: [0, 0]
+                      angleOffset: 0
+                      arcLength: 360
+                  primitive:
+                    flags: 1
+                    timeUpdateDistance: 3.4028235e+38
+                    metadata: 0
+                    operation: 0
+                    fillRule: 0
+                    priority: 0
+                    size: [172, 172]
+                    primitivePropertySet:
+                      floorZ: 0
+                      floorGradient: [-0, 0]
+                      ceilingZ: 48
+                      ceilingGradient: [-0, 0]
+                      liquidLevel: 0
+                      liquidType: Water
+                      floorMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      ceilingMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      wallMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
+                      floorElevationAngle: 0
+                      floorLowerElevation: 0
+                      floorUpperElevation: 0
+                      ceilingElevationAngle: 0
+                      ceilingLowerElevation: 48
+                      ceilingUpperElevation: 48
+                    audioEmitters:
+                      []
+                    complexPolygons:
+                      - polygons:
+                          - vertices:
+                              - p: [0, 1]
+                              - p: [0.86602545, 0.49999997]
+                              - p: [0.8660254, -0.50000006]
+                              - p: [-8.742278e-08, -1]
+                              - p: [-0.86602545, -0.4999999]
+                              - p: [-0.8660252, 0.50000036]
+                  regularPolygon:
+                    numSides: 6
+                - type: Circle
+                  vertexTransformerObject:
+                    id: 3
+                    parentId: -1
+                    position: [0, 0]
+                    transformOffset: [0, 0]
+                    orientation: 0
+                    vertexTransformer:
+                      followOrbitAngle: 0
+                      animators:
+                        - animatedProperty:
+                            name: Scale
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 1]
+                              scaleMax: [1, 10]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 1
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 1
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: Angle
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 360]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: OrbitAngle
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 360]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                        - animatedProperty:
+                            name: OrbitDistance
+                            transformFlow:
+                              transforms:
+                                - operand0: 0
+                                  operand1: 1
+                                  constant0: 0
+                                  constant1: 1
+                                  fnMultiplier0: 1
+                                  fnMultiplier1: 1
+                                  index0: 4294967295
+                                  index1: 4294967295
+                                  input0: 0
+                                  input1: 0
+                                  operation: 1
+                            animationInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [1, 500]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 0
+                                  - time: 1
+                                    value: 0
+                                segments:
+                                  - easing: 0
+                            influenceInterpolator:
+                              deltaY: 0
+                              scaleMin: [0, 0]
+                              scaleMax: [500, 1]
+                              defaultStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                              curStructure:
+                                points:
+                                  - time: 0
+                                    value: 1
+                                  - time: 500
+                                    value: 1
+                                segments:
+                                  - easing: 0
+                            captureMode: 0
+                            events:
+                              []
+                    influenceEye:
+                      originOffset: [0, 0]
+                      angleOffset: 0
+                      arcLength: 360
+                  primitive:
+                    flags: 1
+                    timeUpdateDistance: 3.4028235e+38
+                    metadata: 0
+                    operation: 0
+                    fillRule: 0
+                    priority: 20
+                    size: [88, 88]
+                    primitivePropertySet:
+                      floorZ: -100
+                      floorGradient: [-0, 0]
+                      ceilingZ: 48
+                      ceilingGradient: [-0, 0]
+                      liquidLevel: 0
+                      liquidType: Water
+                      floorMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      ceilingMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      wallMaterial:
+                        kind: subMaterial
+                        reference: builtin.plain.grey
+                      floorEmbossPreset: ""
+                      ceilingEmbossPreset: ""
+                      wallEmbossPreset: ""
+                      floorElevationAngle: 0
+                      floorLowerElevation: -100
+                      floorUpperElevation: -100
+                      ceilingElevationAngle: 0
+                      ceilingLowerElevation: 48
+                      ceilingUpperElevation: 48
+                    audioEmitters:
+                      []
+                    complexPolygons:
+                      - polygons:
+                          - vertices:
+                              - p: [0, 1]
+                              - p: [0.19509032, 0.98078525]
+                              - p: [0.38268346, 0.9238795]
+                              - p: [0.55557024, 0.8314696]
+                              - p: [0.70710677, 0.70710677]
+                              - p: [0.8314696, 0.55557024]
+                              - p: [0.9238795, 0.38268343]
+                              - p: [0.98078525, 0.19509035]
+                              - p: [1, -4.371139e-08]
+                              - p: [0.98078525, -0.19509044]
+                              - p: [0.92387956, -0.3826834]
+                              - p: [0.83146966, -0.5555702]
+                              - p: [0.70710677, -0.70710677]
+                              - p: [0.5555702, -0.83146966]
+                              - p: [0.3826835, -0.9238795]
+                              - p: [0.19509009, -0.9807853]
+                              - p: [-8.742278e-08, -1]
+                              - p: [-0.19509025, -0.9807853]
+                              - p: [-0.38268366, -0.92387944]
+                              - p: [-0.5555703, -0.83146954]
+                              - p: [-0.7071067, -0.7071068]
+                              - p: [-0.8314698, -0.55557]
+                              - p: [-0.9238795, -0.38268358]
+                              - p: [-0.98078537, -0.19508992]
+                              - p: [-1, 1.1924881e-08]
+                              - p: [-0.98078525, 0.19509041]
+                              - p: [-0.92387944, 0.3826836]
+                              - p: [-0.8314695, 0.5555704]
+                              - p: [-0.7071069, 0.70710665]
+                              - p: [-0.5555703, 0.8314696]
+                              - p: [-0.38268298, 0.92387974]
+                              - p: [-0.19509023, 0.9807853]
+                  regularPolygon:
+                    numSides: 32
+                  circlePolygon:
+                    resolution: 0.5
             - id: 1
               name: Tunnels 2
               tileSize: 256
@@ -515,10 +1127,10 @@ world:
                   value: 25
                 - name: max_count
                   type: integer
-                  value: 0
+                  value: -1
                 - name: min_count
                   type: integer
-                  value: -1
+                  value: 0
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -943,10 +1555,10 @@ world:
                   value: 25
                 - name: max_count
                   type: integer
-                  value: 0
+                  value: -1
                 - name: min_count
                   type: integer
-                  value: -1
+                  value: 0
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -1357,10 +1969,10 @@ world:
                   value: 25
                 - name: max_count
                   type: integer
-                  value: 0
+                  value: -1
                 - name: min_count
                   type: integer
-                  value: -1
+                  value: 0
               primitives:
                 - type: Mesh
                   vertexTransformerObject:
@@ -1828,7 +2440,7 @@ world:
           primitives:
             - type: Mesh
               vertexTransformerObject:
-                id: 693
+                id: 718
                 parentId: -1
                 position: [-16, 8]
                 transformOffset: [0, 0]
@@ -2081,9 +2693,9 @@ world:
                 priority: 0
                 size: [88, 88]
                 primitivePropertySet:
-                  floorZ: -10
+                  floorZ: -2
                   floorGradient: [-0, 0]
-                  ceilingZ: 18
+                  ceilingZ: 24
                   ceilingGradient: [-0, 0]
                   liquidLevel: 0
                   liquidType: Water
@@ -2100,11 +2712,11 @@ world:
                   ceilingEmbossPreset: ""
                   wallEmbossPreset: ""
                   floorElevationAngle: 0
-                  floorLowerElevation: -10
-                  floorUpperElevation: -10
+                  floorLowerElevation: -2
+                  floorUpperElevation: -2
                   ceilingElevationAngle: 0
-                  ceilingLowerElevation: 18
-                  ceilingUpperElevation: 18
+                  ceilingLowerElevation: 24
+                  ceilingUpperElevation: 24
                 audioEmitters:
                   []
               meshPrimitive:

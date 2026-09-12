@@ -46,6 +46,28 @@ std::string readFixture(std::string const& filename) {
   return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
+void setSerializedVariableValues(
+    std::string& text, std::string const& name, std::string const& value,
+    bool replaceEveryMatch = false) {
+  auto const nameMarker = "- name: " + name;
+  std::size_t offset = 0;
+  uint32_t replacements = 0;
+  while (true) {
+    auto const namePosition = text.find(nameMarker, offset);
+    if (namePosition == std::string::npos) break;
+    auto const valueMarkerPosition = text.find("value:", namePosition);
+    require(valueMarkerPosition != std::string::npos,
+            "serialized test variable had no value");
+    auto const valuePosition = valueMarkerPosition + 6;
+    auto const valueEnd = text.find('\n', valuePosition);
+    text.replace(valuePosition, valueEnd - valuePosition, " " + value);
+    ++replacements;
+    offset = valuePosition + value.size() + 1;
+    if (!replaceEveryMatch) break;
+  }
+  require(replacements > 0, "serialized test variable was not found");
+}
+
 std::shared_ptr<wp::application::resourcesystem::TextFileResource> makeWorldResource(
     std::string const& text, std::string const& source = "test.world.yaml") {
   auto resource = std::make_shared<wp::application::resourcesystem::TextFileResource>(
@@ -462,6 +484,60 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   }
 }
 
+bool minesWorldLoadFails(std::string const& yaml) {
+  bw::core::ScriptRuntime runtime;
+  runtime.load(
+      "MinesLayer", readFixture("scripts/mines-layer.lua"),
+      {{"World/UtilityFunctions", readFixture("scripts/utility-functions.lua")}},
+      {{.name = "iterations",
+        .type = bw::core::BuildVariableType::Integer,
+        .defaultValue = int64_t{10},
+        .integerMinimum = 1,
+        .integerMaximum = 50}});
+  bw::core::registerScriptStepTypes(runtime);
+
+  wp::Logger logger;
+  Map map("map", "", "", {}, nullptr, &logger, &runtime);
+  try {
+    map.loadWorldFromYaml(makeWorldResource(yaml));
+  } catch (std::exception const&) {
+    return true;
+  }
+  return false;
+}
+
+void minesValidatePrefabSelectionVariables() {
+  auto const fixture = readFixture("world-mines-3.world.yaml");
+
+  auto zeroWeights = fixture;
+  setSerializedVariableValues(zeroWeights, "choose_pct", "0", true);
+  require(minesWorldLoadFails(zeroWeights),
+          "zero eligible Prefab weights did not fail the mines script");
+
+  auto forcedZeroWeight = zeroWeights;
+  setSerializedVariableValues(forcedZeroWeight, "tunnel_prefab_count", "4");
+  setSerializedVariableValues(forcedZeroWeight, "min_count", "4");
+  require(!minesWorldLoadFails(forcedZeroWeight),
+          "a zero-weight Prefab could not be forced to satisfy its minimum");
+
+  auto exhaustedMaximums = fixture;
+  setSerializedVariableValues(exhaustedMaximums, "max_count", "0", true);
+  require(!minesWorldLoadFails(exhaustedMaximums),
+          "exhausting every Prefab maximum failed instead of stopping early");
+
+  auto excessiveMinimum = fixture;
+  setSerializedVariableValues(excessiveMinimum, "tunnel_prefab_count", "4");
+  setSerializedVariableValues(excessiveMinimum, "min_count", "5");
+  require(minesWorldLoadFails(excessiveMinimum),
+          "Prefab minimums above tunnel_prefab_count did not fail the mines script");
+
+  auto minimumAboveMaximum = fixture;
+  setSerializedVariableValues(minimumAboveMaximum, "max_count", "1");
+  setSerializedVariableValues(minimumAboveMaximum, "min_count", "2");
+  require(minesWorldLoadFails(minimumAboveMaximum),
+          "a Prefab minimum above its maximum did not fail the mines script");
+}
+
 void theGameResolvesAndRunsAWorldsLuaScript() {
   namespace resources = wp::application::resourcesystem;
 
@@ -538,6 +614,7 @@ int main() {
     resourcesWithAWorldExtensionLoadAsBinary();
     yamlWorldsWithoutTheWorldYamlExtensionAreRejected();
     minesCreateLevelRailRunsAndWoodenSupports();
+    minesValidatePrefabSelectionVariables();
     theGameResolvesAndRunsAWorldsLuaScript();
     std::cout << "Map failed-load ownership regression passed\n";
     return 0;
