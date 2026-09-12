@@ -1445,7 +1445,7 @@ double FaceArea(ArrangementFace const& face, ArrangementResult const& arrangemen
   return ToWorldArea(area2);
 }
 
-static vector<vector<uint32_t>> TriangulationHoleBoundaries(
+vector<vector<uint32_t>> TriangulationHoleBoundaries(
     ArrangementFace const& face) {
   auto const holeCount = face.innerBoundaryVertices.size();
   if (holeCount < 2) return face.innerBoundaryVertices;
@@ -1515,30 +1515,42 @@ static vector<vector<uint32_t>> TriangulationHoleBoundaries(
       }
     }
 
+    // Exposed boundaries can meet at a pinch vertex. A greedy walk closes one
+    // loop at the pinch and emits the remainder as another Ring touching it,
+    // which is again invalid input for Earcut. Build one Eulerian circuit for
+    // each connected segment graph instead. Repeated pinch vertices make the
+    // resulting boundary weakly simple while retaining the exact excluded
+    // area as one hole.
+    map<uint32_t, vector<size_t>> outgoing;
+    for (size_t segment = 0; segment < segments.size(); ++segment) {
+      outgoing[segments[segment].from].push_back(segment);
+    }
+    map<uint32_t, size_t> nextOutgoing;
+
     for (size_t first = 0; first < segments.size(); ++first) {
       if (segments[first].used) continue;
+      vector<uint32_t> stack{segments[first].from};
       vector<uint32_t> boundary;
-      auto segment = first;
-      auto start = segments[segment].from;
-      while (!segments[segment].used) {
-        segments[segment].used = true;
-        boundary.push_back(segments[segment].from);
-        auto nextVertex = segments[segment].to;
-        if (nextVertex == start) break;
+      while (!stack.empty()) {
+        auto vertex = stack.back();
+        auto& candidates = outgoing[vertex];
+        auto& next = nextOutgoing[vertex];
+        while (next < candidates.size() && segments[candidates[next]].used) {
+          ++next;
+        }
+        if (next < candidates.size()) {
+          auto segment = candidates[next++];
+          segments[segment].used = true;
+          stack.push_back(segments[segment].to);
+        } else {
+          boundary.push_back(vertex);
+          stack.pop_back();
+        }
+      }
 
-        auto next = segments.size();
-        for (size_t candidate = 0; candidate < segments.size(); ++candidate) {
-          if (!segments[candidate].used &&
-              segments[candidate].from == nextVertex) {
-            next = candidate;
-            break;
-          }
-        }
-        if (next == segments.size()) {
-          throw CoreException(
-              "Could not merge touching Arrangement Face holes");
-        }
-        segment = next;
+      reverse(boundary.begin(), boundary.end());
+      if (boundary.size() > 1 && boundary.front() == boundary.back()) {
+        boundary.pop_back();
       }
       if (boundary.size() >= 3) result.push_back(std::move(boundary));
     }

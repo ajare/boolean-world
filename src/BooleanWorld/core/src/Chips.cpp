@@ -1227,10 +1227,28 @@ void AddRebuiltFaceHorizontal(
   };
 
   addBoundary(face.outerBoundary, face.outerBoundaryVertices);
-  auto holes = std::min(
-      face.innerBoundaries.size(), face.innerBoundaryVertices.size());
-  for (size_t hole = 0; hole < holes; ++hole) {
-    addBoundary(face.innerBoundaries[hole], face.innerBoundaryVertices[hole]);
+  // Chip rebuilds replace the base face triangles entirely. They must use the
+  // same excluded-region union as base triangulation, not the touching child
+  // cycles. Preserve edge identities so footprints and corner cuts still land
+  // on their original Arrangement edges after the boundaries are stitched.
+  std::map<std::pair<uint32_t, uint32_t>, uint32_t> holeEdges;
+  for (size_t hole = 0; hole < face.innerBoundaryVertices.size(); ++hole) {
+    auto const& vertices = face.innerBoundaryVertices[hole];
+    auto const& edges = face.innerBoundaries[hole];
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      holeEdges.emplace(
+          std::make_pair(vertices[i], vertices[(i + 1) % vertices.size()]),
+          edges.at(i));
+    }
+  }
+  for (auto const& vertices : TriangulationHoleBoundaries(face)) {
+    std::vector<uint32_t> edges;
+    edges.reserve(vertices.size());
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      edges.push_back(holeEdges.at(
+          {vertices[i], vertices[(i + 1) % vertices.size()]}));
+    }
+    addBoundary(edges, vertices);
   }
 
   detail.addSuppressed(source);

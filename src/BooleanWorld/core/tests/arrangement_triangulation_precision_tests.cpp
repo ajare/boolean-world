@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
@@ -79,6 +80,98 @@ void triangulatesArrangementAtFixedPointPrecision() {
           "triangulation should preserve the one-grid-quantum square area");
 }
 
+void gridTouchingFaceHolesPreserveArea() {
+  constexpr uint32_t size = 3;
+  for (uint32_t mask = 1; mask < (1u << (size * size)); ++mask) {
+    // A Face has one outer boundary. Omit masks that enclose an unselected
+    // island disconnected even at vertices, which belongs to another Face.
+    std::array<bool, size * size> exterior{};
+    for (uint32_t cell = 0; cell < size * size; ++cell) {
+      auto const x = cell % size;
+      auto const y = cell / size;
+      exterior[cell] = (mask & (1u << cell)) == 0 &&
+                       (x == 0 || y == 0 || x + 1 == size || y + 1 == size);
+    }
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      for (uint32_t cell = 0; cell < size * size; ++cell) {
+        if (exterior[cell] || (mask & (1u << cell)) != 0) continue;
+        auto const x = cell % size;
+        auto const y = cell / size;
+        bool connected = false;
+        for (int32_t dy = -1; dy <= 1; ++dy) {
+          for (int32_t dx = -1; dx <= 1; ++dx) {
+            auto const nx = static_cast<int32_t>(x) + dx;
+            auto const ny = static_cast<int32_t>(y) + dy;
+            if (nx >= 0 && nx < static_cast<int32_t>(size) && ny >= 0 &&
+                ny < static_cast<int32_t>(size) &&
+                exterior[static_cast<uint32_t>(ny) * size +
+                         static_cast<uint32_t>(nx)]) {
+              connected = true;
+            }
+          }
+        }
+        if (connected) {
+          exterior[cell] = true;
+          changed = true;
+        }
+      }
+    }
+    bool hasEnclosedIsland = false;
+    for (uint32_t cell = 0; cell < size * size; ++cell) {
+      hasEnclosedIsland |=
+          (mask & (1u << cell)) == 0 && !exterior[cell];
+    }
+    if (hasEnclosedIsland) continue;
+
+    ArrangementResult arrangement;
+    arrangement.vertices = {{-1, -1}, {4, -1}, {4, 4}, {-1, 4}};
+    for (uint32_t y = 0; y <= size; ++y) {
+      for (uint32_t x = 0; x <= size; ++x) {
+        arrangement.vertices.push_back(
+            {static_cast<int64_t>(x), static_cast<int64_t>(y)});
+      }
+    }
+    ArrangementFace face{{0, 1, 2, 3},
+                         {0, 1, 2, 3},
+                         {},
+                         {},
+                         Membership(0),
+                         true};
+    auto vertex = [](uint32_t x, uint32_t y) {
+      return 4 + y * (size + 1) + x;
+    };
+    auto horizontal = [](uint32_t x, uint32_t y) {
+      return 4 + y * size + x;
+    };
+    auto vertical = [](uint32_t x, uint32_t y) {
+      return 4 + size * (size + 1) + y * (size + 1) + x;
+    };
+    uint32_t cells = 0;
+    for (uint32_t y = 0; y < size; ++y) {
+      for (uint32_t x = 0; x < size; ++x) {
+        if ((mask & (1u << (y * size + x))) == 0) continue;
+        ++cells;
+        face.innerBoundaryVertices.push_back(
+            {vertex(x, y), vertex(x, y + 1), vertex(x + 1, y + 1),
+             vertex(x + 1, y)});
+        face.innerBoundaries.push_back(
+            {vertical(x, y), horizontal(x, y + 1), vertical(x + 1, y),
+             horizontal(x, y)});
+      }
+    }
+    arrangement.faces.emplace_back(
+        ArrangementFace{{}, {}, {}, {}, Membership(0)});
+    arrangement.faces.push_back(std::move(face));
+    arrangement.palette.emplace_back();
+    auto const expectedArea2 = int64_t{50 - cells * 2};
+    require(triangulatedArea2(arrangement) == expectedArea2,
+            "grid-touching Face holes changed triangulation area for mask " +
+                std::to_string(mask));
+  }
+}
+
 void touchingFaceHolesAreTriangulatedAsTheirUnion() {
   ArrangementResult arrangement;
   // This is the topology around the Tunnels Drill pit: one excluded region is
@@ -143,6 +236,7 @@ int main() {
   try {
     triangulatesArrangementAtFixedPointPrecision();
     touchingFaceHolesAreTriangulatedAsTheirUnion();
+    gridTouchingFaceHolesPreserveArea();
     std::cout << "Arrangement triangulation preserves fixed-point precision "
                  "and touching holes\n";
     return 0;

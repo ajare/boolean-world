@@ -197,6 +197,61 @@ ArrangementWorldData snapshotOf(
       64.0f);
 }
 
+void rebuiltHorizontalFacesRespectTouchingHoles() {
+  // Like the drill surround: a square and hexagon overlap inside a larger
+  // surface, partitioning its excluded region into edge-sharing child cycles.
+  // The small distant step triggers Chip rebuilds on the surround without
+  // altering the shared hole edges. Base triangulation alone misses this bug.
+  std::vector<ArrangementPrimitive> primitives{
+      {{{{128 * U, 68 * U}, {128 * U, 92 * U}, {60 * U, 92 * U},
+          {60 * U, 100 * U}, {36 * U, 100 * U}, {36 * U, 92 * U},
+          {-36 * U, 92 * U}, {-36 * U, 128 * U}, {-60 * U, 128 * U},
+          {-60 * U, 92 * U}, {-92 * U, 92 * U}, {-92 * U, -36 * U},
+          {-128 * U, -36 * U}, {-128 * U, -60 * U}, {-92 * U, -60 * U},
+          {-92 * U, -92 * U}, {36 * U, -92 * U}, {36 * U, -128 * U},
+          {60 * U, -128 * U}, {60 * U, -92 * U}, {92 * U, -92 * U},
+          {92 * U, 68 * U}}}, Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd, 0, 0, propertiesWithHeights(0, 48)},
+      {{rectContour(-68, -68, 68, 68)}, Primitive::Operation::Difference,
+       Primitive::FillRule::EvenOdd, 1, 1, propertiesWithHeights(-20, 68)},
+      {{{{-86 * U, 0}, {-43 * U, -74478}, {43 * U, -74478},
+          {86 * U, 0}, {43 * U, 74478}, {-43 * U, 74478}}},
+       Primitive::Operation::Union, Primitive::FillRule::EvenOdd, 2, 2,
+       propertiesWithHeights(0, 48)},
+      {{rectContour(-86, -86, -74, -74)}, Primitive::Operation::Union,
+       Primitive::FillRule::EvenOdd, 3, 3, propertiesWithHeights(-20, 68)}};
+  auto snapshot = snapshotOf(primitives, fixedChip(1, 2));
+  auto const& arrangement = snapshot.getArrangement();
+  bool checkedFloor = false;
+  bool checkedCeiling = false;
+  for (auto const& triangle : snapshot.getDetail().getTriangles()) {
+    if (triangle.kind != DetailTriangleKind::SurfaceRemainder ||
+        (triangle.source.kind != DetailSurfaceKind::FloorOfFace &&
+         triangle.source.kind != DetailSurfaceKind::CeilingOfFace)) continue;
+    auto const& face = arrangement.faces[triangle.source.index];
+    if (face.primitiveIndex != 0) continue;
+    require(face.innerBoundaryVertices.size() > 1,
+            "Chip regression did not exercise touching child holes");
+    checkedFloor |= triangle.source.kind == DetailSurfaceKind::FloorOfFace;
+    checkedCeiling |= triangle.source.kind == DetailSurfaceKind::CeilingOfFace;
+    for (int a = 1; a < 10; ++a) {
+      for (int b = 1; a + b < 10; ++b) {
+        auto const c = 10 - a - b;
+        auto const x = (a * triangle.v[0].position[0] +
+                        b * triangle.v[1].position[0] +
+                        c * triangle.v[2].position[0]) / 10.0f;
+        auto const y = (a * triangle.v[0].position[1] +
+                        b * triangle.v[1].position[1] +
+                        c * triangle.v[2].position[1]) / 10.0f;
+        require(!(std::abs(x) < 66 && std::abs(y) < 66),
+                "rebuilt Chip surface emitted a triangle across a hole");
+      }
+    }
+  }
+  require(checkedFloor && checkedCeiling,
+          "touching-hole fixture did not rebuild both horizontal surfaces");
+}
+
 // The index of the wall of `kind` whose edge's midpoint is at `midpoint`.
 uint32_t findWall(
     ArrangementWorldData const& snapshot,
@@ -1552,6 +1607,7 @@ void theUnchippedOutputsAreIdenticalEitherWay() {
 
 int main() {
   try {
+    rebuiltHorizontalFacesRespectTouchingHoles();
     everyFloorStepTopArrisCarriesOneChipAndNoBorderDoes();
     theChamferIsATaperedFortyFiveDegreeFacet();
     theFloorSideIsRebuiltWithTheFootprintSubtracted();

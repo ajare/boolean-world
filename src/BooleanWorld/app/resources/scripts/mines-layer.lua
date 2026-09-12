@@ -1,6 +1,9 @@
 local utilities = include("World/UtilityFunctions")
 
 local GRID_SIZE = 256
+local SCAN_CELL_SIZE = 32
+local DIAGONAL_COVER_SIZE = 48
+local DIAGONAL_COVER_FLOOR_DROP = 50
 local FLUSH_CONNECTOR_KEY = "flush-connector"
 local STOPE_CONNECTOR_KEY = "stope-connector"
 local STOPE_MAX_DISTANCE = 128
@@ -34,15 +37,31 @@ local ROTATED_DIRECTION = {
     [270] = {north = "west", east = "north", south = "east", west = "south"}
 }
 local ANGLES = {0, 90, 180, 270}
+local WINDOW_OFFSETS = {{0, 0}, {-1, 0}, {0, -1}, {-1, -1}}
 local EPSILON = 0.001
 local split_candidates_by_map = {}
 local corner_candidates_by_map = {}
 local longest_rail_runs_by_map = {}
 local slope_connector_candidates_by_map = {}
 local unmatched_slope_connectors = {}
+local occupied_scan_cells = {}
+local scan_cells = {}
 
 local function cell_key(x, y)
     return x .. "," .. y
+end
+
+local function mark_scan_cell(x, y)
+    local key = cell_key(x, y)
+    if not occupied_scan_cells[key] then
+        occupied_scan_cells[key] = true
+        scan_cells[#scan_cells + 1] = {x = x, y = y}
+    end
+end
+
+local function mark_scan_cell_containing(x, y)
+    mark_scan_cell(math.floor(x / SCAN_CELL_SIZE),
+                   math.floor(y / SCAN_CELL_SIZE))
 end
 
 local function base_floor_height_for_cell(x, y)
@@ -442,6 +461,7 @@ local function create_tunnels_section_primitive(step_name, index,
     local corridor_width_var_chance = corridor_width_var_pct / 100
     local edges = {}
     local outgoing = {}
+    local set_cells = {}
 
     local function cell_is_set(x, y)
         return x >= 0 and x < width and y >= 0 and y < height and
@@ -470,6 +490,7 @@ local function create_tunnels_section_primitive(step_name, index,
     for y = 0, height - 1 do
         for x = 0, width - 1 do
             if tile_map:get_cell(x, y) == 1 then
+                set_cells[#set_cells + 1] = {x = x, y = y}
                 if y == 0 or tile_map:get_cell(x, y - 1) == 0 then
                     add_edge(x, y, x + 1, y, 0)
                 end
@@ -1482,15 +1503,29 @@ local function create_tunnels_section_primitive(step_name, index,
     for _, support in ipairs(wooden_supports) do
         section_primitives[#section_primitives + 1] = support
     end
-    return primary, map_size, section_primitives, slope_connectors
+    return primary, map_size, section_primitives, slope_connectors,
+           set_cells, cell_size
 end
 
 local function place_tunnels_section(primitive, primitive_size,
                                      section_primitives, slope_connectors,
+                                     set_cells, tile_cell_size,
                                      cell_x, cell_y, angle)
     local position_x = (cell_x + 0.5) * primitive_size
     local position_y = (cell_y + 0.5) * primitive_size
     local base_floor_height = base_floor_height_for_cell(cell_x, cell_y)
+
+    assert(tile_cell_size == SCAN_CELL_SIZE,
+           "mine occupancy scanning requires 32-unit TileMap cells")
+    for _, tile_cell in ipairs(set_cells) do
+        local local_x = (tile_cell.x + 0.5) * SCAN_CELL_SIZE -
+                            primitive_size / 2
+        local local_y = (tile_cell.y + 0.5) * SCAN_CELL_SIZE -
+                            primitive_size / 2
+        local rotated_x, rotated_y = rotate_point(local_x, local_y, angle)
+        mark_scan_cell_containing(position_x + rotated_x,
+                                  position_y + rotated_y)
+    end
 
     local function apply_base_floor_height(section_primitive)
         local floor_angle, floor_lower, floor_upper =
@@ -1596,7 +1631,7 @@ local function place_tunnels_section(primitive, primitive_size,
 end
 
 local tile_map_mesh, tile_map_size, tile_map_section_primitives,
-      tile_map_slope_connectors =
+      tile_map_slope_connectors, tile_map_cells, tile_map_cell_size =
     create_tunnels_section_primitive("TileMaps", 0,
                                      layer.vars.corridor_width)
 assert(tile_map_mesh ~= nil, "TileMaps[0] has no set cells")
@@ -1604,8 +1639,8 @@ local tile_map_x, tile_map_y =
     utilities.find_closest_empty_grid_cell(0, 0, tile_map_size)
 place_tunnels_section(tile_map_mesh, tile_map_size,
                       tile_map_section_primitives,
-                      tile_map_slope_connectors,
-                      tile_map_x, tile_map_y, 0)
+                      tile_map_slope_connectors, tile_map_cells,
+                      tile_map_cell_size, tile_map_x, tile_map_y, 0)
 
 dprint("Finding prefabs")
 local definitions = context:find_define_prefabs("Main")
@@ -1707,13 +1742,14 @@ local seed = unrotated_options[math.random(#unrotated_options)]
 local seed_x, seed_y = utilities.find_closest_empty_grid_cell(0, 0, GRID_SIZE)
 local seed_tile_map_index = math.random(0, 1)
 local seed_primitive, seed_primitive_size, seed_section_primitives,
-      seed_slope_connectors =
+      seed_slope_connectors, seed_tile_map_cells, seed_tile_map_cell_size =
     create_tunnels_section_primitive("TileMaps", seed_tile_map_index,
                                      layer.vars.corridor_width)
 assert(seed_primitive ~= nil,
        string.format("TileMaps[%d] has no set cells", seed_tile_map_index))
 place_tunnels_section(seed_primitive, seed_primitive_size,
                       seed_section_primitives, seed_slope_connectors,
+                      seed_tile_map_cells, seed_tile_map_cell_size,
                       seed_x, seed_y, seed.angle)
 local seed_placement = {x = seed_x, y = seed_y, option = seed}
 placements_by_cell[cell_key(seed_x, seed_y)] = seed_placement
@@ -1904,6 +1940,24 @@ for y = first_prefab_cell, last_prefab_cell do
     end
 end
 
+local function mark_prefab_flush_cells(option, cell_x, cell_y)
+    local inward = {
+        north = {x = 0, y = -1},
+        east = {x = -1, y = 0},
+        south = {x = 0, y = 1},
+        west = {x = 1, y = 0}
+    }
+    local connectors = option.connectors[FLUSH_CONNECTOR_KEY]
+    for _, direction in ipairs(DIRECTIONS) do
+        for _, connector in ipairs(connectors[direction]) do
+            local x1, y1, x2, y2 = world_segment(connector, cell_x, cell_y)
+            mark_scan_cell_containing(
+                (x1 + x2) / 2 + inward[direction].x * SCAN_CELL_SIZE / 2,
+                (y1 + y2) / 2 + inward[direction].y * SCAN_CELL_SIZE / 2)
+        end
+    end
+end
+
 local placed_prefab_count = 0
 while placed_prefab_count < tunnel_prefab_count and #prefab_cells > 0 do
     local cell_index = math.random(#prefab_cells)
@@ -1928,6 +1982,7 @@ while placed_prefab_count < tunnel_prefab_count and #prefab_cells > 0 do
             option = options_by_prefab[prefab][angle],
             flush_only = true
         }
+        mark_prefab_flush_cells(placement.option, cell.x, cell.y)
         placements_by_cell[key] = placement
         add_candidates_for_placement(placement)
         selection.count = selection.count + 1
@@ -1998,14 +2053,16 @@ for _ = 1, step.vars.iterations do
         math.random(#prefab_choice.candidates)]
     local tile_map_index = math.random(
         0, context:get_tile_map_count("TileMaps") - 1)
-    local primitive, primitive_size, section_primitives, slope_connectors =
+    local primitive, primitive_size, section_primitives, slope_connectors,
+          section_tile_map_cells, section_tile_map_cell_size =
         create_tunnels_section_primitive("TileMaps", tile_map_index,
                                          layer.vars.corridor_width)
     assert(primitive ~= nil,
            string.format("TileMaps[%d] has no set cells", tile_map_index))
     place_tunnels_section(primitive, primitive_size, section_primitives,
-                          slope_connectors, candidate.x,
-                          candidate.y, candidate.option.angle)
+                          slope_connectors, section_tile_map_cells,
+                          section_tile_map_cell_size, candidate.x, candidate.y,
+                          candidate.option.angle)
     local placement = {
         x = candidate.x,
         y = candidate.y,
@@ -2013,4 +2070,93 @@ for _ = 1, step.vars.iterations do
     }
     placements_by_cell[cell_key(candidate.x, candidate.y)] = placement
     add_candidates_for_placement(placement)
+end
+
+-- Detect every diagonal pair before placing any cover squares. This keeps the
+-- scan independent of the squares it produces and permits adjacent matching
+-- windows to overlap one another.
+local diagonal_matches = {}
+local checked_windows = {}
+for _, cell in ipairs(scan_cells) do
+    for _, offset in ipairs(WINDOW_OFFSETS) do
+        local x = cell.x + offset[1]
+        local y = cell.y + offset[2]
+        local key = cell_key(x, y)
+        if not checked_windows[key] then
+            checked_windows[key] = true
+            local bottom_left = occupied_scan_cells[cell_key(x, y)] == true
+            local bottom_right = occupied_scan_cells[cell_key(x + 1, y)] == true
+            local top_left = occupied_scan_cells[cell_key(x, y + 1)] == true
+            local top_right = occupied_scan_cells[cell_key(x + 1, y + 1)] == true
+            if (bottom_left and top_right and
+                not bottom_right and not top_left) or
+                (bottom_right and top_left and
+                not bottom_left and not top_right) then
+                diagonal_matches[#diagonal_matches + 1] = {x = x, y = y}
+            end
+        end
+    end
+end
+
+-- Resolve elevations and priorities against the pre-cover geometry as well.
+-- Elevation-span endpoints are the extrema of each intersecting Primitive.
+for _, match in ipairs(diagonal_matches) do
+    local center_x = (match.x + 1) * SCAN_CELL_SIZE
+    local center_y = (match.y + 1) * SCAN_CELL_SIZE
+    match.orientation = math.random() * 30 - 15
+    local radians = math.rad(match.orientation)
+    local query_size = DIAGONAL_COVER_SIZE *
+                           (math.abs(math.cos(radians)) +
+                               math.abs(math.sin(radians)))
+    local intersecting = context:find_build_primitives_overlapping(
+        center_x - query_size / 2 + EPSILON,
+        center_y - query_size / 2 + EPSILON,
+        query_size - EPSILON * 2,
+        query_size - EPSILON * 2)
+    assert(#intersecting > 0,
+           "a diagonal occupancy match had no intersecting Primitives")
+
+    local minimum_floor = math.huge
+    local maximum_ceiling = -math.huge
+    local maximum_priority = -1
+    for _, primitive in ipairs(intersecting) do
+        local _, floor_lower, floor_upper = primitive:get_floor_elevation()
+        local _, ceiling_lower, ceiling_upper =
+            primitive:get_ceiling_elevation()
+        minimum_floor = math.min(minimum_floor, floor_lower, floor_upper)
+        maximum_ceiling = math.max(maximum_ceiling, ceiling_lower,
+                                   ceiling_upper)
+        maximum_priority = math.max(maximum_priority,
+                                    primitive:get_priority())
+    end
+
+    assert(maximum_priority < 255,
+           "cannot place a diagonal cover above priority 255")
+    match.floor = minimum_floor
+    if math.random() < 0.5 then
+        match.floor = match.floor - DIAGONAL_COVER_FLOOR_DROP
+        match.liquid_level = 20 + math.random() * 25
+    end
+    match.ceiling = maximum_ceiling
+    match.priority = maximum_priority + 1
+end
+
+for _, match in ipairs(diagonal_matches) do
+    local cover = context:create_primitive("Rectangle")
+    cover:set_size(DIAGONAL_COVER_SIZE, DIAGONAL_COVER_SIZE)
+    cover:set_exact_bounds(true)
+    cover:set_position((match.x + 1) * SCAN_CELL_SIZE,
+                       (match.y + 1) * SCAN_CELL_SIZE)
+    cover:set_orientation(match.orientation)
+    cover:set_operation("union")
+    cover:set_priority(match.priority)
+    cover:set_floor_elevation(0, match.floor, match.floor)
+    cover:set_ceiling_elevation(0, match.ceiling, match.ceiling)
+    if match.liquid_level ~= nil then
+        cover:set_liquid_level(match.liquid_level)
+    end
+    cover:set_floor_material(layer.vars.mine_material)
+    cover:set_ceiling_material(layer.vars.mine_material)
+    cover:set_wall_material(layer.vars.mine_material)
+    context:place_primitive(cover)
 end

@@ -240,9 +240,15 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   std::vector<bw::core::Primitive*> railStops;
   std::vector<bw::core::Primitive*> bridges;
   std::vector<bw::core::Primitive*> posts;
+  std::vector<bw::core::Primitive*> diagonalCovers;
   for (auto* primitive : layer->getPrimitives()) {
     if (layer->getOwningStepIndex(primitive) != scriptStepIndex) continue;
-    if (primitive->getType() == "Mesh" && primitive->getPriority() == 0) {
+    auto const size = primitive->getSize();
+    if (primitive->getType() == "Rectangle" && size.x == 48.0f &&
+        size.y == 48.0f) {
+      diagonalCovers.push_back(primitive);
+    } else if (primitive->getType() == "Mesh" &&
+               primitive->getPriority() == 0) {
       tunnels.push_back(primitive);
     } else if (primitive->getType() == "Rectangle" &&
                primitive->getPriority() == 1) {
@@ -260,6 +266,74 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   }
 
   require(!tunnels.empty(), "the mines script produced no tunnel floors");
+  require(!diagonalCovers.empty(),
+          "diagonal 32-unit occupancy did not produce cover squares");
+  for (auto const* cover : diagonalCovers) {
+    auto const position = cover->getPosition();
+    auto const& properties = cover->getProperties();
+    require(std::fmod(position.x, 32.0f) == 0.0f &&
+                std::fmod(position.y, 32.0f) == 0.0f &&
+                cover->getOrientation() >= -15.0f &&
+                cover->getOrientation() <= 15.0f &&
+                properties.floorSpan.lowerElevation ==
+                    properties.floorSpan.upperElevation &&
+                properties.ceilingSpan.lowerElevation ==
+                    properties.ceilingSpan.upperElevation &&
+                properties.floorMaterial.reference == "builtin.basalt" &&
+                properties.ceilingMaterial.reference == "builtin.basalt" &&
+                properties.wallMaterial.reference == "builtin.basalt",
+            "a diagonal occupancy cover had incorrect geometry or properties");
+
+    auto minimumFloor = std::numeric_limits<float>::infinity();
+    auto maximumCeiling = -std::numeric_limits<float>::infinity();
+    uint8_t maximumPriority = 0;
+    bool foundIntersecting = false;
+    auto constexpr epsilon = 0.001f;
+    auto const& coverBounds = cover->getBounds();
+    auto const queryMinimum =
+        coverBounds.getMinExtent() + wp::Vector2{epsilon, epsilon};
+    auto const queryMaximum =
+        coverBounds.getMaxExtent() - wp::Vector2{epsilon, epsilon};
+    for (auto const* candidate : layer->getPrimitives()) {
+      if (candidate == cover ||
+          layer->getOwningStepIndex(candidate) > scriptStepIndex ||
+          std::find(diagonalCovers.begin(), diagonalCovers.end(), candidate) !=
+              diagonalCovers.end()) {
+        continue;
+      }
+      auto const& bounds = candidate->getBounds();
+      auto const& candidateMinimum = bounds.getMinExtent();
+      auto const& candidateMaximum = bounds.getMaxExtent();
+      if (candidateMaximum.x < queryMinimum.x ||
+          candidateMinimum.x > queryMaximum.x ||
+          candidateMaximum.y < queryMinimum.y ||
+          candidateMinimum.y > queryMaximum.y) {
+        continue;
+      }
+      foundIntersecting = true;
+      auto const& candidateProperties = candidate->getProperties();
+      minimumFloor = std::min(
+          {minimumFloor, candidateProperties.floorSpan.lowerElevation,
+           candidateProperties.floorSpan.upperElevation});
+      maximumCeiling = std::max(
+          {maximumCeiling, candidateProperties.ceilingSpan.lowerElevation,
+           candidateProperties.ceilingSpan.upperElevation});
+      maximumPriority =
+          std::max(maximumPriority, candidate->getPriority());
+    }
+    auto const coverFloor = properties.floorSpan.lowerElevation;
+    auto const lowered = coverFloor == minimumFloor - 50.0f;
+    auto const liquidLevelIsValid =
+        lowered ? properties.liquidLevel >= 20.0f &&
+                      properties.liquidLevel <= 45.0f
+                : properties.liquidLevel == 0.0f;
+    require(foundIntersecting &&
+                (coverFloor == minimumFloor || lowered) &&
+                liquidLevelIsValid &&
+                properties.ceilingSpan.lowerElevation == maximumCeiling &&
+                cover->getPriority() == maximumPriority + 1,
+            "a diagonal occupancy cover did not span or follow intersecting Primitives");
+  }
   require(!rails.empty() && rails.size() % 2 == 0,
           "rails_pct 100 did not produce complete rail pairs");
   for (auto const* rail : rails) {
@@ -398,10 +472,44 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   require(foundAngledSlopeCut,
           "sloped transitions did not use subtly skewed wall cuts");
 
+  auto validateFaceTriangulation = [](auto const& data) {
+    auto const& arrangement = data->getArrangement();
+    std::vector<int64_t> triangulatedArea2(arrangement.faces.size(), 0);
+    for (auto const& triangle : data->getTriangles()) {
+      auto const& a = arrangement.vertices[triangle.v[0]];
+      auto const& b = arrangement.vertices[triangle.v[1]];
+      auto const& c = arrangement.vertices[triangle.v[2]];
+      triangulatedArea2[triangle.face] += std::abs(
+          (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+    }
+    auto boundaryArea2 = [&arrangement](auto const& boundary) {
+      int64_t area2 = 0;
+      for (size_t i = 0; i < boundary.size(); ++i) {
+        auto const& a = arrangement.vertices[boundary[i]];
+        auto const& b =
+            arrangement.vertices[boundary[(i + 1) % boundary.size()]];
+        area2 += a.x * b.y - a.y * b.x;
+      }
+      return std::abs(area2);
+    };
+    for (size_t faceIndex = 1; faceIndex < arrangement.faces.size();
+         ++faceIndex) {
+      auto const& face = arrangement.faces[faceIndex];
+      if (!face.solid) continue;
+      auto expectedArea2 = boundaryArea2(face.outerBoundaryVertices);
+      for (auto const& hole : face.innerBoundaryVertices) {
+        expectedArea2 -= boundaryArea2(hole);
+      }
+      require(triangulatedArea2[faceIndex] == expectedArea2,
+              "mine face triangulation crossed an excluded child face");
+    }
+  };
   auto const worldData = map.getWorld()->getWorldData();
+  validateFaceTriangulation(worldData);
   auto const& liquidSurfaces = worldData->getLiquidSurfaceTriangles();
   require(!liquidSurfaces.empty(),
           "corner pools did not produce visible Water surfaces");
+  bool foundLiquidInCornerPool = false;
   for (auto const& surface : liquidSurfaces) {
     auto const center = (surface.positions[0] + surface.positions[1] +
                          surface.positions[2]) /
@@ -414,13 +522,10 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
         break;
       }
     }
-    require(containingPool,
-            "Water escaped the generated corner pool footprints");
-    auto const& poolFloor = containingPool->getProperties().floorSpan;
-    require(surface.elevation <= poolFloor.upperElevation + 0.0001f &&
-                surface.elevation > poolFloor.lowerElevation,
-            "a corner pool Water surface did not follow its sector base height");
+    if (containingPool) foundLiquidInCornerPool = true;
   }
+  require(foundLiquidInCornerPool,
+          "the generated corner pools retained no visible Water");
 
   require(!bridges.empty() && posts.size() == bridges.size() * 2,
           "the configured wooden support percentage produced no complete frames");
@@ -482,6 +587,7 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
     require(floorPlanesMatch(post, nearestBridge, post->getPosition()),
             "a wooden post did not match its frame's floor plane");
   }
+
 }
 
 bool minesWorldLoadFails(std::string const& yaml) {
@@ -516,12 +622,14 @@ void minesValidatePrefabSelectionVariables() {
 
   auto forcedZeroWeight = zeroWeights;
   setSerializedVariableValues(forcedZeroWeight, "tunnel_prefab_count", "4");
+  setSerializedVariableValues(forcedZeroWeight, "max_count", "4");
   setSerializedVariableValues(forcedZeroWeight, "min_count", "4");
   require(!minesWorldLoadFails(forcedZeroWeight),
           "a zero-weight Prefab could not be forced to satisfy its minimum");
 
   auto exhaustedMaximums = fixture;
   setSerializedVariableValues(exhaustedMaximums, "max_count", "0", true);
+  setSerializedVariableValues(exhaustedMaximums, "min_count", "0", true);
   require(!minesWorldLoadFails(exhaustedMaximums),
           "exhausting every Prefab maximum failed instead of stopping early");
 

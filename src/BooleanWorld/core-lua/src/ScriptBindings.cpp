@@ -142,6 +142,16 @@ tuple<float, float, float> getElevation(
   return {span.directionAngle, span.lowerElevation, span.upperElevation};
 }
 
+void setLiquidLevel(Primitive& primitive, float level) {
+  if (!isfinite(level) || level < 0.0f) {
+    throw CoreException(
+        "Primitive liquid level must be finite and non-negative");
+  }
+  auto properties = primitive.getProperties();
+  properties.liquidLevel = level;
+  primitive.setProperties(properties);
+}
+
 enum class MaterialSurface { Floor, Ceiling, Wall };
 
 void setMaterial(
@@ -1130,6 +1140,8 @@ void bindScriptTypes(sol::state& lua) {
       "get_ceiling_elevation",
       [](Primitive const& primitive) { return getElevation(primitive, false); },
 
+      "set_liquid_level", &setLiquidLevel,
+
       "set_floor_material",
       [](Primitive& primitive, string const& materialId) {
         setMaterial(primitive, MaterialSurface::Floor, materialId);
@@ -1334,13 +1346,7 @@ void bindScriptTypes(sol::state& lua) {
       },
       "set_liquid_level",
       [](ScriptMeshPrimitive& mesh, float level) {
-        if (!isfinite(level) || level < 0.0f) {
-          throw CoreException(
-              "MeshPrimitive liquid level must be finite and non-negative");
-        }
-        auto properties = mesh.getPrimitive()->getProperties();
-        properties.liquidLevel = level;
-        mesh.getPrimitive()->setProperties(properties);
+        setLiquidLevel(*mesh.getPrimitive(), level);
       },
 
       "set_floor_material",

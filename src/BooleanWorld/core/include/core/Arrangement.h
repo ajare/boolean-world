@@ -427,6 +427,11 @@ bool PointInFace(
 [[nodiscard]] double FaceArea(
     ArrangementFace const& face, ArrangementResult const& arrangement);
 
+// Excluded-region union boundaries for every horizontal triangulation path,
+// including Chip surface rebuilds. Cancels shared edges and joins pinches.
+[[nodiscard]] std::vector<std::vector<uint32_t>> TriangulationHoleBoundaries(
+    ArrangementFace const& face);
+
 [[nodiscard]] std::vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement);
 

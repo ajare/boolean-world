@@ -411,6 +411,7 @@ Returned only by `context:create_primitive`.
 | `get_floor_elevation()` | Returns the floor `angle, lower, upper`. |
 | `set_ceiling_elevation(angle, lower, upper)` | Sets the ceiling Elevation span with the same local-space semantics. All values must be finite. |
 | `get_ceiling_elevation()` | Returns the ceiling `angle, lower, upper`. |
+| `set_liquid_level(level)` | Sets the non-negative amount of Water contributed by this Primitive. |
 | `set_floor_material(material_id)` | Sets the floor Sub-material id. Horizontal surfaces use the catalog's 2D material program when that rendering mode is active. |
 | `get_floor_material()` | Returns the floor Sub-material id. |
 | `set_ceiling_material(material_id)` | Sets the ceiling Sub-material id. Horizontal surfaces use the catalog's 2D material program when that rendering mode is active. |
@@ -438,7 +439,6 @@ Every operation validates the complete Ring and containment hierarchy. A refused
 | `slice_polygon(polygon_id, first_vertex_id, second_vertex_id)` | Divides a Shell or Island along a valid chord between two non-adjacent vertices. Returns whether accepted. |
 | `slice_at(x1, y1, x2, y2)` | Divides the filled polygon whose boundary contains both points and returns the new internal Edge id, or `nil`. Boundary Edges are split as needed. |
 | `contains_point(x, y)` | Returns whether the World-plane point lies inside the filled mesh. |
-| `set_liquid_level(level)` | Sets the non-negative amount of Water contributed by this mesh. |
 | `remove_vertex(vertex_id)` | Removes a Vertex and heals its Ring. Returns whether accepted. |
 | `remove_edge(edge_id)` | Welds a one-sided Edge's endpoints or merges compatible sibling Rings across a two-sided Edge. Returns whether accepted. |
 | `remove_polygon(polygon_id)` | Removes a Ring and its structurally contained descendants. Returns whether accepted. |
