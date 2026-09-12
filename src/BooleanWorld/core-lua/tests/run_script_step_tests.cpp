@@ -444,7 +444,7 @@ void meshGeometryOperationsKeepIdsWithinOneExecution() {
     local mesh = context:create_mesh_primitive({
       {0, 0}, {8, 0}, {8, 8}, {0, 8}
     })
-    local vertex_id = mesh:split_edge(0)
+    local vertex_id = mesh:split_edge_at(4, 0)
     assert(vertex_id ~= nil)
     assert(mesh:move_vertex_to(vertex_id, 4, -2))
     context:place_primitive(mesh)
@@ -700,6 +700,7 @@ void scriptsAuthorIndependentElevationSpans() {
     end))
     primitive:set_floor_elevation(15, -4, 12)
     primitive:set_ceiling_elevation(-70, 60, 84)
+    assert(math.abs(primitive:get_floor_elevation_at(0, 0) - 4) < 0.0001)
     local floor_angle, floor_lower, floor_upper = primitive:get_floor_elevation()
     local ceiling_angle, ceiling_lower, ceiling_upper = primitive:get_ceiling_elevation()
     assert(floor_angle == 15 and floor_lower == -4 and floor_upper == 12)
@@ -719,6 +720,7 @@ void scriptsAuthorIndependentElevationSpans() {
            mesh_floor_upper == 9)
     assert(mesh_ceiling_angle == 45 and mesh_ceiling_lower == 30 and
            mesh_ceiling_upper == 42)
+    assert(math.abs(mesh:get_floor_elevation_at(0, 0) - 6) < 0.0001)
     context:place_primitive(mesh)
   )");
 

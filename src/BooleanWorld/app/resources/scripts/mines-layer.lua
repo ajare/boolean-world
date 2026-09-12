@@ -9,6 +9,11 @@ local RAIL_STOP_CHANCE = 0.25
 local RAIL_STOP_LENGTH = 8
 local RAIL_STOP_WIDTH = 12
 local RAIL_STOP_HEIGHT = 8
+local CORRIDOR_WIDTH_MIN_VARIATION = 1
+local CORRIDOR_WIDTH_MAX_VARIATION = 2
+local SLOPE_CUT_CENTER_JITTER = 0.5
+local SLOPE_CUT_MIN_SKEW = 0.75
+local SLOPE_CUT_MAX_SKEW = 1.5
 local CONNECTOR_KEYS = {FLUSH_CONNECTOR_KEY, STOPE_CONNECTOR_KEY}
 local DIRECTIONS = {"north", "east", "south", "west"}
 local DIRECTION_SET = {north = true, east = true, south = true, west = true}
@@ -256,8 +261,6 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
         {x = 0, y = 1},
         {x = -1, y = 0}
     }
-    local floor_angle, floor_lower, floor_upper =
-        corridor:get_floor_elevation()
     local ceiling_angle, ceiling_lower, ceiling_upper =
         corridor:get_ceiling_elevation()
     local support_frame_pct = layer.vars.support_frame_pct
@@ -281,6 +284,52 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
     local function add_primitive(primitive)
         configure_wood(primitive)
         supports[#supports + 1] = primitive
+    end
+
+    -- Copy an Elevation plane rather than its authored span. Span endpoints
+    -- are fitted to each Primitive's bounds, so copying them directly onto a
+    -- differently sized support changes the slope.
+    local function match_floor_plane(target, source)
+        local source_angle = source:get_floor_elevation()
+        local source_x, source_y = source:get_position()
+        local source_orientation = source:get_orientation()
+        local target_x, target_y = target:get_position()
+        local target_width, target_height = target:get_size()
+        local target_orientation = target:get_orientation()
+
+        local function direction(angle)
+            local radians = math.rad(angle)
+            return -math.sin(radians), math.cos(radians)
+        end
+
+        local function evaluate_source(world_x, world_y)
+            local radians = math.rad(source_orientation)
+            local cosine, sine = math.cos(radians), math.sin(radians)
+            local offset_x, offset_y = world_x - source_x, world_y - source_y
+            -- Undo the source Primitive's clockwise orientation.
+            local local_x = offset_x * cosine - offset_y * sine
+            local local_y = offset_x * sine + offset_y * cosine
+            return source:get_floor_elevation_at(local_x, local_y)
+        end
+
+        local target_angle = source_angle - source_orientation +
+                                 target_orientation
+        local target_dx, target_dy = direction(target_angle)
+        local target_run = math.abs(target_dx) * target_width +
+                               math.abs(target_dy) * target_height
+        local radians = math.rad(target_orientation)
+        local cosine, sine = math.cos(radians), math.sin(radians)
+        local function target_world_position(distance)
+            local local_x = target_dx * distance
+            local local_y = target_dy * distance
+            return target_x + local_x * cosine + local_y * sine,
+                   target_y - local_x * sine + local_y * cosine
+        end
+        local lower_x, lower_y = target_world_position(-target_run / 2)
+        local upper_x, upper_y = target_world_position(target_run / 2)
+        target:set_floor_elevation(
+            target_angle, evaluate_source(lower_x, lower_y),
+            evaluate_source(upper_x, upper_y))
     end
 
     for y = 0, height - 1 do
@@ -311,15 +360,11 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
                     local normal_y = direction_x / direction_length
                     local center_x = (x + 0.5) * cell_size - map_size / 2
                     local center_y = (y + 0.5) * cell_size - map_size / 2
-                    local frame_floor_angle = floor_angle
-                    local frame_floor_lower = floor_lower
-                    local frame_floor_upper = floor_upper
+                    local frame_floor = corridor
                     for _, region in ipairs(floor_regions) do
                         if region.primitive:contains_point(center_x,
                                                            center_y) then
-                            frame_floor_angle, frame_floor_lower,
-                                frame_floor_upper =
-                                region.primitive:get_floor_elevation()
+                            frame_floor = region.primitive
                             break
                         end
                     end
@@ -334,9 +379,7 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
                         -- Keep the posts after the bridge in the Boolean fold
                         -- so its Union cannot fill their wall cut-outs.
                         post:set_priority(3)
-                        post:set_floor_elevation(
-                            frame_floor_angle, frame_floor_lower,
-                            frame_floor_upper)
+                        match_floor_plane(post, frame_floor)
                         post:set_ceiling_elevation(ceiling_angle,
                                                    ceiling_lower,
                                                    ceiling_upper)
@@ -357,9 +400,7 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
                     -- Override the corridor's ceiling and materials while
                     -- still folding before the higher-priority posts.
                     bridge:set_priority(2)
-                    bridge:set_floor_elevation(
-                        frame_floor_angle, frame_floor_lower,
-                        frame_floor_upper)
+                    match_floor_plane(bridge, frame_floor)
                     bridge:set_ceiling_elevation(
                         0, layer.vars.corridor_base_height - 2,
                         layer.vars.corridor_base_height - 2)
@@ -386,6 +427,11 @@ local function create_tunnels_section_primitive(step_name, index,
                corridor_width <= cell_size,
            "corridor width must be greater than zero and no larger than the TileMap cell size")
     local inset = (cell_size - corridor_width) / 2
+    local corridor_width_var_pct = layer.vars.corridor_width_var_pct
+    assert(type(corridor_width_var_pct) == "number" and
+               corridor_width_var_pct >= 0 and corridor_width_var_pct <= 100,
+           "layer.vars.corridor_width_var_pct must be a number from 0 to 100")
+    local corridor_width_var_chance = corridor_width_var_pct / 100
     local edges = {}
     local outgoing = {}
 
@@ -495,6 +541,45 @@ local function create_tunnels_section_primitive(step_name, index,
                 end
             end
 
+            -- Decide independently for each actual corridor wall whether to
+            -- insert a point. Delay insertion until all floor slicing is
+            -- complete so those slices can still address
+            -- the original straight wall coordinates. Map-boundary segments
+            -- are section seams and must remain flush with adjacent sections.
+            local wall_variations = {}
+            for point_index, point in ipairs(corners) do
+                local following = corners[point_index % #corners + 1]
+                local on_map_boundary =
+                    point[1] == following[1] and
+                        (point[1] == -map_size / 2 or
+                            point[1] == map_size / 2) or
+                        point[2] == following[2] and
+                            (point[2] == -map_size / 2 or
+                                point[2] == map_size / 2)
+                if not on_map_boundary and corridor_width_var_chance > 0 and
+                    math.random() < corridor_width_var_chance then
+                    local delta_x = following[1] - point[1]
+                    local delta_y = following[2] - point[2]
+                    local length = math.sqrt(delta_x * delta_x +
+                                                 delta_y * delta_y)
+                    local displacement = CORRIDOR_WIDTH_MIN_VARIATION +
+                                             math.random() *
+                                                 (CORRIDOR_WIDTH_MAX_VARIATION -
+                                                     CORRIDOR_WIDTH_MIN_VARIATION)
+                    if math.random(2) == 1 then
+                        displacement = -displacement
+                    end
+                    wall_variations[#wall_variations + 1] = {
+                        x1 = point[1],
+                        y1 = point[2],
+                        x2 = following[1],
+                        y2 = following[2],
+                        delta_x = -delta_y / length * displacement,
+                        delta_y = delta_x / length * displacement
+                    }
+                end
+            end
+
             local area = 0
             for point_index, point in ipairs(corners) do
                 local following = corners[point_index % #corners + 1]
@@ -504,7 +589,8 @@ local function create_tunnels_section_primitive(step_name, index,
             rings[#rings + 1] = {
                 points = corners,
                 area = math.abs(area),
-                children = {}
+                children = {},
+                wall_variations = wall_variations
             }
         end
     end
@@ -750,6 +836,7 @@ local function create_tunnels_section_primitive(step_name, index,
     local corner_pool_chance = corner_pool_pct / 100
 
     local mesh = nil
+    local wall_variations = {}
     local function add_ring(ring, parent_id, depth)
         local polygon_id
         if depth == 0 then
@@ -763,6 +850,9 @@ local function create_tunnels_section_primitive(step_name, index,
             polygon_id = assert(mesh:add_hole(parent_id, ring.points))
         else
             polygon_id = assert(mesh:add_island(parent_id, ring.points))
+        end
+        for _, variation in ipairs(ring.wall_variations) do
+            wall_variations[#wall_variations + 1] = variation
         end
 
         for _, child in ipairs(ring.children) do
@@ -786,15 +876,29 @@ local function create_tunnels_section_primitive(step_name, index,
         for cut_index = 0, extra_cut_count do
             local fraction = cut_index / (extra_cut_count + 1)
             local offset = inner_offset + transition_length * fraction
-            local cut_x = center_x + connector.outward_x * offset
-            local cut_y = center_y + connector.outward_y * offset
-            local first_x = cut_x +
+            -- Skew each transverse cut by moving its wall vertices in
+            -- opposite directions along the tunnel. A small independent
+            -- centre jitter keeps successive cuts from looking mechanical.
+            local center_jitter =
+                (math.random() * 2 - 1) * SLOPE_CUT_CENTER_JITTER
+            local skew = SLOPE_CUT_MIN_SKEW + math.random() *
+                             (SLOPE_CUT_MAX_SKEW - SLOPE_CUT_MIN_SKEW)
+            if math.random(2) == 1 then
+                skew = -skew
+            end
+            local first_offset = offset + center_jitter + skew / 2
+            local second_offset = offset + center_jitter - skew / 2
+            local first_x = center_x +
+                                connector.outward_x * first_offset +
                                 connector.side_x * corridor_width / 2
-            local first_y = cut_y +
+            local first_y = center_y +
+                                connector.outward_y * first_offset +
                                 connector.side_y * corridor_width / 2
-            local second_x = cut_x -
+            local second_x = center_x +
+                                 connector.outward_x * second_offset -
                                  connector.side_x * corridor_width / 2
-            local second_y = cut_y -
+            local second_y = center_y +
+                                 connector.outward_y * second_offset -
                                  connector.side_y * corridor_width / 2
             if mesh:slice_at(first_x, first_y, second_x, second_y) == nil then
                 cuts_succeeded = false
@@ -1137,6 +1241,26 @@ local function create_tunnels_section_primitive(step_name, index,
             create_compact_pool()
         end
         end
+    end
+
+    -- Apply the width variation only after every operation that locates a
+    -- straight wall by coordinate. Try several points so an earlier cut that
+    -- inserted a vertex at one candidate does not prevent varying the wall.
+    for _, variation in ipairs(wall_variations) do
+        local vertex = nil
+        for _, fraction in ipairs({0.37, 0.63, 0.23, 0.77, 0.5}) do
+            local x = variation.x1 +
+                          (variation.x2 - variation.x1) * fraction
+            local y = variation.y1 +
+                          (variation.y2 - variation.y1) * fraction
+            vertex = mesh:split_edge_at(x, y)
+            if vertex ~= nil then
+                break
+            end
+        end
+        assert(vertex ~= nil, "corridor wall had no segment to vary")
+        assert(mesh:move_vertex(vertex, variation.delta_x,
+                                variation.delta_y))
     end
 
     -- Horizontal surfaces use the catalog's 2D material program; walls use

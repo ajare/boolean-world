@@ -122,6 +122,7 @@ public:
       uint32_t polygonId, float deltaX, float deltaY);
   [[nodiscard]] std::optional<uint32_t> splitEdge(uint32_t edgeId);
   [[nodiscard]] std::optional<uint32_t> splitEdge(uint32_t edgeId, float t);
+  [[nodiscard]] std::optional<uint32_t> splitEdgeAt(float x, float y);
   [[nodiscard]] bool roughenEdge(
       uint32_t edgeId, sol::table const& offsets,
       float towardX, float towardY);

@@ -299,6 +299,7 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   bool foundVariedFloor = false;
   bool foundCornerPool = false;
   bool foundSlopedTransition = false;
+  bool foundAngledSlopeCut = false;
   for (auto const* tunnel : tunnels) {
     auto const* mesh = dynamic_cast<bw::core::MeshPrimitive const*>(tunnel);
     require(mesh && mesh->getShells().size() == 1,
@@ -327,7 +328,18 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
                                  direction == 180.0f || direction == 270.0f;
       require(floor.upperElevation == floor.lowerElevation || cardinalSlope,
               "a non-pool tunnel polygon had an invalid floor elevation");
-      foundSlopedTransition |= floor.upperElevation != floor.lowerElevation;
+      auto const isSlopedTransition =
+          floor.upperElevation != floor.lowerElevation;
+      foundSlopedTransition |= isSlopedTransition;
+      if (isSlopedTransition) {
+        auto const& ring = mesh->getShells().front().ring;
+        for (size_t vertex = 0; vertex < ring.size(); ++vertex) {
+          auto const& first = ring[vertex].p;
+          auto const& second = ring[(vertex + 1) % ring.size()].p;
+          foundAngledSlopeCut |= std::abs(second.x - first.x) > 0.0001f &&
+                                 std::abs(second.y - first.y) > 0.0001f;
+        }
+      }
     }
   }
   require(foundVariedFloor,
@@ -336,8 +348,36 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
           "corner cells did not create lowered pool polygons");
   require(foundSlopedTransition,
           "connected mine sections did not create a sloped transition");
+  require(foundAngledSlopeCut,
+          "sloped transitions did not use subtly skewed wall cuts");
   require(!bridges.empty() && posts.size() == bridges.size() * 2,
           "the configured wooden support percentage produced no complete frames");
+  auto evaluateFloor = [](bw::core::Primitive const* primitive,
+                          wp::Vector2 const& worldPosition) {
+    auto const offset = worldPosition - primitive->getPosition();
+    auto const radians = primitive->getOrientation() *
+                         3.14159265358979323846f / 180.0f;
+    auto const cosine = std::cos(radians);
+    auto const sine = std::sin(radians);
+    auto const localPosition = wp::Vector2{
+        offset.x * cosine - offset.y * sine,
+        offset.x * sine + offset.y * cosine};
+    return primitive->getElevationPlane(bw::core::PrimitiveSurface::Floor)
+        .evaluate(localPosition);
+  };
+  auto floorPlanesMatch = [&evaluateFloor](bw::core::Primitive const* first,
+                                           bw::core::Primitive const* second,
+                                           wp::Vector2 const& position) {
+    for (auto const offset : std::array<wp::Vector2, 3>{
+             wp::Vector2{}, wp::Vector2{1.0f, 0.0f},
+             wp::Vector2{0.0f, 1.0f}}) {
+      if (std::abs(evaluateFloor(first, position + offset) -
+                   evaluateFloor(second, position + offset)) >= 0.0001f) {
+        return false;
+      }
+    }
+    return true;
+  };
   for (auto const* bridge : bridges) {
     bw::core::Primitive const* containingFloor = nullptr;
     for (auto const* tunnel : tunnels) {
@@ -347,10 +387,11 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
         break;
       }
     }
-    require(containingFloor &&
-                bridge->getProperties().floorSpan ==
-                    containingFloor->getProperties().floorSpan,
-            "a wooden bridge did not use its tunnel polygon's floor height");
+    require(containingFloor,
+            "a wooden bridge did not have a containing tunnel floor");
+    require(floorPlanesMatch(bridge, containingFloor,
+                             bridge->getPosition()),
+            "a wooden bridge did not match its tunnel floor plane");
   }
 
   for (auto const* post : posts) {
@@ -364,10 +405,10 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
         nearestBridge = bridge;
       }
     }
-    require(nearestBridge && nearestDistance < 13.0f * 13.0f &&
-                post->getProperties().floorSpan ==
-                    nearestBridge->getProperties().floorSpan,
-            "a wooden post did not inherit its frame's floor height");
+    require(nearestBridge && nearestDistance < 13.0f * 13.0f,
+            "a wooden post did not have a nearby bridge");
+    require(floorPlanesMatch(post, nearestBridge, post->getPosition()),
+            "a wooden post did not match its frame's floor plane");
   }
 }
 

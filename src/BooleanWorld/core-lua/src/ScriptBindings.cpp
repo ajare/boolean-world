@@ -556,6 +556,32 @@ optional<uint32_t> ScriptMeshPrimitive::splitEdge(
   return result.newVertexIndices.front();
 }
 
+optional<uint32_t> ScriptMeshPrimitive::splitEdgeAt(float x, float y) {
+  constexpr float tolerance = 0.001f;
+  auto const point = wp::Vector2{x, y};
+  for (auto edgeId = mEditing->getFirstEdgeIndex();
+       !mEditing->edgeIndexIterationFinished(edgeId);
+       edgeId = mEditing->getNextEdgeIndex(edgeId)) {
+    auto const& edge = mEditing->getEdge(edgeId);
+    auto const& first =
+        mEditing->getVertex(edge.getFirstVertex()).getPosition();
+    auto const& second =
+        mEditing->getVertex(edge.getSecondVertex()).getPosition();
+    auto const delta = second - first;
+    auto const relative = point - first;
+    auto const lengthSquared = delta.distanceToSq({0.0f, 0.0f});
+    if (lengthSquared <= 0.0f) continue;
+    auto const cross = delta.x * relative.y - delta.y * relative.x;
+    auto const projection = delta.dot(relative);
+    if (abs(cross) > tolerance * sqrt(lengthSquared) ||
+        projection <= tolerance || projection >= lengthSquared - tolerance) {
+      continue;
+    }
+    return splitEdge(edgeId, projection / lengthSquared);
+  }
+  return nullopt;
+}
+
 bool ScriptMeshPrimitive::roughenEdge(
     uint32_t edgeId, sol::table const& offsets,
     float towardX, float towardY) {
@@ -1048,6 +1074,11 @@ void bindScriptTypes(sol::state& lua) {
       },
       "get_floor_elevation",
       [](Primitive const& primitive) { return getElevation(primitive, true); },
+      "get_floor_elevation_at",
+      [](Primitive const& primitive, float x, float y) {
+        return primitive.getElevationPlane(PrimitiveSurface::Floor)
+            .evaluate({x, y});
+      },
       "set_ceiling_elevation",
       [](Primitive& primitive, float angle, float lower, float upper) {
         setElevation(primitive, false, angle, lower, upper);
@@ -1242,6 +1273,12 @@ void bindScriptTypes(sol::state& lua) {
       [](ScriptMeshPrimitive const& mesh) {
         return getElevation(*mesh.getPrimitive(), true);
       },
+      "get_floor_elevation_at",
+      [](ScriptMeshPrimitive const& mesh, float x, float y) {
+        return mesh.getPrimitive()
+            ->getElevationPlane(PrimitiveSurface::Floor)
+            .evaluate({x, y});
+      },
       "set_ceiling_elevation",
       [](ScriptMeshPrimitive& mesh, float angle, float lower,
          float upper) {
@@ -1328,6 +1365,7 @@ void bindScriptTypes(sol::state& lua) {
           [](ScriptMeshPrimitive& mesh, uint32_t edgeId, float t) {
             return mesh.splitEdge(edgeId, t);
           }),
+      "split_edge_at", &ScriptMeshPrimitive::splitEdgeAt,
       "roughen_edge", &ScriptMeshPrimitive::roughenEdge,
       "move_vertex_to", &ScriptMeshPrimitive::moveVertexTo,
       "move_vertex", &ScriptMeshPrimitive::moveVertex,
@@ -1411,6 +1449,11 @@ void bindScriptTypes(sol::state& lua) {
       "get_floor_elevation",
       [](PrimitiveView const& view) {
         return getElevation(*view.primitive, true);
+      },
+      "get_floor_elevation_at",
+      [](PrimitiveView const& view, float x, float y) {
+        return view.primitive->getElevationPlane(PrimitiveSurface::Floor)
+            .evaluate({x, y});
       },
       "get_ceiling_elevation",
       [](PrimitiveView const& view) {
