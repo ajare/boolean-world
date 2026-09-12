@@ -124,13 +124,16 @@ void climbOutRequiresFacingTheTargetPolygon() {
       "a target polygon behind the player was accepted");
 }
 
-void overlapSuppressionCannotCarryASwimmerAcrossTheWall() {
+void overlapSuppressionEndsWhenADryPlayerLands() {
   require(
-      !bw::app::maySuppressOverlappingTallStep(true),
+      !bw::app::maySuppressOverlappingTallStep(true, 0.0f, -128.0f),
       "overlap suppression let a swimmer bypass climb-out checks");
   require(
-      bw::app::maySuppressOverlappingTallStep(false),
-      "the swimmer restriction changed dry overlap traversal");
+      bw::app::maySuppressOverlappingTallStep(false, 0.0f, -128.0f),
+      "a dry player leaving the high floor was blocked before falling");
+  require(
+      !bw::app::maySuppressOverlappingTallStep(false, -128.0f, -128.0f),
+      "overlap suppression stayed active after a dry player landed");
 }
 
 void downwardSwimmingDoesNotMasqueradeAsFallingFromALedge() {
@@ -220,7 +223,7 @@ int main() {
     climbOutRequiresLookingUp();
     climbOutReachIsMeasuredFromThePlayersEye();
     climbOutRequiresFacingTheTargetPolygon();
-    overlapSuppressionCannotCarryASwimmerAcrossTheWall();
+    overlapSuppressionEndsWhenADryPlayerLands();
     downwardSwimmingDoesNotMasqueradeAsFallingFromALedge();
     negativeWaterElevationDoesNotBypassClimbReach();
     climbOutStillRequiresAnUpwardLift();

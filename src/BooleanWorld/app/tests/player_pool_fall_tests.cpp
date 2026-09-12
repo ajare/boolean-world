@@ -144,19 +144,27 @@ public:
              predicted, float(BW_PLAYER_SPEED) + float(BW_PLAYER_RADIUS),
              mPosition, descending)) {
       auto const& wall = walls[wallIndex];
-      auto const& edge = arrangement.edges[wall.edge];
-      auto const& fixed0 = arrangement.vertices[edge.v[0]];
-      auto const& fixed1 = arrangement.vertices[edge.v[1]];
-      wp::Vector2 v0{bw::core::arr::ToWorldCoordinate(fixed0.x),
-                     bw::core::arr::ToWorldCoordinate(fixed0.y)};
-      wp::Vector2 v1{bw::core::arr::ToWorldCoordinate(fixed1.x),
-                     bw::core::arr::ToWorldCoordinate(fixed1.y)};
+      auto orientation =
+          bw::core::arr::OrientArrangementWall(arrangement, wall);
+      auto const& v0 = orientation.v0;
+      auto const& v1 = orientation.v1;
 
       auto blocksOnlyByStepHeight =
           wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
           !mData.wallBlocksTraversalWithoutStepAt(wallIndex, mPosition);
+      auto span = v1 - v0;
+      auto closest = mPosition.closestPointOnLine(v0, v1);
+      auto spanLengthSquared = span.lengthSq();
+      auto along = spanLengthSquared > 0.0f
+                       ? std::clamp((closest - v0).dot(span) /
+                                        spanLengthSquared,
+                                    0.0f, 1.0f)
+                       : 0.0f;
+      auto lowerFloorElevation = std::lerp(
+          orientation.bottomZ[0], orientation.bottomZ[1], along);
       if (blocksOnlyByStepHeight &&
-          bw::app::maySuppressOverlappingTallStep(isSwimming) &&
+          bw::app::maySuppressOverlappingTallStep(
+              isSwimming, mState.feetElevation, lowerFloorElevation) &&
           mPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
         continue;
       }
@@ -293,9 +301,8 @@ void liftingASwimmerClearOfTheBankDoesNotLetThemSwimOverIt() {
 }
 
 // Control: the same pit with no water in it. A dry faller lands on the bottom
-// just as close to the bank, and the overlapping-tall-step suppression in
-// createWorldCollisions keeps them free - so it is the swimming state, not the
-// closeness itself, that decided whether the player could move.
+// just as close to the bank. Reinstating and depenetrating the wall must leave
+// them free to move within the pit without opening the wall back to the bank.
 void aDryFallerLandingBesideTheSameBankIsNotStuck() {
   auto data = makePitWorld(-128.0f, 0.0f);
   PlayerHarness faller(*data, {0.0f, 120.0f});
@@ -309,6 +316,21 @@ void aDryFallerLandingBesideTheSameBankIsNotStuck() {
           "dry faller was stuck against the bank too (moved " +
               std::to_string(travelled) + ")");
 }
+
+void aDryFallerCannotWalkThroughTheBankAndRiseToItsFloor() {
+  auto data = makePitWorld(-128.0f, 0.0f);
+  PlayerHarness faller(*data, {0.0f, 120.0f});
+  faller.stepOffTheEdgeAndSettle({0.0f, -1.0f}, 3.0f);
+  require(!faller.swimming(), "dry pit unexpectedly contains liquid");
+
+  faller.run({0.0f, 1.0f}, 2.0f);
+  require(faller.position().y < 50.0f,
+          "a dry faller crossed the pit's tall bank (y " +
+              std::to_string(faller.position().y) + ")");
+  require(faller.feetElevation() < -100.0f,
+          "a dry faller rose toward the bank floor (feet elevation " +
+              std::to_string(faller.feetElevation()) + ")");
+}
 }  // namespace
 
 int main() {
@@ -317,6 +339,7 @@ int main() {
     aSwimmerWhoFellInBesideTheBankCanStillSwimAway();
     liftingASwimmerClearOfTheBankDoesNotLetThemSwimOverIt();
     aDryFallerLandingBesideTheSameBankIsNotStuck();
+    aDryFallerCannotWalkThroughTheBankAndRiseToItsFloor();
   } catch (std::exception const& e) {
     std::cerr << "FAILED: " << e.what() << "\n";
     return 1;

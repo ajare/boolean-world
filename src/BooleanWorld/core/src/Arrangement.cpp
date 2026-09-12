@@ -1445,6 +1445,107 @@ double FaceArea(ArrangementFace const& face, ArrangementResult const& arrangemen
   return ToWorldArea(area2);
 }
 
+static vector<vector<uint32_t>> TriangulationHoleBoundaries(
+    ArrangementFace const& face) {
+  auto const holeCount = face.innerBoundaryVertices.size();
+  if (holeCount < 2) return face.innerBoundaryVertices;
+
+  vector<size_t> parent(holeCount);
+  iota(parent.begin(), parent.end(), 0);
+  auto findRoot = [&](size_t hole) {
+    while (parent[hole] != hole) {
+      parent[hole] = parent[parent[hole]];
+      hole = parent[hole];
+    }
+    return hole;
+  };
+  auto unite = [&](size_t first, size_t second) {
+    first = findRoot(first);
+    second = findRoot(second);
+    if (first != second) parent[second] = first;
+  };
+
+  map<uint32_t, size_t> edgeOwner;
+  for (size_t hole = 0; hole < holeCount; ++hole) {
+    for (auto edge : face.innerBoundaries[hole]) {
+      auto [owner, inserted] = edgeOwner.emplace(edge, hole);
+      if (!inserted) unite(hole, owner->second);
+    }
+  }
+
+  map<size_t, vector<size_t>> components;
+  for (size_t hole = 0; hole < holeCount; ++hole) {
+    components[findRoot(hole)].push_back(hole);
+  }
+
+  vector<vector<uint32_t>> result;
+  for (auto const& [_, holes] : components) {
+    if (holes.size() == 1) {
+      result.push_back(face.innerBoundaryVertices[holes.front()]);
+      continue;
+    }
+
+    // Arrangement cycles inside one Face can partition its excluded region
+    // into several child Faces. Those children consequently appear as holes
+    // which share complete edges. Earcut requires disjoint hole Rings; feeding
+    // the touching cycles separately lets a bridge triangle cross the excluded
+    // region. Cancel their shared edges and stitch the exposed segments into
+    // the boundary of their union before triangulating.
+    map<uint32_t, uint32_t> edgeOccurrences;
+    for (auto hole : holes) {
+      for (auto edge : face.innerBoundaries[hole]) {
+        ++edgeOccurrences[edge];
+      }
+    }
+
+    struct Segment {
+      uint32_t from;
+      uint32_t to;
+      bool used{false};
+    };
+    vector<Segment> segments;
+    for (auto hole : holes) {
+      auto const& edges = face.innerBoundaries[hole];
+      auto const& vertices = face.innerBoundaryVertices[hole];
+      for (size_t edge = 0; edge < edges.size(); ++edge) {
+        if (edgeOccurrences[edges[edge]] == 1) {
+          segments.push_back(
+              {vertices[edge], vertices[(edge + 1) % vertices.size()]});
+        }
+      }
+    }
+
+    for (size_t first = 0; first < segments.size(); ++first) {
+      if (segments[first].used) continue;
+      vector<uint32_t> boundary;
+      auto segment = first;
+      auto start = segments[segment].from;
+      while (!segments[segment].used) {
+        segments[segment].used = true;
+        boundary.push_back(segments[segment].from);
+        auto nextVertex = segments[segment].to;
+        if (nextVertex == start) break;
+
+        auto next = segments.size();
+        for (size_t candidate = 0; candidate < segments.size(); ++candidate) {
+          if (!segments[candidate].used &&
+              segments[candidate].from == nextVertex) {
+            next = candidate;
+            break;
+          }
+        }
+        if (next == segments.size()) {
+          throw CoreException(
+              "Could not merge touching Arrangement Face holes");
+        }
+        segment = next;
+      }
+      if (boundary.size() >= 3) result.push_back(std::move(boundary));
+    }
+  }
+  return result;
+}
+
 vector<ArrangementTriangle> BuildArrangementTriangles(
     ArrangementResult const& arrangement) {
   using EarcutPoint = array<double, 2>;
@@ -1472,7 +1573,7 @@ vector<ArrangementTriangle> BuildArrangementTriangles(
     };
 
     addBoundary(face.outerBoundaryVertices);
-    for (auto const& hole : face.innerBoundaryVertices) {
+    for (auto const& hole : TriangulationHoleBoundaries(face)) {
       addBoundary(hole);
     }
 

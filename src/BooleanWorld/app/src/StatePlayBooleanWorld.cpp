@@ -594,24 +594,28 @@ void StatePlayBooleanWorld::createWorldCollisions(
     auto const& v0 = orientation.v0;
     auto const& v1 = orientation.v1;
 
-    // A tall FloorStep is withheld while the player crosses over it - falling
-    // off the ledge, or swimming above the pool floor it encloses - so by the
-    // time the traversal rules admit it again the player may already be
-    // standing inside it. Reinstating it there does not block an approach; it
-    // wedges the collider against a wall it is behind, and the sliding
-    // response then strips the inward component of every direction at once,
-    // freezing the player in place. Only walls blocking purely by the
-    // step-height rule are skipped this way - authored collision, Borders and
-    // clearance limits stay solid regardless. Never suppress this wall for a
-    // swimmer: the deliberate climb-out action moves their whole collider
-    // clear of the edge after checking view pitch, facing and reach. Letting
-    // horizontal collision cross here would bypass those checks.
+    // The centre has to overlap a tall Step before it can leave the high side
+    // and begin falling. Suppress that Step only while the dry player's feet
+    // are still above its lower floor. Once they land in a pit, reinstate and
+    // depenetrate the wall below rather than letting them cross underneath the
+    // high floor and be lifted up to it by vertical physics.
     auto blocksOnlyByStepHeight =
         wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
         !mWorldData->wallBlocksTraversalWithoutStepAt(
             wallIndex, playerPosition);
+    auto span = v1 - v0;
+    auto spanLengthSquared = span.lengthSq();
+    auto closest = playerPosition.closestPointOnLine(v0, v1);
+    auto along = spanLengthSquared > 0.0f
+                     ? std::clamp((closest - v0).dot(span) /
+                                      spanLengthSquared,
+                                  0.0f, 1.0f)
+                     : 0.0f;
+    auto lowerFloorElevation = std::lerp(
+        orientation.bottomZ[0], orientation.bottomZ[1], along);
     if (blocksOnlyByStepHeight &&
-        bw::app::maySuppressOverlappingTallStep(swimming) &&
+        bw::app::maySuppressOverlappingTallStep(
+            swimming, physicalStats.feetElevation, lowerFloorElevation) &&
         playerPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
       continue;
     }
@@ -626,11 +630,10 @@ void StatePlayBooleanWorld::createWorldCollisions(
 // A wall the player is already inside stops them dead in every direction at
 // once, because willpower's sweep abandons any movement that ends still
 // intersecting a line - see resolveWallOverlap. That happens wherever a wall
-// arrives underneath the player rather than being walked into: the swimmer who
-// dropped into a deep pool a couple of units from its bank is the case that
+// arrives underneath the player rather than being walked into: someone who
+// dropped into a deep pit a couple of units from its bank is the case that
 // bites, since the bank's tall floor step is withheld for the whole fall and
-// reinstated the moment they are submerged enough to count as swimming, and
-// the overlap suppression above deliberately does not cover them.
+// reinstated once they stop descending.
 //
 // Lifting them clear keeps the wall solid - a swimmer still leaves the liquid
 // only through tryClimbOutOfLiquid - and only ever moves them the shortest
