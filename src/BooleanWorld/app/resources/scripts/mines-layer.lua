@@ -4,6 +4,7 @@ local GRID_SIZE = 256
 local FLUSH_CONNECTOR_KEY = "flush-connector"
 local STOPE_CONNECTOR_KEY = "stope-connector"
 local STOPE_MAX_DISTANCE = 128
+local FLOOR_DROP_PER_CELL = 16
 local CONNECTOR_KEYS = {FLUSH_CONNECTOR_KEY, STOPE_CONNECTOR_KEY}
 local DIRECTIONS = {"north", "east", "south", "west"}
 local DIRECTION_SET = {north = true, east = true, south = true, west = true}
@@ -1135,6 +1136,21 @@ local function place_tunnels_section(primitive, primitive_size,
                                      section_primitives, cell_x, cell_y, angle)
     local position_x = (cell_x + 0.5) * primitive_size
     local position_y = (cell_y + 0.5) * primitive_size
+    local base_floor_height = -math.sqrt(cell_x * cell_x + cell_y * cell_y) *
+                                  FLOOR_DROP_PER_CELL
+
+    local function apply_base_floor_height(section_primitive)
+        local floor_angle, floor_lower, floor_upper =
+            section_primitive:get_floor_elevation()
+        section_primitive:set_floor_elevation(
+            floor_angle, floor_lower + base_floor_height,
+            floor_upper + base_floor_height)
+        local ceiling_angle, ceiling_lower, ceiling_upper =
+            section_primitive:get_ceiling_elevation()
+        section_primitive:set_ceiling_elevation(
+            ceiling_angle, ceiling_lower + base_floor_height,
+            ceiling_upper + base_floor_height)
+    end
 
     -- create_mesh_primitive normalizes its points around their bounds centre.
     -- Preserve that local centre relative to the TileMap origin; otherwise an
@@ -1143,25 +1159,20 @@ local function place_tunnels_section(primitive, primitive_size,
     local primitive_local_x, primitive_local_y = primitive:get_position()
     local primitive_offset_x, primitive_offset_y =
         rotate_point(primitive_local_x, primitive_local_y, angle)
-    local floor_angle, floor_lower, floor_upper =
-        primitive:get_floor_elevation()
     primitive:set_position(position_x + primitive_offset_x,
                            position_y + primitive_offset_y)
     primitive:set_orientation(angle)
-    primitive:set_floor_elevation(floor_angle, floor_lower, floor_upper)
+    apply_base_floor_height(primitive)
     context:place_primitive(primitive)
 
     for _, section_primitive in ipairs(section_primitives) do
         local local_x, local_y = section_primitive:get_position()
         local rotated_x, rotated_y = rotate_point(local_x, local_y, angle)
-        local section_floor_angle, section_floor_lower, section_floor_upper =
-            section_primitive:get_floor_elevation()
         section_primitive:set_position(position_x + rotated_x,
                                        position_y + rotated_y)
         section_primitive:set_orientation(
             section_primitive:get_orientation() + angle)
-        section_primitive:set_floor_elevation(
-            section_floor_angle, section_floor_lower, section_floor_upper)
+        apply_base_floor_height(section_primitive)
         context:place_primitive(section_primitive)
     end
 end
