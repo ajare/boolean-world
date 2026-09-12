@@ -201,13 +201,14 @@ void EditorInteraction::updateSelection(
     auto const stepX = lineX < targetX ? 1 : -1;
     auto const stepY = lineY < targetY ? 1 : -1;
     auto error = deltaX + deltaY;
-    bool changed = false;
     while (true) {
       auto const cellX = static_cast<uint32_t>(lineX);
       auto const cellY = static_cast<uint32_t>(lineY);
       if (tileMap->getCell(cellX, cellY) != mTileMapPaintValue) {
+        // Do not rebuild here: a later RunScript may read this map, and
+        // painting must leave its current output intact until the user
+        // explicitly re-runs the script.
         tileMap->setCell(cellX, cellY, mTileMapPaintValue);
-        changed = true;
       }
       if (lineX == targetX && lineY == targetY) break;
       auto const twiceError = 2 * error;
@@ -222,7 +223,6 @@ void EditorInteraction::updateSelection(
     }
     mTileMapLastPaintCell =
         array<uint32_t, 3>{location->mapIndex, x, y};
-    if (changed) layer->rebuild();
     return;
   }
 

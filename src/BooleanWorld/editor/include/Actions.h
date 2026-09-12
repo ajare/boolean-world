@@ -166,6 +166,10 @@ bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIn
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
 
+// Re-runs the Layer recipe (and therefore its RunScript steps) on explicit
+// user request. This changes only derived output and is not undoable.
+void rerunLayerScripts(Document* doc, bw::core::Layer* layer);
+
 // Authored RunScript arguments. Each action rebuilds the Layer immediately so
 // script output and downstream failure state stay in lockstep with the panel.
 bool setLayerBuildStepName(

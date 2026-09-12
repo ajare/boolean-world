@@ -3,6 +3,8 @@
 #include <core/Layer.h>
 #include <core-lua/RunScript.h>
 
+#include "UiHelpers.h"
+
 namespace editor {
 namespace {
 
@@ -12,6 +14,11 @@ void rebuildRunScript(Document* document, bw::core::Layer* layer) {
 }
 
 }  // namespace
+
+void rerunLayerScripts(Document* document, bw::core::Layer* layer) {
+  rebuildRunScript(document, layer);
+  regenerateWorldData(document);
+}
 
 bool setRunScriptScriptName(
     Document* document, bw::core::Layer* layer, bw::core::RunScript* step,

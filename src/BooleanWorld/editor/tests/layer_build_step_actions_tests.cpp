@@ -9,6 +9,7 @@
 
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
+#include <core/DefineTileMaps.h>
 #include <core/DynamicWorldDataGenerator.h>
 #include <core/LayerBuildStep.h>
 #include <core/PrimitiveField.h>
@@ -631,6 +632,63 @@ void runScriptCanBeAddedAndItsAuthoredStateIsUndoable(
           "redo did not restore all authored RunScript state");
 }
 
+void defineTileMapEditsWaitForAnExplicitScriptRun(
+    bw::core::ScriptRuntime& runtime) {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+
+  runtime.load("tile-reader", R"(
+    local map = context:find_tile_map("maps", 0)
+    if map:get_cell(0, 0) == 1 then
+      context:place_primitive(context:create_primitive("Rectangle"))
+    end
+  )");
+
+  auto* definitions = new bw::core::DefineTileMaps;
+  definitions->setName("maps");
+  layer->addStep(definitions);
+  auto* script = new bw::core::RunScript(runtime);
+  script->setScriptName("tile-reader");
+  layer->addStep(script);
+  layer->setActiveStep(1);
+  layer->rebuild();
+  auto const primitivesBeforeScriptOutput = layer->getNumPrimitives();
+
+  require(editor::toggleTileMapCell(
+              &document, layer, definitions, definitions->getTileMap(0), 0, 0),
+          "the TileMap cell action rejected an editable cell");
+  require(layer->getNumPrimitives() == primitivesBeforeScriptOutput,
+          "editing a TileMap automatically re-ran a later RunScript");
+
+  editor::rerunLayerScripts(&document, layer);
+  require(layer->getNumPrimitives() == primitivesBeforeScriptOutput + 1,
+          "an explicit script run did not consume the edited TileMap");
+
+  require(editor::setTileMapMapSize(
+              &document, layer, definitions, 128),
+          "the TileMap size action rejected a new size");
+  require(layer->getNumPrimitives() == primitivesBeforeScriptOutput + 1,
+          "resizing a TileMap automatically re-ran a later RunScript");
+  editor::rerunLayerScripts(&document, layer);
+  require(layer->getNumPrimitives() == primitivesBeforeScriptOutput,
+          "an explicit script run did not consume the resized TileMap");
+
+  editor::toggleTileMapCell(
+      &document, layer, definitions, definitions->getTileMap(0), 0, 0);
+  editor::rerunLayerScripts(&document, layer);
+  require(editor::setLayerBuildStepName(
+              &document, layer, 1, "renamed maps"),
+          "the DefineTileMaps name action rejected a new name");
+  require(layer->getNumPrimitives() == primitivesBeforeScriptOutput + 1 &&
+              !script->hasFailed(),
+          "renaming DefineTileMaps automatically re-ran a later RunScript");
+  editor::rerunLayerScripts(&document, layer);
+  require(layer->getNumPrimitives() == primitivesBeforeScriptOutput &&
+              script->hasFailed(),
+          "an explicit script run did not consume the renamed DefineTileMaps");
+}
+
 void buildVariableActionsAreUndoableAtWorldAndLayerScopes() {
   editor::Document document;
   document.newDoc();
@@ -705,6 +763,7 @@ int main() {
     selectingTheActiveStepRedirectsCreatedPrimitivesAndIsNotUndoable();
     movingAPrimitiveBetweenStepsOfTheSameTypeIsOneUndoableAction();
     runScriptCanBeAddedAndItsAuthoredStateIsUndoable(runtime);
+    defineTileMapEditsWaitForAnExplicitScriptRun(runtime);
     buildVariableActionsAreUndoableAtWorldAndLayerScopes();
     movingAPrimitiveIntoAStepOfAnotherTypeIsRejectedThroughTheAction();
     std::cout << "Layer build step editor action tests passed\n";

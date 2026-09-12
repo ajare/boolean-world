@@ -155,9 +155,11 @@ bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromInde
 bool setLayerBuildStepName(
     Document*, bw::core::Layer* layer, uint32_t stepIndex,
     string const& name) {
-  layer->getStep(stepIndex)->setName(name);
-  // A later RunScript may look this step up by name.
-  layer->rebuild();
+  auto* step = layer->getStep(stepIndex);
+  step->setName(name);
+  // Keep a later RunScript's current output while its DefineTileMaps lookup
+  // name is authored, just as for edits to the maps themselves.
+  if (!dynamic_cast<bw::core::DefineTileMaps*>(step)) layer->rebuild();
   return true;
 }
 
@@ -169,7 +171,8 @@ bool setTileMapMapSize(
     return false;
   }
   definitions->setMapSize(size);
-  layer->rebuild();
+  // Keep any later RunScript output as-is while its TileMap input is being
+  // authored. The user explicitly re-runs scripts when they want new output.
   return true;
 }
 
@@ -181,7 +184,6 @@ bool setTileMapCellSize(
     return false;
   }
   definitions->setCellSize(size);
-  layer->rebuild();
   return true;
 }
 
@@ -193,7 +195,6 @@ bool setNumTileMaps(
     return false;
   }
   definitions->setNumTileMaps(count);
-  layer->rebuild();
   return true;
 }
 
@@ -206,7 +207,6 @@ bool toggleTileMapCell(
     return false;
   }
   tileMap->toggleCell(x, y);
-  layer->rebuild();
   return true;
 }
 
