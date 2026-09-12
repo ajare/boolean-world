@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <exception>
 #include <format>
 #include <iostream>
@@ -484,17 +485,23 @@ void ScriptRuntime::execute(
 
   uint64_t instructionCount = 0;
   bool executionBegan = false;
+  optional<chrono::steady_clock::time_point> executionStartedAt;
+  optional<double> executionMilliseconds;
   bool instructionCountLogged = false;
   auto logInstructionCount = [&]() {
     if (!mLogInstructionCounts || !mLogSink || instructionCountLogged) {
       return;
     }
     instructionCountLogged = true;
+    auto const milliseconds = executionMilliseconds.value_or(
+        chrono::duration<double, milli>(
+            chrono::steady_clock::now() - *executionStartedAt)
+            .count());
     mLogSink(
         {ScriptLogEventType::Output, name,
          format(
-             "Lua instructions executed: {} / {}", instructionCount,
-             InstructionBudget),
+             "Lua instructions executed: {} / {}; elapsed: {:.3f} ms",
+             instructionCount, InstructionBudget, milliseconds),
          stepName});
   };
 
@@ -528,11 +535,16 @@ void ScriptRuntime::execute(
 
     sol::protected_function_result result;
     executionBegan = true;
+    executionStartedAt = chrono::steady_clock::now();
     {
       InstructionBudgetGuard instructionBudget(
           mLua.lua_state(), mLogInstructionCounts ? &instructionCount : nullptr);
       result = function();
     }
+    executionMilliseconds = chrono::duration<double, milli>(
+                                chrono::steady_clock::now() -
+                                *executionStartedAt)
+                                .count();
 
     if (!result.valid()) {
       sol::error error = result;

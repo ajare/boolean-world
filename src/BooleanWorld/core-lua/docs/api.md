@@ -379,6 +379,8 @@ Returned only by `context:create_primitive`.
 | `is_static()` | Returns whether the Primitive's vertex transformation is static. |
 | `set_size(width, height)` | Sets the common Primitive size. Its exact geometric meaning depends on the type. |
 | `get_size()` | Returns `width, height`. |
+| `set_exact_bounds(exact)` | Chooses tight bounds from the Primitive's current transformed vertices instead of conservative animation-aware bounds. Use only for static Primitives. |
+| `uses_exact_bounds()` | Returns whether tight bounds are enabled. |
 | `set_priority(priority)` | Sets the step-local integer priority. Use the authored range `0`–`255`; lower values fold earlier within this step. Layer and step order take precedence. |
 | `get_priority()` | Returns the priority as an integer. |
 | `set_operation(operation)` | Sets `"union"`, `"intersection"`, `"difference"`, or `"xor"`. Values are case-sensitive. |

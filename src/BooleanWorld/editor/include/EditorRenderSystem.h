@@ -1,8 +1,9 @@
 #pragma once
 
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
-#include <memory>
 
 namespace mpp {
 class Logger;
@@ -113,7 +114,7 @@ public:
                              std::string const& currentNamespace,
                              std::string* error = nullptr);
 
-  [[nodiscard]] std::vector<EditorScriptLog> const& scriptLogs() const;
+  [[nodiscard]] std::vector<EditorScriptLog> scriptLogs() const;
   void clearScriptLog(std::string const& name);
 
 private:
@@ -123,6 +124,7 @@ private:
   mpp::ResourceManager* mRenderResourceMgr{};
   wp::application::resourcesystem::ResourceManager* mResourceMgr{};
   std::vector<EditorScriptLog> mScriptLogs;
+  mutable std::mutex mScriptLogsMutex;
   std::unique_ptr<bw::core::ScriptRuntime> mScriptRuntime;
   std::vector<std::shared_ptr<
       wp::application::resourcesystem::Resource>>

@@ -471,7 +471,9 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     mSteps.back()->bindLayer(this);
   }
 
-  rebuild();
+  if (!workData.deferLayerRebuild) {
+    rebuild();
+  }
   return true;
 }
 
@@ -706,7 +708,8 @@ void Layer::updatePrimitiveCellMetadata(PrimitiveCellMetadata* metadata) {
   metadata->lastUpdatedFrameNumber = max(metadata->lastUpdatedFrameNumber, mFrameNumber);
 }
 
-void Layer::rebuild() {
+void Layer::rebuild(
+    function<void(string const&)> const& progress) {
   if (mPrimitiveLookupGrid) {
     mPrimitiveLookupGrid->removeAllItems(mPrimitiveCellMetadataUpdater);
   }
@@ -728,6 +731,14 @@ void Layer::rebuild() {
 
     if (haltedByFailure || !step->isEnabled()) {
       continue;
+    }
+
+    if (progress) {
+      auto const stepName = step->getName().empty() ? step->getType()
+                                                    : step->getName();
+      progress(format(
+          "Building Layer '{}': {} ({}/{})", mName, stepName,
+          stepIndex + 1, mSteps.size()));
     }
 
     vector<Primitive*> buildPrimitives;

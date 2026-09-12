@@ -685,7 +685,7 @@ void run() {
     updateWindowTitle(&gDocument);
 
     // Logic
-    if (gDocument.isActive()) {
+    if (gDocument.isActive() && !gDocument.isOpeningWorld()) {
       auto doc = &gDocument;
 
       auto const& proxyPos = doc->getPlayerProxyPosition();
@@ -719,7 +719,7 @@ void run() {
     bw::core::WorldDataPtr worldData;
     bw::core::WorldData const* worldDataPtr{nullptr};
 
-    if (doc->isActive()) {
+    if (doc->isActive() && !doc->isOpeningWorld()) {
       worldData = doc->getWorld()->getWorldData();
 
       worldDataPtr = worldData.get();

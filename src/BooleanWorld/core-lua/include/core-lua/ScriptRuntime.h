@@ -169,8 +169,9 @@ public:
   // logSink defaults to writing output and errors to the console. debugLogSink
   // is deliberately empty by default, making Lua's dprint() a no-op unless a
   // development host such as the editor opts into its output. Exact
-  // instruction counting is also opt-in because its per-instruction hook is
-  // intended for development diagnostics rather than the game runtime.
+  // instruction counting and execution timing are also opt-in because the
+  // per-instruction hook is intended for development diagnostics rather than
+  // the game runtime.
   explicit ScriptRuntime(
       ScriptLogSink logSink = defaultLogSink(),
       ScriptLogSink debugLogSink = {},

@@ -6,9 +6,10 @@ namespace editor {
 using namespace std;
 
 void checkModalPopups(ViewContext& context) {
+  auto* doc = context.doc;
+  renderWorldLoadingDialog(doc);
   renderRecentWorldMissingDialog();
 
-  auto* doc = context.doc;
   auto& settings = context.settings;
   ImVec2 centre = ImGui::GetMainViewport()->GetCenter();
   auto& primitiveFieldPreview = getPrimitiveFieldPreview();

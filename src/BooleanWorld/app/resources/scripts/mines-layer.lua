@@ -23,6 +23,7 @@ local ANGLES = {0, 90, 180, 270}
 local EPSILON = 0.001
 local split_candidates_by_map = {}
 local corner_candidates_by_map = {}
+local longest_rail_runs_by_map = {}
 
 local function cell_key(x, y)
     return x .. "," .. y
@@ -325,7 +326,7 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
                         post:set_operation("difference")
                         -- Keep the posts after the bridge in the Boolean fold
                         -- so its Union cannot fill their wall cut-outs.
-                        post:set_priority(2)
+                        post:set_priority(3)
                         post:set_floor_elevation(
                             frame_floor_angle, frame_floor_lower,
                             frame_floor_upper)
@@ -348,7 +349,7 @@ local function create_wooden_supports(tile_map, corridor_width, map_size,
                     bridge:set_operation("union")
                     -- Override the corridor's ceiling and materials while
                     -- still folding before the higher-priority posts.
-                    bridge:set_priority(1)
+                    bridge:set_priority(2)
                     bridge:set_floor_elevation(
                         frame_floor_angle, frame_floor_lower,
                         frame_floor_upper)
@@ -380,6 +381,11 @@ local function create_tunnels_section_primitive(step_name, index,
     local inset = (cell_size - corridor_width) / 2
     local edges = {}
     local outgoing = {}
+
+    local function cell_is_set(x, y)
+        return x >= 0 and x < width and y >= 0 and y < height and
+                   tile_map:get_cell(x, y) == 1
+    end
 
     local function add_edge(x1, y1, x2, y2, direction)
         local edge = {
@@ -540,19 +546,15 @@ local function create_tunnels_section_primitive(step_name, index,
     -- slicing preserves the tunnel footprint while adding another polygon.
     local split_candidates = split_candidates_by_map[index]
     local corner_candidates = corner_candidates_by_map[index]
+    local neighbour_offsets = {
+        {x = 0, y = -1},
+        {x = 1, y = 0},
+        {x = 0, y = 1},
+        {x = -1, y = 0}
+    }
     if split_candidates == nil then
         split_candidates = {}
         corner_candidates = {}
-        local neighbour_offsets = {
-            {x = 0, y = -1},
-            {x = 1, y = 0},
-            {x = 0, y = 1},
-            {x = -1, y = 0}
-        }
-        local function cell_is_set(x, y)
-            return x >= 0 and x < width and y >= 0 and y < height and
-                       tile_map:get_cell(x, y) == 1
-        end
         for y = 0, height - 1 do
             for x = 0, width - 1 do
                 if cell_is_set(x, y) then
@@ -590,6 +592,72 @@ local function create_tunnels_section_primitive(step_name, index,
         split_candidates_by_map[index] = split_candidates
         corner_candidates_by_map[index] = corner_candidates
     end
+    -- Choose at most one rail run before any random floor cuts are made. A
+    -- dead end has exactly one set cardinal neighbour; its run continues in
+    -- that neighbour's direction until the first unset cell. Prefer the
+    -- longest complete run, randomly breaking ties, and retain at most six
+    -- cells from its dead-end origin.
+    local rails_pct = layer.vars.rails_pct
+    assert(type(rails_pct) == "number" and rails_pct >= 0 and rails_pct <= 100,
+           "layer.vars.rails_pct must be a number from 0 to 100")
+    local selected_rail_run = nil
+    local selected_rail_cells = {}
+    local longest_runs = longest_rail_runs_by_map[index]
+    if longest_runs == nil then
+        longest_runs = {}
+        local longest_length = 0
+        for y = 0, height - 1 do
+            for x = 0, width - 1 do
+                if cell_is_set(x, y) then
+                    local neighbours = {}
+                    for _, offset in ipairs(neighbour_offsets) do
+                        if cell_is_set(x + offset.x, y + offset.y) then
+                            neighbours[#neighbours + 1] = offset
+                        end
+                    end
+                    if #neighbours == 1 then
+                        local direction = neighbours[1]
+                        local cells = {}
+                        local run_x, run_y = x, y
+                        while cell_is_set(run_x, run_y) do
+                            cells[#cells + 1] = {x = run_x, y = run_y}
+                            run_x = run_x + direction.x
+                            run_y = run_y + direction.y
+                        end
+                        if #cells > longest_length then
+                            longest_length = #cells
+                            longest_runs = {{
+                                cells = cells,
+                                direction_x = direction.x,
+                                direction_y = direction.y
+                            }}
+                        elseif #cells == longest_length then
+                            longest_runs[#longest_runs + 1] = {
+                                cells = cells,
+                                direction_x = direction.x,
+                                direction_y = direction.y
+                            }
+                        end
+                    end
+                end
+            end
+        end
+        longest_rail_runs_by_map[index] = longest_runs
+    end
+    if #longest_runs > 0 and math.random() < rails_pct / 100 then
+        local longest_run = longest_runs[math.random(#longest_runs)]
+        selected_rail_run = {
+            cells = {},
+            direction_x = longest_run.direction_x,
+            direction_y = longest_run.direction_y
+        }
+        for cell_index = 1, math.min(#longest_run.cells, 6) do
+            local cell = longest_run.cells[cell_index]
+            selected_rail_run.cells[cell_index] = cell
+            selected_rail_cells[cell_key(cell.x, cell.y)] = true
+        end
+    end
+
     local cell_floor_split_pct = layer.vars.cell_floor_split_pct
     assert(type(cell_floor_split_pct) == "number" and
                cell_floor_split_pct >= 0 and cell_floor_split_pct <= 100,
@@ -632,7 +700,8 @@ local function create_tunnels_section_primitive(step_name, index,
 
     local sliced_cells = {}
     for _, candidate in ipairs(split_candidates) do
-        if math.random() < cell_floor_split_chance then
+        if not selected_rail_cells[cell_key(candidate.x, candidate.y)] and
+            math.random() < cell_floor_split_chance then
             local angle_hundredths = math.random(7000, 11000)
             if angle_hundredths == 9000 then
                 angle_hundredths = 9001
@@ -674,7 +743,8 @@ local function create_tunnels_section_primitive(step_name, index,
 
     local pool_points = {}
     for _, candidate in ipairs(corner_candidates) do
-        if math.random() < corner_pool_chance then
+        if not selected_rail_cells[cell_key(candidate.x, candidate.y)] and
+            math.random() < corner_pool_chance then
             local center_x = (candidate.x + 0.5) * cell_size - map_size / 2
             local center_y = (candidate.y + 0.5) * cell_size - map_size / 2
             local corner_x = center_x -
@@ -777,6 +847,57 @@ local function create_tunnels_section_primitive(step_name, index,
             pool_point.angle + 180, adjacent_region.height - 3,
             adjacent_region.height)
         pool_region.primitive:set_liquid_level(8)
+    end
+
+    if selected_rail_run ~= nil and #selected_rail_run.cells >= 2 then
+        local first = selected_rail_run.cells[1]
+        local last = selected_rail_run.cells[#selected_rail_run.cells]
+        local first_x = (first.x + 0.5) * cell_size - map_size / 2
+        local first_y = (first.y + 0.5) * cell_size - map_size / 2
+        local last_x = (last.x + 0.5) * cell_size - map_size / 2
+        local last_y = (last.y + 0.5) * cell_size - map_size / 2
+        local rail_floor_height = nil
+        for _, region in ipairs(floor_regions) do
+            if region.primitive:contains_point(first_x, first_y) then
+                rail_floor_height = region.height
+                break
+            end
+        end
+        assert(rail_floor_height ~= nil,
+               "a selected rail run did not have a containing floor region")
+
+        local direction_x = selected_rail_run.direction_x
+        local direction_y = selected_rail_run.direction_y
+        local normal_x = -direction_y
+        local normal_y = direction_x
+        local center_x = (first_x + last_x) / 2
+        local center_y = (first_y + last_y) / 2
+        local rail_length = math.sqrt((last_x - first_x) ^ 2 +
+                                          (last_y - first_y) ^ 2)
+        local rail_orientation = math.deg(math.atan(-direction_y,
+                                                     direction_x))
+        for _, side in ipairs({-1, 1}) do
+            local rail = context:create_primitive("Rectangle")
+            rail:set_size(rail_length, 1)
+            -- Tight bounds keep this long, narrow Rectangle from making an
+            -- adjacent 256-unit placement cell look occupied.
+            rail:set_exact_bounds(true)
+            rail:set_position(center_x + side * normal_x * 4,
+                              center_y + side * normal_y * 4)
+            rail:set_orientation(rail_orientation)
+            rail:set_operation("union")
+            -- Rails override the tunnel floor; support bridges and posts have
+            -- higher priorities and therefore win where a frame crosses them.
+            rail:set_priority(1)
+            rail:set_floor_elevation(0, rail_floor_height + 1,
+                                     rail_floor_height + 1)
+            rail:set_ceiling_elevation(0, layer.vars.corridor_base_height,
+                                       layer.vars.corridor_base_height)
+            rail:set_floor_material("builtin.rusted.iron")
+            rail:set_ceiling_material(layer.vars.mine_material)
+            rail:set_wall_material("builtin.rusted.iron")
+            section_primitives[#section_primitives + 1] = rail
+        end
     end
 
     local wooden_supports = create_wooden_supports(

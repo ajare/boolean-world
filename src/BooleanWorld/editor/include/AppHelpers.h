@@ -17,6 +17,8 @@ void openDocument(editor::Document* doc);
 
 void openRecentDocument(editor::Document* doc, std::string const& filepath);
 
+void renderWorldLoadingDialog(editor::Document* doc);
+
 void renderRecentWorldMissingDialog();
 
 void saveDocumentAs(editor::Document* doc);

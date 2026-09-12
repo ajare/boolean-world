@@ -4,6 +4,7 @@
 #include <limits>
 #include <memory>
 #include <nfd/nfd.h>
+#include <numbers>
 #include <optional>
 
 #include <SDL3/SDL.h>
@@ -44,6 +45,8 @@ editor::ApplicationCloseController applicationCloseController;
 bool closeApproved{false};
 std::unique_ptr<editor::RecentWorlds> recentWorlds;
 std::optional<std::string> missingRecentWorld;
+std::optional<std::string> worldBeingOpened;
+std::optional<std::string> worldOpenError;
 
 editor::RecentWorlds& getRecentWorlds() {
   if (!recentWorlds) {
@@ -87,11 +90,12 @@ void openDocument(editor::Document* doc) {
     NFD_FreePath(outPath);
 
     getPrimitiveFieldPreview().close();
-    if (!doc->openDoc(filepath)) {
-      throw EditorException(format("Could not open '{}'; see editor.log for details.",
-                                   filepath));
+    if (!doc->beginOpenDoc(filepath)) {
+      throw EditorException(format(
+          "Could not open '{}': {}", filepath,
+          doc->getAsyncWorldOpenError()));
     }
-    getRecentWorlds().record(filepath);
+    worldBeingOpened = filepath;
   } else if (res == NFD_ERROR) {
     auto const* error = NFD_GetError();
     throw EditorException(format("Could not open the file dialog: {}",
@@ -104,15 +108,84 @@ vector<string> const& recentWorldPaths() {
 }
 
 void openRecentDocument(editor::Document* doc, string const& filepath) {
-  auto result = getRecentWorlds().open(filepath, [&](string const& path) {
-    getPrimitiveFieldPreview().close();
-    return doc->openDoc(path);
-  });
-  if (result == RecentWorlds::OpenResult::Missing) {
+  error_code error;
+  if (!filesystem::is_regular_file(filepath, error)) {
+    getRecentWorlds().remove(filepath);
     missingRecentWorld = filepath;
-  } else if (result == RecentWorlds::OpenResult::Failed) {
-    throw EditorException(format("Could not open '{}'; see editor.log for details.",
-                                 filepath));
+    return;
+  }
+
+  getPrimitiveFieldPreview().close();
+  if (!doc->beginOpenDoc(filepath)) {
+    throw EditorException(format(
+        "Could not open '{}': {}", filepath,
+        doc->getAsyncWorldOpenError()));
+  }
+  worldBeingOpened = filepath;
+}
+
+void renderWorldLoadingDialog(editor::Document* doc) {
+  constexpr char loadingTitle[] = "Loading World";
+  auto loadingPart = doc->getAsyncWorldOpenProgress();
+  auto const status = doc->pollOpenDoc();
+  auto const committedThisFrame =
+      status == AsyncWorldOpenStatus::Succeeded;
+  if (committedThisFrame) {
+    loadingPart = "Preparing first rendered frame";
+    if (worldBeingOpened) getRecentWorlds().record(*worldBeingOpened);
+    worldBeingOpened.reset();
+  } else if (status == AsyncWorldOpenStatus::Failed) {
+    worldOpenError = doc->getAsyncWorldOpenError();
+    worldBeingOpened.reset();
+  }
+
+  auto const showLoading = doc->isOpeningWorld() || committedThisFrame;
+  if (showLoading && !ImGui::IsPopupOpen(loadingTitle)) {
+    ImGui::OpenPopup(loadingTitle);
+  }
+  auto centre = ImGui::GetMainViewport()->GetCenter();
+  ImGui::SetNextWindowPos(
+      centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal(
+          loadingTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!showLoading) {
+      ImGui::CloseCurrentPopup();
+    } else {
+      auto const cursor = ImGui::GetCursorScreenPos();
+      auto const radius = 10.0f;
+      auto const spinnerCentre =
+          ImVec2(cursor.x + radius, cursor.y + radius);
+      auto const angle = static_cast<float>(ImGui::GetTime() * 4.0);
+      auto* drawList = ImGui::GetWindowDrawList();
+      drawList->PathArcTo(
+          spinnerCentre, radius, angle, angle + numbers::pi_v<float> * 1.5f, 24);
+      drawList->PathStroke(
+          ImGui::GetColorU32(ImGuiCol_Text), 0, 3.0f);
+      ImGui::Dummy(ImVec2(radius * 2.0f, radius * 2.0f));
+      ImGui::SameLine();
+      ImGui::TextUnformatted("Loading World...");
+      if (!loadingPart.empty()) {
+        ImGui::TextDisabled("%s", loadingPart.c_str());
+      }
+    }
+    ImGui::EndPopup();
+  }
+
+  constexpr char errorTitle[] = "Could not load World";
+  if (worldOpenError && !ImGui::IsPopupOpen(errorTitle)) {
+    ImGui::OpenPopup(errorTitle);
+  }
+  ImGui::SetNextWindowPos(
+      centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  if (ImGui::BeginPopupModal(
+          errorTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextWrapped("%s", worldOpenError->c_str());
+    ImGui::Separator();
+    if (ImGui::Button("OK", ImVec2(120, 0))) {
+      worldOpenError.reset();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
   }
 }
 
@@ -161,6 +234,7 @@ void saveDocument(editor::Document* doc) {
 }
 
 void exitApp(editor::Document* doc) {
+  if (doc->isOpeningWorld()) return;
   auto result = applicationCloseController.requestClose(
       doc->isActive(), doc->isActive() && doc->isModified());
   if (result == ApplicationCloseResult::Close) {

@@ -218,15 +218,16 @@ void dockMainWindowAtBottom(ImGuiID dockspaceId) {
 
 void renderScriptLog() {
   auto* renderSystem = editorRenderSystem();
-  auto const* logs = renderSystem ? &renderSystem->scriptLogs() : nullptr;
-  if (!logs || logs->empty()) {
+  auto const logs = renderSystem ? renderSystem->scriptLogs()
+                                 : vector<EditorScriptLog>{};
+  if (logs.empty()) {
     ImGui::TextDisabled("No Layer build scripts have run.");
     return;
   }
 
   if (ImGui::BeginTabBar("##ScriptLogs")) {
-    for (size_t index = 0; index < logs->size(); ++index) {
-      auto const& log = (*logs)[index];
+    for (size_t index = 0; index < logs.size(); ++index) {
+      auto const& log = logs[index];
       auto label = format("{}###ScriptLog{}", log.name, index);
       if (ImGui::BeginTabItem(label.c_str())) {
         ImGui::PushID(static_cast<int>(index));

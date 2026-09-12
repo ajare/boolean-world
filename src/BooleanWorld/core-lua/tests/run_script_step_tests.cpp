@@ -17,6 +17,7 @@
 
 #include <core/ArrangementWorldDataGenerator.h>
 #include <core/DefinePrefabs.h>
+#include <core/Defines.h>
 #include <core/Layer.h>
 #include <core/LayerBuildStep.h>
 #include <core/MeshPrimitive.h>
@@ -59,11 +60,15 @@ std::string serializeWorld(bw::core::World const& world) {
   return writer->getSerializedString();
 }
 
-bool deserializeWorld(std::string const& yaml, bw::core::World* world) {
+bool deserializeWorld(
+    std::string const& yaml,
+    bw::core::World* world,
+    bool preserveTargetGhostPrimitive = false) {
   auto reader = std::shared_ptr<bw::core::Serializer>(
       bw::core::YamlSerializer::fromString(yaml));
   reader->deserialize();
   bw::core::SerializationWorkData workData{16.0f};
+  workData.preserveTargetGhostPrimitive = preserveTargetGhostPrimitive;
   return world->deserialize(reader, workData);
 }
 
@@ -371,7 +376,15 @@ void runScriptOperationsAreScopedToTheExecutionContext() {
     assert(find_build_primitives_overlapping == nil)
 
     local primitive = context:create_primitive("Rectangle")
+    primitive:set_size(160, 2)
+    primitive:set_position(556, 160)
+    primitive:set_orientation(90)
+    assert(not primitive:uses_exact_bounds())
+    primitive:set_exact_bounds(true)
+    assert(primitive:uses_exact_bounds())
     context:place_primitive(primitive)
+    assert(#context:find_build_primitives_overlapping(
+        256.001, 0.001, 255.998, 255.998) == 0)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -382,6 +395,8 @@ void runScriptOperationsAreScopedToTheExecutionContext() {
           "RunScript operations were not scoped to the execution context");
   require(!layer.getPrimitive(0)->getVertices().empty(),
           "a script-created Rectangle had no renderable geometry");
+  require(layer.getPrimitive(0)->hasFlag(BW_PRIMITIVE_EXACT_BOUNDS_FLAG),
+          "a script-created Primitive did not retain exact bounds");
 }
 
 void aScriptCreatesAMeshPrimitiveFromOneRing() {
@@ -1127,15 +1142,22 @@ void optedInInstructionCountsReachTheLogAtTheEndOfEachRun() {
       "counted", bw::core::ScriptLibraries::Build, {}, "Generator");
 
   std::string const prefix = "Lua instructions executed: ";
+  std::string const elapsedMarker = "; elapsed: ";
+  auto hasMetrics = [&](bw::core::ScriptLogEvent const& event) {
+    auto const elapsed = event.message.find(elapsedMarker);
+    return event.message.starts_with(prefix) &&
+           event.message.find(" / 1000000", prefix.size()) < elapsed &&
+           elapsed != std::string::npos && event.message.ends_with(" ms") &&
+           std::stoull(event.message.substr(prefix.size())) > 0 &&
+           std::stod(event.message.substr(elapsed + elapsedMarker.size())) >=
+               0.0;
+  };
   require(events.size() == 2 &&
               events[0].type ==
                   bw::core::ScriptLogEventType::ExecutionStarted &&
               events[1].type == bw::core::ScriptLogEventType::Output &&
-              events[1].stepName == "Generator" &&
-              events[1].message.starts_with(prefix) &&
-              events[1].message.ends_with(" / 1000000") &&
-              std::stoull(events[1].message.substr(prefix.size())) > 0,
-          "an opted-in host did not receive the instruction count after a run");
+              events[1].stepName == "Generator" && hasMetrics(events[1]),
+          "an opted-in host did not receive instruction and timing metrics after a run");
 
   events.clear();
   runtime.load("counted-error", "error('expected failure')");
@@ -1147,10 +1169,8 @@ void optedInInstructionCountsReachTheLogAtTheEndOfEachRun() {
   require(events.size() == 3 &&
               events[1].type == bw::core::ScriptLogEventType::Error &&
               events[2].type == bw::core::ScriptLogEventType::Output &&
-              events[2].message.starts_with(prefix) &&
-              events[2].message.ends_with(" / 1000000") &&
-              std::stoull(events[2].message.substr(prefix.size())) > 0,
-          "a failed run did not finish its log with an instruction count");
+              hasMetrics(events[2]),
+          "a failed run did not finish its log with instruction and timing metrics");
 }
 
 void debugPrintIsANoOpUnlessTheHostSuppliesASink() {
@@ -1791,9 +1811,15 @@ void aScriptCannotMutateAPrimitiveFieldsPrimitiveReadByName() {
 // RunScript state and its exact dependency projection, then rebuilding the
 // loaded recipe reproduces the script's output.
 void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
-  bw::core::ScriptRuntime runtime;
+  std::vector<std::string> debugMessages;
+  bw::core::ScriptRuntime runtime(
+      bw::core::ScriptRuntime::defaultLogSink(),
+      [&debugMessages](bw::core::ScriptLogEvent const& event) {
+        debugMessages.push_back(event.message);
+      });
   bw::core::registerScriptStepTypes(runtime);
   runtime.load("Scripts/scatter", R"(
+    dprint("scatter execution")
     local p = context:create_primitive("Rectangle")
     p:set_size(8, 8)
     p:set_position(math.random(100, 1000), 0)
@@ -1841,9 +1867,15 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
           std::vector<std::string>{"Images/wall", "Materials/stone", "Scripts/disabled", "Scripts/scatter"},
       "RunScript steps' serialized dependent resources were not exactly sorted and unique");
 
+  debugMessages.clear();
   bw::core::World loaded(512.0f, 16.0f);
-  require(deserializeWorld(yaml, &loaded),
+  auto* ghost = rectangle(-100.0f);
+  ghost->setFlags(ghost->getFlags() | BW_PRIMITIVE_GHOST_FLAG);
+  loaded.getActiveLayer()->getPrimitiveField()->prependPrimitive(ghost);
+  require(deserializeWorld(yaml, &loaded, true),
           "a World containing a RunScript step did not deserialize");
+  require(debugMessages == std::vector<std::string>{"scatter execution"},
+          "World deserialization did not execute its RunScript exactly once");
   auto* loadedLayer = loaded.getActiveLayer();
   require(std::get<int64_t>(loaded.getBuildVariables().at("world_count")) == 7 &&
               std::get<double>(loaded.getBuildVariables().at("world_scale")) == 1.25 &&
@@ -1874,10 +1906,11 @@ void aWorldRoundTripsARunScriptStepAndDeclaresItsResources() {
   require(!loadedLayer->getStep(disabledStepIndex)->isEnabled(),
           "a disabled RunScript step was enabled by its World round-trip");
   require(sourceLayer->getNumPrimitives() == 2 &&
-              loadedLayer->getNumPrimitives() == 2 &&
+              loadedLayer->getNumPrimitives() == 3 &&
+              loadedLayer->getPrimitive(0)->hasFlag(BW_PRIMITIVE_GHOST_FLAG) &&
               sourceLayer->getPrimitive(1)->getPosition() ==
-                  loadedLayer->getPrimitive(1)->getPosition(),
-          "the loaded RunScript recipe did not rebuild the same Primitives");
+                  loadedLayer->getPrimitive(2)->getPosition(),
+          "the loaded RunScript recipe or preserved ghost was not rebuilt correctly");
 }
 
 void reloadingRebuildsExactlyTheLayersThatNameTheScript() {

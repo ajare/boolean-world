@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -6,6 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include <spdlog/spdlog.h>
 
@@ -683,6 +685,43 @@ void openingADocumentReplacesTheActiveDocument() {
   std::filesystem::remove(filepath);
 }
 
+void asynchronousOpenKeepsTheCurrentWorldUntilCompletion() {
+  auto const filepath = std::filesystem::temp_directory_path() /
+                        "boolean-world-async-document-open-test.world.yaml";
+
+  editor::Document source;
+  source.newDoc();
+  source.getWorld()->addPrimitive(new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f));
+  source.saveDocAs(filepath.string());
+
+  editor::Document loaded;
+  loaded.newDoc();
+  auto const previousWorld = loaded.getWorld();
+  require(loaded.beginOpenDoc(filepath.string()) && loaded.isOpeningWorld(),
+          "an asynchronous World open did not enter its loading state");
+  require(!loaded.getAsyncWorldOpenProgress().empty(),
+          "an asynchronous World open did not publish loading progress");
+  require(loaded.getWorld() == previousWorld,
+          "an asynchronous World open replaced the document before completion");
+
+  auto status = editor::AsyncWorldOpenStatus::Loading;
+  auto const deadline = std::chrono::steady_clock::now() +
+                        std::chrono::seconds(10);
+  while (status == editor::AsyncWorldOpenStatus::Loading &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    status = loaded.pollOpenDoc();
+  }
+  require(status == editor::AsyncWorldOpenStatus::Succeeded &&
+              !loaded.isOpeningWorld() && loaded.getWorld() != previousWorld &&
+              loaded.getWorld()->getNumPrimitives() == 2,
+          "an asynchronous World open did not commit its completed World");
+
+  std::filesystem::remove(filepath);
+}
+
 void openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost() {
   auto const filepath = std::filesystem::temp_directory_path() /
                         "boolean-world-prefab-field-document-open-test.world.yaml";
@@ -880,6 +919,23 @@ void aFailedOpenPreservesTheActiveDocument() {
           "a failed open replaced the active World");
   require(!document.hasFilepath(), "a failed open left a filepath set");
 
+  require(document.beginOpenDoc(filepath.string()),
+          "an asynchronous open of the corrupt World did not start");
+  require(!document.beginOpenDoc(filepath.string()),
+          "a second asynchronous World open was allowed while one was active");
+  auto status = editor::AsyncWorldOpenStatus::Loading;
+  auto const deadline = std::chrono::steady_clock::now() +
+                        std::chrono::seconds(10);
+  while (status == editor::AsyncWorldOpenStatus::Loading &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    status = document.pollOpenDoc();
+  }
+  require(status == editor::AsyncWorldOpenStatus::Failed &&
+              document.getWorld() == previousWorld &&
+              !document.isOpeningWorld(),
+          "a failed asynchronous open did not preserve the active World");
+
   std::filesystem::remove(filepath);
 }
 
@@ -907,6 +963,7 @@ int main() {
     inScopePrimitivesAndGroundingResolutionFollowFoldOrder();
     worldYamlSerializationRequiresTheWorldYamlExtension();
     openingADocumentReplacesTheActiveDocument();
+    asynchronousOpenKeepsTheCurrentWorldUntilCompletion();
     openingAWorldWithNoPrimitivesRestoresTheEditorGhost();
     openingAWorldWhoseFirstOutputComesFromPrefabFieldRestoresTheGhost();
     worldTestPrefabMeshPrimitivesAreHoverSelectable();

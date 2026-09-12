@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -155,7 +157,7 @@ void yamlWorldsWithoutTheWorldYamlExtensionAreRejected() {
   require(threw, "a YAML World without the .world.yaml extension was accepted");
 }
 
-void minesKeepTunnelFloorsLevelAndCreateWoodenSupports() {
+void minesCreateLevelRailRunsAndWoodenSupports() {
   bw::core::ScriptRuntime runtime;
   runtime.load(
       "MinesLayer", readFixture("scripts/mines-layer.lua"),
@@ -187,6 +189,7 @@ void minesKeepTunnelFloorsLevelAndCreateWoodenSupports() {
           "the mines RunScript did not build");
 
   std::vector<bw::core::Primitive*> tunnels;
+  std::vector<bw::core::Primitive*> rails;
   std::vector<bw::core::Primitive*> bridges;
   std::vector<bw::core::Primitive*> posts;
   for (auto* primitive : layer->getPrimitives()) {
@@ -195,14 +198,81 @@ void minesKeepTunnelFloorsLevelAndCreateWoodenSupports() {
       tunnels.push_back(primitive);
     } else if (primitive->getType() == "Rectangle" &&
                primitive->getPriority() == 1) {
-      bridges.push_back(primitive);
+      rails.push_back(primitive);
     } else if (primitive->getType() == "Rectangle" &&
                primitive->getPriority() == 2) {
+      bridges.push_back(primitive);
+    } else if (primitive->getType() == "Rectangle" &&
+               primitive->getPriority() == 3) {
       posts.push_back(primitive);
     }
   }
 
   require(!tunnels.empty(), "the mines script produced no tunnel floors");
+  require(!rails.empty() && rails.size() % 2 == 0,
+          "rails_pct 100 did not produce complete rail pairs");
+  for (auto const* rail : rails) {
+    auto const size = rail->getSize();
+    require(size.y == 1.0f && size.x >= 32.0f && size.x <= 160.0f &&
+                std::fmod(size.x, 32.0f) == 0.0f,
+            "a rail did not span two to six cell centres at the configured width");
+
+    bw::core::Primitive const* containingFloor = nullptr;
+    for (auto const* tunnel : tunnels) {
+      if (tunnel->getPickingTriangulation().pointInside(rail->getPosition())) {
+        containingFloor = tunnel;
+        break;
+      }
+    }
+    auto const& properties = rail->getProperties();
+    require(containingFloor, "a rail was not contained by a tunnel floor");
+    require(std::abs(properties.floorSpan.lowerElevation -
+                     containingFloor->getProperties().floorSpan.lowerElevation -
+                     1.0f) < 0.0001f &&
+                properties.floorSpan.upperElevation ==
+                    properties.floorSpan.lowerElevation,
+            "a rail was not raised one unit above a level tunnel floor");
+    require(properties.ceilingSpan ==
+                containingFloor->getProperties().ceilingSpan,
+            "a rail did not inherit its tunnel ceiling elevation");
+    require(properties.floorMaterial.reference == "builtin.rusted.iron" &&
+                properties.wallMaterial.reference == "builtin.rusted.iron" &&
+                properties.ceilingMaterial.reference == "builtin.basalt",
+            "a rail did not use the configured materials");
+
+    bool foundPartner = false;
+    for (auto const* candidate : rails) {
+      if (candidate == rail || candidate->getSize() != rail->getSize() ||
+          candidate->getOrientation() != rail->getOrientation()) {
+        continue;
+      }
+      if (std::abs(candidate->getPosition().distanceToSq(rail->getPosition()) -
+                   64.0f) < 0.0001f) {
+        foundPartner = true;
+        break;
+      }
+    }
+    require(foundPartner, "a rail did not have an evenly spaced partner");
+  }
+
+  for (auto const [cellX, cellY] :
+       std::array<std::array<int, 2>, 3>{{{1, 0}, {-1, 0}, {1, -1}}}) {
+    bool foundTunnelSection = false;
+    for (auto sampleY = 0; sampleY < 8 && !foundTunnelSection; ++sampleY) {
+      for (auto sampleX = 0; sampleX < 8 && !foundTunnelSection; ++sampleX) {
+        auto const point = wp::Vector2{
+            cellX * 256.0f + (sampleX + 0.5f) * 32.0f,
+            cellY * 256.0f + (sampleY + 0.5f) * 32.0f};
+        foundTunnelSection = std::any_of(
+            tunnels.begin(), tunnels.end(), [point](auto const* tunnel) {
+              return tunnel->getPickingTriangulation().pointInside(point);
+            });
+      }
+    }
+    require(foundTunnelSection,
+            "rail bounds incorrectly prevented a neighbouring tunnel section");
+  }
+
   bool foundVariedFloor = false;
   bool foundCornerPool = false;
   for (auto const* tunnel : tunnels) {
@@ -349,7 +419,7 @@ int main() {
     failedLoadRetainsThePreviousWorld();
     resourcesWithAWorldExtensionLoadAsBinary();
     yamlWorldsWithoutTheWorldYamlExtensionAreRejected();
-    minesKeepTunnelFloorsLevelAndCreateWoodenSupports();
+    minesCreateLevelRailRunsAndWoodenSupports();
     theGameResolvesAndRunsAWorldsLuaScript();
     std::cout << "Map failed-load ownership regression passed\n";
     return 0;

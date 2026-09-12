@@ -99,6 +99,7 @@ EditorRenderSystem::EditorRenderSystem(int width, int height) {
   mResourceMgr = new wp::application::resourcesystem::ResourceManager(
       mRenderSystem, mRenderResourceMgr, nullptr /* no audio in the editor */, mLogger);
   auto scriptLogSink = [this](bw::core::ScriptLogEvent const& event) {
+    scoped_lock lock(mScriptLogsMutex);
     auto const logName =
         (event.stepName.empty() ? string("<unnamed>") : event.stepName) +
         "/" + event.scriptName;
@@ -401,11 +402,13 @@ bool EditorRenderSystem::reloadLuaScript(
   }
 }
 
-vector<EditorScriptLog> const& EditorRenderSystem::scriptLogs() const {
+vector<EditorScriptLog> EditorRenderSystem::scriptLogs() const {
+  scoped_lock lock(mScriptLogsMutex);
   return mScriptLogs;
 }
 
 void EditorRenderSystem::clearScriptLog(string const& name) {
+  scoped_lock lock(mScriptLogsMutex);
   auto log = find_if(
       mScriptLogs.begin(), mScriptLogs.end(), [&](auto const& candidate) {
         return candidate.name == name;

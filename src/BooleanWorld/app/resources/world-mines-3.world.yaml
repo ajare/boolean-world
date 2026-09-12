@@ -47,6 +47,9 @@ world:
         - name: mine_material
           type: string
           value: builtin.basalt
+        - name: rails_pct
+          type: float
+          value: 100
         - name: support_frame_pct
           type: float
           value: 35

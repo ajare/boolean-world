@@ -14,6 +14,7 @@
 #include "core/CoreException.h"
 #include "core/Defines.h"
 #include "core/LayerBuildStep.h"
+#include "core/PrimitiveField.h"
 #include "core/Registry.h"
 #include "core/RectanglePolygon.h"
 #include "core/RegularPolygon.h"
@@ -405,7 +406,16 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         {
           while (serializer->nextArrayItem()) {
             auto layer = make_unique<Layer>();
-            auto const deserialized = layer->deserialize(serializer, workData);
+            auto const previousDeferLayerRebuild = workData.deferLayerRebuild;
+            workData.deferLayerRebuild = true;
+            bool deserialized;
+            try {
+              deserialized = layer->deserialize(serializer, workData);
+            } catch (...) {
+              workData.deferLayerRebuild = previousDeferLayerRebuild;
+              throw;
+            }
+            workData.deferLayerRebuild = previousDeferLayerRebuild;
 
             // A Layer that deserializes successfully may still have
             // recorded warnings (e.g. an unknown primitive parent id) that
@@ -432,13 +442,17 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     return false;
   }
 
-  World dependencyCandidate;
-  dependencyCandidate.releaseOwnedState();
+  set<string> dependentResourceNames;
   for (auto const& layer : layers) {
-    dependencyCandidate.mLayers.push_back(new Layer(*layer));
+    for (uint32_t stepIndex = 0; stepIndex < layer->getNumSteps(); ++stepIndex) {
+      for (auto& name :
+           layer->getStep(stepIndex)->collectDependentResourceNames()) {
+        dependentResourceNames.insert(move(name));
+      }
+    }
   }
   if (declaredDependentResources !=
-      dependencyCandidate.collectDependentResourceNames()) {
+      vector<string>(dependentResourceNames.begin(), dependentResourceNames.end())) {
     addDeserializationError(
         "World dependent resources do not exactly match its authored resource references.");
     return false;
@@ -456,28 +470,6 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     return false;
   }
 
-  uint32_t numPrimitives{0};
-  uint32_t numVertices{0};
-  for (auto const& layer : layers) {
-    numPrimitives += layer->getNumPrimitives();
-
-    for (auto const* primitive : layer->getPrimitives()) {
-      numVertices += primitive->getNumVertices();
-    }
-  }
-
-  if (numPrimitives == 0 && !workData.allowEmptyWorld) {
-    addDeserializationError("World file contains no primitives!");
-
-    return false;
-  }
-
-  if (numVertices > BW_VERTEX_COUNT_USEABLE_MAX) {
-    addDeserializationError("The World contains too many vertices");
-
-    return false;
-  }
-
   try {
     validateBuildVariables(buildVariables, "World");
     for (auto const& layer : layers) {
@@ -488,54 +480,62 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     return false;
   }
 
-  // Commit
-  mName = worldName;
-  mDescription = description;
-  mBuildVariables = move(buildVariables);
-  mExtents.setPosition(minExtent);
-  mExtents.setSize(maxExtent - minExtent);
-  mPlayerStartPosition = playerStartPosition;
-  mPlayerStartAngle = playerStartAngle;
-  mWedgeGenerationParameters = wedgeGenerationParameters;
-
-  for (auto layer : mLayers) {
-    delete layer;
-  }
-  mLayers.clear();
+  // Build the parsed recipe under its prospective World before touching this
+  // World's live state. This gives RunScript the final World-variable scope,
+  // retains deserialization's transactional failure behaviour, and avoids the
+  // former standalone and validation-copy executions.
+  World candidate;
+  candidate.releaseOwnedState();
+  candidate.mName = worldName;
+  candidate.mDescription = description;
+  candidate.mBuildVariables = buildVariables;
+  candidate.mExtents.setPosition(minExtent);
+  candidate.mExtents.setSize(maxExtent - minExtent);
+  candidate.mPlayerStartPosition = playerStartPosition;
+  candidate.mPlayerStartAngle = playerStartAngle;
+  candidate.mWedgeGenerationParameters = wedgeGenerationParameters;
+  candidate.mActiveLayerIndex = 0;
+  candidate.mFrameNumber = 0;
+  candidate.mLastPrimitiveUpdateFrameNumber = 0;
 
   uint32_t nextLayerId{0};
   for (auto& layer : layers) {
     nextLayerId = max(nextLayerId, layer->getId() + 1);
-    mLayers.push_back(layer.release());
+    candidate.mLayers.push_back(layer.release());
   }
-  mNextLayerId = nextLayerId;
+  candidate.mNextLayerId = nextLayerId;
 
-  // The active Layer index is never part of the serialized format: a
-  // deserialized World always starts focused on its first Layer.
-  mActiveLayerIndex = 0;
-
-  mFrameNumber = 0;
-  mLastPrimitiveUpdateFrameNumber = 0;
-
-  auto* activeLayer = getActiveLayer();
-
-  // The generation layer selection is never serialized: a loaded World always
-  // starts scoped to just its active Layer, never a mask carried over from
-  // the previous contents (docs/adr/0013).
-  if (mDataGenerator) {
-    mDataGenerator->_resetLayerSelection(SelectLayer(activeLayer->getId()));
+  // Editor World targets are seeded with a transient ghost. Clone it into the
+  // parsed PrimitiveField before the recipe's only execution so later steps
+  // observe exactly the same input they would after prependPrimitive().
+  if (workData.preserveTargetGhostPrimitive && !mLayers.empty()) {
+    auto* sourceField = getActiveLayer()->getPrimitiveField();
+    auto* targetField = candidate.getActiveLayer()->getPrimitiveField();
+    auto targetHasGhost = any_of(
+        targetField->getPrimitives().begin(), targetField->getPrimitives().end(),
+        [](auto const* primitive) {
+          return primitive->hasFlag(BW_PRIMITIVE_GHOST_FLAG);
+        });
+    if (!targetHasGhost && sourceField->getNumPrimitives() > 0) {
+      auto const* source = sourceField->getPrimitive(0);
+      if (source->hasFlag(BW_PRIMITIVE_GHOST_FLAG)) {
+        targetField->prependPrimitive(source->copy());
+      }
+    }
   }
 
-  // Calculate vertices/bounds to initialise every Layer's Primitives, not
-  // just the active one: a generation may fold across any selected set.
-  for (auto* layer : mLayers) {
+  uint32_t numPrimitives{0};
+  uint32_t numVertices{0};
+  for (auto* layer : candidate.mLayers) {
     layer->_setFrameNumber(0);
-    layer->bindWorld(this);
-    // A temporary standalone Layer initially rebuilt with an empty World
-    // scope. Rebuild now that the cascade's World values are available.
-    layer->rebuild();
+    layer->bindWorld(&candidate);
+    layer->rebuild(workData.progress);
 
-    for (auto primitive : layer->getPrimitives()) {
+    for (auto* primitive : layer->getPrimitives()) {
+      if (!primitive->hasFlag(BW_PRIMITIVE_GHOST_FLAG)) {
+        ++numPrimitives;
+        numVertices += primitive->getNumVertices();
+      }
       primitive->updateTime(0.0, {wp::Vector2::ZERO,
                                   BW_PLAYER_RADIUS,
                                   BW_PLAYER_FOV,
@@ -543,19 +543,46 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
                                   false,
                                   false,
                                   0});
-
-      primitive->setInputs(wp::Vector2::ZERO, 0.0f, layer->_getTriggerLineStorage());
+      primitive->setInputs(wp::Vector2::ZERO, 0.0f,
+                           layer->_getTriggerLineStorage());
       primitive->calculateAnimationValues();
       primitive->updateVertexPositions();
-
-      // Layer::addPrimitive (used internally by Layer::deserializeImpl) does
-      // not compute a deserialized Primitive's bounds - only World::
-      // addPrimitive does, for normal authoring adds. Do that now that
-      // mWorld is bound, so the acceleration grid ends up holding this
-      // Primitive at its real bounds rather than its default-constructed
-      // ones.
       primitive->invalidatePostTransform(true, true);
     }
+  }
+
+  if (numPrimitives == 0 && !workData.allowEmptyWorld) {
+    addDeserializationError("World file contains no primitives!");
+    return false;
+  }
+  if (numVertices > BW_VERTEX_COUNT_USEABLE_MAX) {
+    addDeserializationError("The World contains too many vertices");
+    return false;
+  }
+
+  // Commit the already-built candidate. Rebinding updates World back-links
+  // without executing any Layer recipe again.
+  mName = move(candidate.mName);
+  mDescription = move(candidate.mDescription);
+  mBuildVariables = move(candidate.mBuildVariables);
+  mExtents = candidate.mExtents;
+  mPlayerStartPosition = candidate.mPlayerStartPosition;
+  mPlayerStartAngle = candidate.mPlayerStartAngle;
+  mWedgeGenerationParameters = candidate.mWedgeGenerationParameters;
+  for (auto* layer : mLayers) delete layer;
+  mLayers.clear();
+  mLayers.swap(candidate.mLayers);
+  mNextLayerId = candidate.mNextLayerId;
+  mActiveLayerIndex = 0;
+  mFrameNumber = 0;
+  mLastPrimitiveUpdateFrameNumber = 0;
+  for (auto* layer : mLayers) layer->bindWorld(this);
+
+  // The generation layer selection is never serialized: a loaded World always
+  // starts scoped to just its active Layer, never a mask carried over from
+  // the previous contents (docs/adr/0013).
+  if (mDataGenerator) {
+    mDataGenerator->_resetLayerSelection(SelectLayer(getActiveLayer()->getId()));
   }
 
   return true;

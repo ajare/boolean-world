@@ -200,7 +200,8 @@ public:
 
   // Recomputes the derived Primitives from scratch by re-running the enabled
   // steps in order.
-  void rebuild();
+  void rebuild(
+      std::function<void(std::string const&)> const& progress = {});
 
   [[nodiscard]] uint32_t getNumSteps() const;
 

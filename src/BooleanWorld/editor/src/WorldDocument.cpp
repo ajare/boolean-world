@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <exception>
 #include <format>
 #include <utility>
@@ -168,7 +169,6 @@ shared_ptr<bw::core::World const> WorldDocument::getWorld() const {
   return mWorld;
 }
 
-
 bw::core::Primitive* WorldDocument::getGhost() {
   if (isActive()) {
     return mWorld->getPrimitive(0);
@@ -219,6 +219,150 @@ void WorldDocument::closeDoc() {
     string ignored;
     mWorldDependencyLoader({}, &ignored);
   }
+}
+
+bool WorldDocument::beginOpenDoc(string const& filepath) {
+  if (mPendingWorldOpen) {
+    mAsyncWorldOpenError = "A World is already loading.";
+    return false;
+  }
+
+  auto const yaml = hasExtension(filepath, ".world.yaml");
+  auto const binary = hasExtension(filepath, ".world") && !yaml;
+  if (!yaml && !binary) {
+    mAsyncWorldOpenError = format(
+        "Could not open {} (filetype not supported)", filepath);
+    return false;
+  }
+
+  auto previousDependencies =
+      mWorld ? mWorld->getDependentResourceNames() : vector<string>{};
+  try {
+    auto dependencyReader = yaml
+                                ? shared_ptr<bw::core::Serializer>(
+                                      bw::core::YamlSerializer::fromFile(filepath))
+                                : shared_ptr<bw::core::Serializer>(
+                                      bw::core::BinarySerializer::fromFile(filepath));
+    dependencyReader->deserialize();
+    if (mWorldDependencyLoader) {
+      string error;
+      if (!mWorldDependencyLoader(
+              bw::core::World::readDependentResourceNames(dependencyReader),
+              &error)) {
+        mAsyncWorldOpenError = move(error);
+        return false;
+      }
+    }
+  } catch (exception const& error) {
+    mAsyncWorldOpenError = error.what();
+    return false;
+  }
+
+  auto candidate = createWorld(
+      ED_DEFAULT_WORLD_SIZE, ED_DEFAULT_WORLD_ACCEL_GRID_SIZE);
+  auto progress = make_shared<AsyncWorldOpenProgress>();
+  progress->part = "Deserializing World";
+  try {
+    auto result = async(
+        launch::async,
+        [filepath, yaml, candidate, progress]() -> AsyncWorldOpenResult {
+          AsyncWorldOpenResult outcome;
+          auto reportProgress = [progress](string const& part) {
+            scoped_lock lock(progress->mutex);
+            progress->part = part;
+          };
+          try {
+            auto serializer = yaml
+                                  ? shared_ptr<bw::core::Serializer>(
+                                        bw::core::YamlSerializer::fromFile(filepath))
+                                  : shared_ptr<bw::core::Serializer>(
+                                        bw::core::BinarySerializer::fromFile(filepath));
+            serializer->deserialize();
+            auto workData = bw::core::SerializationWorkData{};
+            workData.allowEmptyWorld = true;
+            workData.preserveTargetGhostPrimitive = true;
+            workData.progress = reportProgress;
+            if (candidate->deserialize(serializer, workData)) {
+              // The editor's first getWorldData() performs a blocking initial
+              // generation. Do it before completing the future so the loading
+              // modal remains visible and animated for the entire operation.
+              reportProgress("Generating initial WorldData");
+              (void)candidate->getWorldData();
+              outcome.world = candidate;
+              outcome.warnings = candidate->getDeserializationWarnings();
+            } else {
+              outcome.errors = candidate->getDeserializationErrors();
+            }
+          } catch (exception const& error) {
+            outcome.errors.push_back(error.what());
+          }
+          return outcome;
+        });
+    mPendingWorldOpen.emplace(PendingWorldOpen{
+        filepath, move(previousDependencies), progress, move(result)});
+    mAsyncWorldOpenError.clear();
+    return true;
+  } catch (exception const& error) {
+    if (mWorldDependencyLoader) {
+      string ignored;
+      mWorldDependencyLoader(previousDependencies, &ignored);
+    }
+    mAsyncWorldOpenError = error.what();
+    return false;
+  }
+}
+
+bool WorldDocument::isOpeningWorld() const {
+  return mPendingWorldOpen.has_value();
+}
+
+AsyncWorldOpenStatus WorldDocument::pollOpenDoc() {
+  if (!mPendingWorldOpen) return AsyncWorldOpenStatus::Idle;
+  if (mPendingWorldOpen->result.wait_for(chrono::seconds(0)) !=
+      future_status::ready) {
+    return AsyncWorldOpenStatus::Loading;
+  }
+
+  auto filepath = move(mPendingWorldOpen->filepath);
+  auto previousDependencies =
+      move(mPendingWorldOpen->previousDependencies);
+  AsyncWorldOpenResult result;
+  try {
+    result = mPendingWorldOpen->result.get();
+  } catch (exception const& error) {
+    result.errors.push_back(error.what());
+  }
+  mPendingWorldOpen.reset();
+
+  if (!result.world) {
+    if (mWorldDependencyLoader) {
+      string ignored;
+      mWorldDependencyLoader(previousDependencies, &ignored);
+    }
+    for (auto const& error : result.errors) gLogger->error(error);
+    mAsyncWorldOpenError = result.errors.empty()
+                               ? "Could not load World."
+                               : result.errors.front();
+    return AsyncWorldOpenStatus::Failed;
+  }
+
+  for (auto const& warning : result.warnings) gLogger->warn(warning);
+  resetWorldDocument();
+  mFilepath = move(filepath);
+  mWorld = move(result.world);
+  mAsyncWorldOpenError.clear();
+  return AsyncWorldOpenStatus::Succeeded;
+}
+
+string WorldDocument::getAsyncWorldOpenProgress() const {
+  if (!mPendingWorldOpen) return {};
+  auto const& progress = mPendingWorldOpen->progress;
+  scoped_lock lock(progress->mutex);
+  return progress->part;
+}
+
+string const& WorldDocument::getAsyncWorldOpenError() const {
+  return mAsyncWorldOpenError;
 }
 
 void WorldDocument::setWorldDependencyLoader(
@@ -277,6 +421,7 @@ bool WorldDocument::openDoc(string const& filepath) {
 
     auto workData = bw::core::SerializationWorkData{};
     workData.allowEmptyWorld = true;
+    workData.preserveTargetGhostPrimitive = true;
 
     if (candidate->deserialize(ser, workData)) {
       auto const& warnings = candidate->getDeserializationWarnings();
@@ -287,18 +432,6 @@ bool WorldDocument::openDoc(string const& filepath) {
         }
       }
 
-      // Saved Worlds omit the editor-only ghost. Restore it at the front of
-      // the first PrimitiveField's authored order so ED_GHOST_INDEX remains
-      // stable even when that field is empty and index 0 currently belongs to
-      // derived output from a later, non-editable step such as PrefabField.
-      auto* activeLayer = candidate->getActiveLayer();
-      auto hasGhost = candidate->getNumPrimitives() > 0 &&
-                      (candidate->getPrimitive(ED_GHOST_INDEX)->getFlags() &
-                       BW_PRIMITIVE_GHOST_FLAG) != 0;
-      if (!hasGhost) {
-        auto* ghost = createEditorGhost();
-        activeLayer->prependPrimitive(ghost);
-      }
       resetWorldDocument();
       mFilepath = filepath;
       mWorld = move(candidate);

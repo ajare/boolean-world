@@ -13,6 +13,7 @@
 #include <core/CoreException.h>
 #include <core/DefinePrefabs.h>
 #include <core/DefineTileMaps.h>
+#include <core/Defines.h>
 #include <core/Layer.h>
 #include <core/MeshPrimitive.h>
 #include <core/Primitive.h>
@@ -1006,6 +1007,21 @@ void bindScriptTypes(sol::state& lua) {
       "get_size",
       [](Primitive const& primitive) {
         return make_tuple(primitive.getSize().x, primitive.getSize().y);
+      },
+
+      "set_exact_bounds",
+      [](Primitive& primitive, bool exact) {
+        auto flags = primitive.getFlags();
+        if (exact) {
+          flags |= BW_PRIMITIVE_EXACT_BOUNDS_FLAG;
+        } else {
+          flags &= ~BW_PRIMITIVE_EXACT_BOUNDS_FLAG;
+        }
+        primitive.setFlags(flags);
+      },
+      "uses_exact_bounds",
+      [](Primitive const& primitive) {
+        return primitive.hasFlag(BW_PRIMITIVE_EXACT_BOUNDS_FLAG);
       },
 
       "set_priority",
