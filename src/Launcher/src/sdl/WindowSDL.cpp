@@ -33,7 +33,7 @@ bool translateMouseButton(uint8_t button, application::MouseButton& mouseButton)
 }  // namespace
 
 WindowSDL::WindowSDL(string const& title, ProgramOptions const& options)
-    : Window(title, options), mWindow(nullptr), mContextGL(nullptr), mContentScale(1.0f), mActive(true), mStateMgr(nullptr), mVirtualMouseX(0.0f), mVirtualMouseY(0.0f) {
+    : Window(title, options), mWindow(nullptr), mContextGL(nullptr), mContentScale(1.0f), mActive(true), mStateMgr(nullptr), mVirtualMouseX(0.0f), mVirtualMouseY(0.0f), mCursorShown(true), mWarpMouseCapture(false), mIgnoreWarpMotion(false) {
   mKeyTranslator[SDLK_ESCAPE] = application::Key::Escape;
   mKeyTranslator[SDLK_1] = application::Key::_1;
   mKeyTranslator[SDLK_2] = application::Key::_2;
@@ -298,14 +298,58 @@ void WindowSDL::show() {
   SDL_GL_SwapWindow(mWindow);
 }
 
+void WindowSDL::warpCapturedMouseToCenter() {
+  mIgnoreWarpMotion = true;
+  SDL_WarpMouseInWindow(
+      mWindow, static_cast<float>(mWidth) / 2.0f,
+      static_cast<float>(mHeight) / 2.0f);
+}
+
+void WindowSDL::captureMouse() {
+  // Relative mode supplies unbounded motion directly. Some Linux X11
+  // installations lack XInput2 and reject it; centre warping under a window
+  // grab provides the same infinite mouse-look semantics there.
+  if (SDL_SetWindowRelativeMouseMode(mWindow, true)) {
+    mWarpMouseCapture = false;
+    return;
+  }
+
+  auto const relativeError = string(SDL_GetError());
+  if (!SDL_SetWindowMouseGrab(mWindow, true)) {
+    throw runtime_error(format(
+        "Could not capture mouse (relative mode: {}; grab: {})",
+        relativeError, SDL_GetError()));
+  }
+  gLogger->warn(format(
+      "Relative mouse mode unavailable ({}); using centre-warp fallback",
+      relativeError));
+  mWarpMouseCapture = true;
+  warpCapturedMouseToCenter();
+}
+
 void WindowSDL::showCursor(bool show) {
-  SDL_SetWindowRelativeMouseMode(mWindow, !show);
+  if (!mWindow || show == mCursorShown) {
+    return;
+  }
 
   if (show) {
+    if (!SDL_SetWindowRelativeMouseMode(mWindow, false)) {
+      gLogger->warn(
+          format("Could not disable relative mouse mode: {}", SDL_GetError()));
+    }
+    if (mWarpMouseCapture && !SDL_SetWindowMouseGrab(mWindow, false)) {
+      gLogger->warn(
+          format("Could not release mouse grab: {}", SDL_GetError()));
+    }
+    mWarpMouseCapture = false;
+    mIgnoreWarpMotion = false;
     SDL_ShowCursor();
   } else {
+    captureMouse();
     SDL_HideCursor();
   }
+
+  mCursorShown = show;
 }
 
 void WindowSDL::setStateManager(StateManager* mgr) {
@@ -411,18 +455,48 @@ void WindowSDL::processEvents(StateManager* stateMgr) {
         break;
 
       case SDL_EVENT_MOUSE_MOTION:
-        // The game turns this position into a per-frame delta, so while the
-        // cursor is captured it needs the unbounded virtual position SDL only
-        // reports as relative motion - an absolute one would clamp at the edge.
+        // The game turns this position into a per-frame delta, so captured
+        // input accumulates an unbounded virtual position. Native relative
+        // mode reports xrel/yrel directly. The fallback ignores the synthetic
+        // centre-warp event but retains every physical relative movement.
         if (SDL_GetWindowRelativeMouseMode(mWindow)) {
           mVirtualMouseX += evt.motion.xrel;
           mVirtualMouseY += evt.motion.yrel;
+        } else if (mWarpMouseCapture) {
+          auto const centerX = static_cast<float>(mWidth) / 2.0f;
+          auto const centerY = static_cast<float>(mHeight) / 2.0f;
+          if (mIgnoreWarpMotion && evt.motion.x == centerX &&
+              evt.motion.y == centerY) {
+            mIgnoreWarpMotion = false;
+            break;
+          }
+          mVirtualMouseX += evt.motion.xrel;
+          mVirtualMouseY += evt.motion.yrel;
+          warpCapturedMouseToCenter();
         } else {
           mVirtualMouseX = evt.motion.x;
           mVirtualMouseY = evt.motion.y;
         }
 
         stateMgr->injectMouseMotionInput(mVirtualMouseX, mVirtualMouseY);
+        break;
+
+      case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        if (!mCursorShown) {
+          if (mWarpMouseCapture) {
+            if (!SDL_SetWindowMouseGrab(mWindow, true)) {
+              gLogger->warn(
+                  format("Could not restore mouse grab: {}", SDL_GetError()));
+            } else {
+              warpCapturedMouseToCenter();
+            }
+          } else {
+            // The initial request can precede compositor focus. Toggle it now
+            // so backend rejection is observable and can select the fallback.
+            SDL_SetWindowRelativeMouseMode(mWindow, false);
+            captureMouse();
+          }
+        }
         break;
 
       case SDL_EVENT_WINDOW_RESIZED:
