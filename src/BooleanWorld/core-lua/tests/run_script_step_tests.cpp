@@ -1549,7 +1549,7 @@ void aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid() {
     assert(rock:get_tile_size() == 128)
     local tile_x, tile_y = context:get_tile(rock:get_tile_size(), -0.01, -128)
     assert(tile_x == -1 and tile_y == -1)
-    context:place_prefab_instance(rock, tile_x, tile_y, 270)
+    context:place_prefab_instance(rock, tile_x, tile_y, 270, -12)
   )");
 
   bw::core::Layer layer(0, "test", 512.0f, 16.0f);
@@ -1573,10 +1573,10 @@ void aScriptPlacesPrefabInstancesOnTheirSizeSpecificGrid() {
       bw::core::SnapshotPrimitives({layer.getPrimitive(0)});
   auto const& worldPlane = snapshots.front().properties.floorZ;
   auto const position = layer.getPrimitive(0)->getPosition();
-  require(std::abs(worldPlane.evaluate(position) - 5.0f) < .001f &&
-              std::abs(worldPlane.evaluate(position + wp::Vector2{0.0f, 2.0f}) -
-                       7.0f) < .001f,
-          "a RunScript Prefab placement did not rotate and anchor its floor plane");
+  require(std::abs(worldPlane.evaluate(position) + 7.0f) < .001f &&
+              std::abs(worldPlane.evaluate(position + wp::Vector2{0.0f, 2.0f}) +
+                       5.0f) < .001f,
+          "a RunScript Prefab placement did not rotate, elevate, and anchor its floor plane");
 }
 
 void prefabPlacementRejectsNonTilesAndNonQuarterTurns() {
@@ -2089,7 +2089,8 @@ void scriptsQueryIndexedMapsFromEarlierDefineTileMaps() {
     local map = context:find_tile_map("layout", 1)
     local p = context:create_primitive("Rectangle")
     p:set_position(
-        map:get_cell(3, 4) * 10, map:get_width() + map:get_index())
+        map:get_cell(3, 4) * context:get_tile_map_count("layout") * 10,
+        map:get_width() + map:get_index())
     p:set_size(map:get_map_size(), map:get_cell_size())
     context:place_primitive(p)
   )");
@@ -2108,8 +2109,8 @@ void scriptsQueryIndexedMapsFromEarlierDefineTileMaps() {
 
   require(!script->hasFailed(),
           "querying an indexed TileMap from earlier DefineTileMaps failed");
-  require(layer.getNumPrimitives() == 1 && at(layer.getPrimitive(0), 10.0f),
-          "Lua did not read the TileMap cell value");
+  require(layer.getNumPrimitives() == 1 && at(layer.getPrimitive(0), 20.0f),
+          "Lua did not read the TileMap cell value or TileMap count");
   require(layer.getPrimitive(0)->getSize().x == 256.0f &&
               layer.getPrimitive(0)->getSize().y == 32.0f &&
               layer.getPrimitive(0)->getPosition().y == 9.0f,

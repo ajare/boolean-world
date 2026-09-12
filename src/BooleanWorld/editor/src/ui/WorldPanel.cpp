@@ -51,7 +51,11 @@ void renderBuildVariablesEditor(ViewContext& context, bw::core::Layer* layer) {
   static map<void const*, BuildVariableEditorState> states;
   auto& state = states[key];
 
-  ImGui::SeparatorText("Variables");
+  if (layer) {
+    if (!ImGui::CollapsingHeader("Variables##LayerVariables")) return;
+  } else {
+    ImGui::SeparatorText("Variables");
+  }
   auto const& local = layer ? layer->getBuildVariables() : world->getBuildVariables();
   auto effective = layer ? layer->getEffectiveBuildVariables() : local;
 

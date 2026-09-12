@@ -84,11 +84,14 @@ private:
 
   // Clones prefab's Primitives into this step's storage at the centre of the
   // requested Tile on the grid selected by the Prefab's own tile size. The
-  // angle is one of the Square tiling's quarter turns. Parent links among the
-  // clones are preserved and the Prefab's own Primitives are never touched.
+  // angle is one of the Square tiling's quarter turns. elevationOffset is
+  // added uniformly to every clone's authored floor and ceiling elevations.
+  // Parent links among the clones are preserved and the Prefab's own
+  // Primitives are never touched.
   void placePrefabInstance(
       LayerBuildContext& context, Prefab const* prefab,
-      int32_t tileX, int32_t tileY, float angle) const;
+      int32_t tileX, int32_t tileY, float angle,
+      float elevationOffset = 0.0f) const;
 
 public:
   explicit RunScript(ScriptRuntime& runtime);

@@ -252,6 +252,23 @@ end
 DefineTileMaps step, the step is disabled or does not precede this RunScript,
 or `index` is outside that step's TileMaps.
 
+### `context:get_tile_map_count(step_name)`
+
+Returns the number of TileMaps in the enabled `DefineTileMaps` step named
+`step_name`. The step must precede the current `RunScript`, following the same
+lookup and validation rules as `context:find_tile_map`.
+
+```lua
+local index = math.random(0, context:get_tile_map_count("layouts") - 1)
+local layout = context:find_tile_map("layouts", index)
+```
+
+**Returns:** integer TileMap count.
+
+**Errors:** fails if no step has that name, the first match is not a
+DefineTileMaps step, or the step is disabled or does not precede this
+RunScript.
+
 ### `context:get_tile(grid_size, x, y)`
 
 Returns the integer coordinates of the Tile containing World position `(x, y)` on the requested grid. `grid_size` must be `32`, `64`, `128`, or `256`. All grids use the World origin as an intersection and half-open Tiles, matching `PrefabField`.
@@ -264,20 +281,20 @@ local tile_x, tile_y = context:get_tile(64, world_x, world_y)
 
 **Errors:** fails for an unsupported grid size, a non-finite World position, or coordinates outside the supported integer range.
 
-### `context:place_prefab_instance(prefab, tile_x, tile_y, angle)`
+### `context:place_prefab_instance(prefab, tile_x, tile_y, angle [, elevation_offset])`
 
-Copies every Primitive in a `Prefab` into the current step's output and places the copies at the centre of Tile `(tile_x, tile_y)`. The Prefab's tile size automatically selects the 32, 64, 128, or 256 grid.
+Copies every Primitive in a `Prefab` into the current step's output and places the copies at the centre of Tile `(tile_x, tile_y)`. The Prefab's tile size automatically selects the 32, 64, 128, or 256 grid. When supplied, `elevation_offset` is added uniformly to every copied Primitive's authored floor and ceiling elevations; it defaults to zero.
 
 ```lua
 local definitions = context:find_define_prefabs("environment prefabs")
 local arch = definitions:get_prefab("arch")
 local tile_x, tile_y = context:get_tile(arch:get_tile_size(), 128, 64)
-context:place_prefab_instance(arch, tile_x, tile_y, 90)
+context:place_prefab_instance(arch, tile_x, tile_y, 90, -32)
 ```
 
 Tile coordinates must be integers. `angle` is a clockwise angle in degrees and must be exactly `0`, `90`, `180`, or `270`. Each call makes independent copies, rotates them about the Prefab origin, and leaves the source Prefab unchanged. Parent relationships between copied Prefab Primitives are preserved.
 
-**Errors:** fails if the value is not a valid Prefab handle, either Tile coordinate is not an integer, or the angle is not an allowed quarter turn.
+**Errors:** fails if the value is not a valid Prefab handle, either Tile coordinate is not an integer, the angle is not an allowed quarter turn, or `elevation_offset` is not finite.
 
 ### `include(resource_name)`
 

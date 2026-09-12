@@ -7,8 +7,10 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <willpower/application/resourcesystem/DirectoryResourceLocation.h>
@@ -187,6 +189,29 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   }
   require(scriptStep && !scriptStep->hasFailed(),
           "the mines RunScript did not build");
+
+  auto const requestedPrefabCount = std::get<int64_t>(
+      layer->getBuildVariables().at("tunnel_prefab_count"));
+  auto const maxPrefabDistance = static_cast<float>(std::get<int64_t>(
+      layer->getBuildVariables().at("max_tunnel_prefab_dist")));
+  std::set<std::tuple<int32_t, int32_t, uint32_t>> prefabTiles;
+  for (auto const* primitive : layer->getPrimitives()) {
+    if (layer->getOwningStepIndex(primitive) != scriptStepIndex) continue;
+    auto const& placement = primitive->getEmitterPlacementKey();
+    if (!placement) continue;
+    require(placement->gridSize == 256,
+            "the mines script placed a non-256 Prefab");
+    auto const centreX = static_cast<float>(placement->tileX) + 0.5f;
+    auto const centreY = static_cast<float>(placement->tileY) + 0.5f;
+    require(centreX * centreX + centreY * centreY <=
+                maxPrefabDistance * maxPrefabDistance + 0.001f,
+            "a mine Prefab centre exceeded max_tunnel_prefab_dist");
+    prefabTiles.emplace(
+        placement->tileX, placement->tileY, placement->gridSize);
+  }
+  require(prefabTiles.size() ==
+              static_cast<std::size_t>(requestedPrefabCount),
+          "tunnel_prefab_count did not place the requested unique Prefab Tiles");
 
   std::vector<bw::core::Primitive*> tunnels;
   std::vector<bw::core::Primitive*> rails;

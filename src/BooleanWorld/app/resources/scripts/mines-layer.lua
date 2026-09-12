@@ -45,6 +45,10 @@ local function cell_key(x, y)
     return x .. "," .. y
 end
 
+local function base_floor_height_for_cell(x, y)
+    return -math.sqrt(x * x + y * y) * FLOOR_DROP_PER_CELL
+end
+
 local function rotate_point(x, y, angle)
     if angle == 0 then
         return x, y
@@ -1272,8 +1276,21 @@ local function create_tunnels_section_primitive(step_name, index,
             end
         end
         assert(vertex ~= nil, "corridor wall had no segment to vary")
-        assert(mesh:move_vertex(vertex, variation.delta_x,
-                                variation.delta_y))
+
+        -- A nearby cut can leave too little room for the full random width
+        -- change even though the wall still has a splittable segment. Back
+        -- off rather than failing the whole Layer build for that section.
+        local moved = false
+        local scale = 1
+        for _ = 1, 5 do
+            moved = mesh:move_vertex(
+                vertex, variation.delta_x * scale,
+                variation.delta_y * scale)
+            if moved then
+                break
+            end
+            scale = scale / 2
+        end
     end
 
     -- Horizontal surfaces use the catalog's 2D material program; walls use
@@ -1473,8 +1490,7 @@ local function place_tunnels_section(primitive, primitive_size,
                                      cell_x, cell_y, angle)
     local position_x = (cell_x + 0.5) * primitive_size
     local position_y = (cell_y + 0.5) * primitive_size
-    local base_floor_height = -math.sqrt(cell_x * cell_x + cell_y * cell_y) *
-                                  FLOOR_DROP_PER_CELL
+    local base_floor_height = base_floor_height_for_cell(cell_x, cell_y)
 
     local function apply_base_floor_height(section_primitive)
         local floor_angle, floor_lower, floor_upper =
@@ -1606,11 +1622,15 @@ end
 assert(#tunnel_prefabs > 0, "Main has no size 256 Tunnels Prefabs")
 
 local options = {}
+local options_by_prefab = {}
 local unrotated_options = {}
 for _, prefab in ipairs(tunnel_prefabs) do
+    local prefab_options = {}
+    options_by_prefab[prefab] = prefab_options
     for _, angle in ipairs(ANGLES) do
         local option = make_option(prefab, angle, #options + 1)
         options[#options + 1] = option
+        prefab_options[angle] = option
         if angle == 0 then
             unrotated_options[#unrotated_options + 1] = option
         end
@@ -1659,15 +1679,18 @@ for _, existing_option in ipairs(options) do
                         for _, cell in ipairs(matching_cells) do
                             local key = cell_key(cell.x, cell.y) .. ":" ..
                                             candidate_option.id
-                            if transitions_by_key[key] == nil then
-                                local transition = {
+                            local transition = transitions_by_key[key]
+                            if transition == nil then
+                                transition = {
                                     x = cell.x,
                                     y = cell.y,
-                                    option = candidate_option
+                                    option = candidate_option,
+                                    connector_keys = {}
                                 }
                                 transitions[#transitions + 1] = transition
                                 transitions_by_key[key] = transition
                             end
+                            transition.connector_keys[connector_key] = true
                         end
                     end
                 end
@@ -1715,25 +1738,28 @@ end
 -- recount all previous placement/candidate pairs.
 local function add_candidates_for_placement(placement)
     for _, transition in ipairs(placement.option.transitions) do
-        local x = placement.x + transition.x
-        local y = placement.y + transition.y
-        if cell_is_available(x, y) then
-            local key = cell_key(x, y) .. ":" .. transition.option.id
-            local candidate = candidates_by_key[key]
-            if candidate == nil then
-                candidate = {
-                    x = x,
-                    y = y,
-                    option = transition.option,
-                    neighbours = 0,
-                    matching_placements = {}
-                }
-                candidates[#candidates + 1] = candidate
-                candidates_by_key[key] = candidate
-            end
-            if not candidate.matching_placements[placement] then
-                candidate.matching_placements[placement] = true
-                candidate.neighbours = candidate.neighbours + 1
+        if not placement.flush_only or
+            transition.connector_keys[FLUSH_CONNECTOR_KEY] then
+            local x = placement.x + transition.x
+            local y = placement.y + transition.y
+            if cell_is_available(x, y) then
+                local key = cell_key(x, y) .. ":" .. transition.option.id
+                local candidate = candidates_by_key[key]
+                if candidate == nil then
+                    candidate = {
+                        x = x,
+                        y = y,
+                        option = transition.option,
+                        neighbours = 0,
+                        matching_placements = {}
+                    }
+                    candidates[#candidates + 1] = candidate
+                    candidates_by_key[key] = candidate
+                end
+                if not candidate.matching_placements[placement] then
+                    candidate.matching_placements[placement] = true
+                    candidate.neighbours = candidate.neighbours + 1
+                end
             end
         end
     end
@@ -1741,7 +1767,64 @@ end
 
 add_candidates_for_placement(seed_placement)
 
-dprint(string.format("Placing %d prefabs", step.vars.iterations))
+local tunnel_prefab_count = layer.vars.tunnel_prefab_count
+assert(type(tunnel_prefab_count) == "number" and
+           tunnel_prefab_count % 1 == 0 and tunnel_prefab_count >= 0 and
+           tunnel_prefab_count <= 50,
+       "layer.vars.tunnel_prefab_count must be an integer from 0 to 50")
+local max_tunnel_prefab_dist = layer.vars.max_tunnel_prefab_dist
+assert(type(max_tunnel_prefab_dist) == "number" and
+           max_tunnel_prefab_dist % 1 == 0 and
+           max_tunnel_prefab_dist >= 0 and max_tunnel_prefab_dist <= 15,
+       "layer.vars.max_tunnel_prefab_dist must be an integer from 0 to 15")
+
+local prefab_cells = {}
+local first_prefab_cell = math.ceil(-max_tunnel_prefab_dist - 0.5)
+local last_prefab_cell = math.floor(max_tunnel_prefab_dist - 0.5)
+local maximum_distance_squared = max_tunnel_prefab_dist ^ 2
+for y = first_prefab_cell, last_prefab_cell do
+    for x = first_prefab_cell, last_prefab_cell do
+        local centre_x = x + 0.5
+        local centre_y = y + 0.5
+        if centre_x * centre_x + centre_y * centre_y <=
+            maximum_distance_squared + EPSILON then
+            prefab_cells[#prefab_cells + 1] = {x = x, y = y}
+        end
+    end
+end
+
+local placed_prefab_count = 0
+while placed_prefab_count < tunnel_prefab_count and #prefab_cells > 0 do
+    local cell_index = math.random(#prefab_cells)
+    local cell = prefab_cells[cell_index]
+    prefab_cells[cell_index] = prefab_cells[#prefab_cells]
+    prefab_cells[#prefab_cells] = nil
+
+    local key = cell_key(cell.x, cell.y)
+    if placements_by_cell[key] == nil and cell_is_empty(cell.x, cell.y) then
+        local prefab = tunnel_prefabs[math.random(#tunnel_prefabs)]
+        local angle = ANGLES[math.random(#ANGLES)]
+        context:place_prefab_instance(
+            prefab, cell.x, cell.y, angle,
+            base_floor_height_for_cell(cell.x, cell.y))
+        local placement = {
+            x = cell.x,
+            y = cell.y,
+            option = options_by_prefab[prefab][angle],
+            flush_only = true
+        }
+        placements_by_cell[key] = placement
+        add_candidates_for_placement(placement)
+        placed_prefab_count = placed_prefab_count + 1
+    end
+end
+-- Candidate discovery may have cached a Tile as empty before a later Prefab
+-- occupied it. Re-query geometry now that the Prefab phase is complete.
+empty_cells = {}
+
+dprint(string.format("Placed %d of %d requested prefabs",
+                     placed_prefab_count, tunnel_prefab_count))
+dprint(string.format("Placing %d tunnel sections", step.vars.iterations))
 for _ = 1, step.vars.iterations do
     local best_neighbours = 0
     local best_distance = math.huge
@@ -1791,7 +1874,8 @@ for _ = 1, step.vars.iterations do
     local prefab_choice = prefab_choices[math.random(#prefab_choices)]
     local candidate = prefab_choice.candidates[
         math.random(#prefab_choice.candidates)]
-    local tile_map_index = math.random(0, 1)
+    local tile_map_index = math.random(
+        0, context:get_tile_map_count("TileMaps") - 1)
     local primitive, primitive_size, section_primitives, slope_connectors =
         create_tunnels_section_primitive("TileMaps", tile_map_index,
                                          layer.vars.corridor_width)
@@ -1799,7 +1883,7 @@ for _ = 1, step.vars.iterations do
            string.format("TileMaps[%d] has no set cells", tile_map_index))
     place_tunnels_section(primitive, primitive_size, section_primitives,
                           slope_connectors, candidate.x,
-                          candidate.y, ANGLES[math.random(#ANGLES)])
+                          candidate.y, candidate.option.angle)
     local placement = {
         x = candidate.x,
         y = candidate.y,

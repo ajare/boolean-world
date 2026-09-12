@@ -204,7 +204,8 @@ void RunScript::placePrimitive(LayerBuildContext& context, Primitive* primitive)
 
 void RunScript::placePrefabInstance(
     LayerBuildContext& context, Prefab const* prefab,
-    int32_t tileX, int32_t tileY, float angle) const {
+    int32_t tileX, int32_t tileY, float angle,
+    float elevationOffset) const {
   if (!prefab) {
     throw CoreException("A script placed an instance of an unknown Prefab");
   }
@@ -212,6 +213,9 @@ void RunScript::placePrefabInstance(
       angle != 180.0f && angle != 270.0f) {
     throw CoreException(
         "A Prefab instance angle must be 0, 90, 180, or 270 degrees");
+  }
+  if (!isfinite(elevationOffset)) {
+    throw CoreException("A Prefab instance elevation offset must be finite");
   }
 
   auto const side = static_cast<float>(prefabTileSide(prefab->getTileSize()));
@@ -224,6 +228,14 @@ void RunScript::placePrefabInstance(
   clones.reserve(prefab->getPrimitives().size());
   for (auto const* source : prefab->getPrimitives()) {
     unique_ptr<Primitive> clone(source->rotatedCopy(angle));
+    if (elevationOffset != 0.0f) {
+      auto properties = clone->getProperties();
+      properties.floorSpan.lowerElevation += elevationOffset;
+      properties.floorSpan.upperElevation += elevationOffset;
+      properties.ceilingSpan.lowerElevation += elevationOffset;
+      properties.ceilingSpan.upperElevation += elevationOffset;
+      clone->setProperties(properties);
+    }
     clone->setPosition(clone->getPosition() + position);
     clone->setEmitterPlacementKey(EmitterPlacementKey{
         tileX, tileY, prefabTileSide(prefab->getTileSize())});

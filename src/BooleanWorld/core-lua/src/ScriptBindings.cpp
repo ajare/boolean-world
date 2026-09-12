@@ -843,8 +843,10 @@ void RunScriptContext::placeMeshPrimitive(
 }
 
 void RunScriptContext::placePrefabInstance(
-    PrefabView view, int32_t tileX, int32_t tileY, float angle) const {
-  mStep->placePrefabInstance(*mBuild, view.prefab, tileX, tileY, angle);
+    PrefabView view, int32_t tileX, int32_t tileY, float angle,
+    float elevationOffset) const {
+  mStep->placePrefabInstance(
+      *mBuild, view.prefab, tileX, tileY, angle, elevationOffset);
 }
 
 tuple<int32_t, int32_t> RunScriptContext::getTile(
@@ -891,8 +893,8 @@ PrimitiveFieldView RunScriptContext::findPrimitiveField(string const& name) cons
   return PrimitiveFieldView{step};
 }
 
-TileMapView RunScriptContext::findTileMap(
-    string const& name, uint32_t index) const {
+DefineTileMaps const* RunScriptContext::findDefineTileMaps(
+    string const& name) const {
   auto& layer = mBuild->getLayer();
   auto const id = layer.findStepIdByName(name);
   if (id == ~0u) {
@@ -918,7 +920,16 @@ TileMapView RunScriptContext::findTileMap(
     throw CoreException(format(
         "DefineTileMaps step '{}' must precede this RunScript step", name));
   }
-  return TileMapView{definitions->getTileMap(index)};
+  return definitions;
+}
+
+TileMapView RunScriptContext::findTileMap(
+    string const& name, uint32_t index) const {
+  return TileMapView{findDefineTileMaps(name)->getTileMap(index)};
+}
+
+uint32_t RunScriptContext::getTileMapCount(string const& name) const {
+  return findDefineTileMaps(name)->getNumTileMaps();
 }
 
 vector<PrimitiveView> RunScriptContext::getBuildPrimitives() const {
@@ -1490,10 +1501,12 @@ void bindScriptTypes(sol::state& lua) {
           &RunScriptContext::placeMeshPrimitive),
       "place_prefab_instance",
       [](RunScriptContext const& context, PrefabView prefab,
-         sol::object const& tileX, sol::object const& tileY, float angle) {
+         sol::object const& tileX, sol::object const& tileY, float angle,
+         sol::optional<float> elevationOffset) {
         context.placePrefabInstance(
             prefab, tileCoordinateFromLua(tileX, "x"),
-            tileCoordinateFromLua(tileY, "y"), angle);
+            tileCoordinateFromLua(tileY, "y"), angle,
+            elevationOffset.value_or(0.0f));
       },
       "get_tile",
       [](RunScriptContext const& context, sol::object const& gridSize,
@@ -1503,6 +1516,7 @@ void bindScriptTypes(sol::state& lua) {
       "find_define_prefabs", &RunScriptContext::findDefinePrefabs,
       "find_primitive_field", &RunScriptContext::findPrimitiveField,
       "find_tile_map", &RunScriptContext::findTileMap,
+      "get_tile_map_count", &RunScriptContext::getTileMapCount,
       "get_build_primitives",
       [](RunScriptContext const& context) {
         return sol::as_table(context.getBuildPrimitives());
