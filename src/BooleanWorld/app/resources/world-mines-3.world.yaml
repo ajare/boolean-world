@@ -358,13 +358,13 @@ world:
                       liquidType: Water
                       floorMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       ceilingMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       wallMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -767,13 +767,13 @@ world:
                       liquidType: Water
                       floorMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       ceilingMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       wallMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -1051,7 +1051,7 @@ world:
                     priority: 20
                     size: [88, 88]
                     primitivePropertySet:
-                      floorZ: -100
+                      floorZ: -200
                       floorGradient: [-0, 0]
                       ceilingZ: 48
                       ceilingGradient: [-0, 0]
@@ -1059,10 +1059,10 @@ world:
                       liquidType: Water
                       floorMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       ceilingMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       wallMaterial:
                         kind: subMaterial
                         reference: builtin.plain.grey
@@ -1070,8 +1070,8 @@ world:
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
                       floorElevationAngle: 0
-                      floorLowerElevation: -100
-                      floorUpperElevation: -100
+                      floorLowerElevation: -200
+                      floorUpperElevation: -200
                       ceilingElevationAngle: 0
                       ceilingLowerElevation: 48
                       ceilingUpperElevation: 48
@@ -1395,13 +1395,13 @@ world:
                       liquidType: Water
                       floorMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       ceilingMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       wallMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -1418,6 +1418,40 @@ world:
                     edgeOverrideFormat: 7
                     shells:
                       - vertices:
+                          - p: [0.71875, -0.71875]
+                            flags: 0
+                            normalMapState: 0
+                            wallMaskState: 0
+                          - p: [1, -0.71875]
+                            flags: 0
+                            edgeMetadata:
+                              - key: flush-connector
+                                value: east
+                            normalMapState: 0
+                            wallMaskState: 0
+                          - p: [1, -0.53125]
+                            flags: 0
+                            normalMapState: 0
+                            wallMaskState: 0
+                          - p: [0.71875, -0.53125]
+                            flags: 0
+                            normalMapState: 0
+                            wallMaskState: 0
+                          - p: [0.71875, 0.71875]
+                            flags: 0
+                            normalMapState: 0
+                            wallMaskState: 0
+                          - p: [0.46875, 0.71875]
+                            flags: 0
+                            normalMapState: 0
+                            wallMaskState: 0
+                          - p: [0.46875, 1]
+                            flags: 0
+                            edgeMetadata:
+                              - key: flush-connector
+                                value: north
+                            normalMapState: 0
+                            wallMaskState: 0
                           - p: [0.28125, 1]
                             flags: 0
                             normalMapState: 0
@@ -1460,14 +1494,14 @@ world:
                             flags: 0
                             normalMapState: 0
                             wallMaskState: 0
-                          - p: [-0.21875, -0.8125]
+                          - p: [-0.21875, -1]
                             flags: 0
                             edgeMetadata:
-                              - key: stope-connector
+                              - key: flush-connector
                                 value: south
                             normalMapState: 0
                             wallMaskState: 0
-                          - p: [-0.03125, -0.8125]
+                          - p: [-0.03125, -1]
                             flags: 0
                             normalMapState: 0
                             wallMaskState: 0
@@ -1479,49 +1513,15 @@ world:
                             flags: 0
                             normalMapState: 0
                             wallMaskState: 0
-                          - p: [0.53125, -0.84375]
+                          - p: [0.53125, -1]
                             flags: 0
                             edgeMetadata:
-                              - key: stope-connector
+                              - key: flush-connector
                                 value: south
                             normalMapState: 0
                             wallMaskState: 0
-                          - p: [0.71875, -0.84375]
+                          - p: [0.71875, -1]
                             flags: 0
-                            normalMapState: 0
-                            wallMaskState: 0
-                          - p: [0.71875, -0.71875]
-                            flags: 0
-                            normalMapState: 0
-                            wallMaskState: 0
-                          - p: [1, -0.71875]
-                            flags: 0
-                            edgeMetadata:
-                              - key: flush-connector
-                                value: east
-                            normalMapState: 0
-                            wallMaskState: 0
-                          - p: [1, -0.53125]
-                            flags: 0
-                            normalMapState: 0
-                            wallMaskState: 0
-                          - p: [0.71875, -0.53125]
-                            flags: 0
-                            normalMapState: 0
-                            wallMaskState: 0
-                          - p: [0.71875, 0.71875]
-                            flags: 0
-                            normalMapState: 0
-                            wallMaskState: 0
-                          - p: [0.46875, 0.71875]
-                            flags: 0
-                            normalMapState: 0
-                            wallMaskState: 0
-                          - p: [0.46875, 1]
-                            flags: 0
-                            edgeMetadata:
-                              - key: flush-connector
-                                value: north
                             normalMapState: 0
                             wallMaskState: 0
                         holes:
@@ -1543,7 +1543,133 @@ world:
                                 normalMapState: 0
                                 wallMaskState: 0
                             islands:
-                              []
+                              - vertices:
+                                  - p: [-0.4564341, 0.17500007]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.40063092, 0.08688983]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.43000102, -0.10695272]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.48286718, -0.24792913]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.43881205, -0.38596854]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.35657582, -0.43883467]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.24496949, -0.39477956]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.2185364, -0.3037323]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.24203247, -0.14807084]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.21559939, 0.013464623]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.071685985, 0.1103859]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.057542384, 0.098637864]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.12509358, 0.048708722]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.14858964, -0.03646452]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.054605372, -0.23324409]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.0281723, -0.3800945]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.2455109, -0.4770158]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.3864873, -0.43589768]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.39529833, -0.24499214]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.33655816, -0.12751177]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.32774714, -0.012968453]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.39823535, 0.18087411]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.45991254, 0.2542993]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.43054244, 0.4217088]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.29250306, 0.47751194]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.15740067, 0.3894017]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [0.034046315, 0.33947256]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.057000943, 0.4217088]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.22441041, 0.498071]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.38007188, 0.43051982]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                  - p: [-0.43881205, 0.27485836]
+                                    flags: 0
+                                    normalMapState: 0
+                                    wallMaskState: 0
+                                holes:
+                                  []
             - id: 2
               name: Tunnels 3
               tileSize: 256
@@ -1823,13 +1949,13 @@ world:
                       liquidType: Water
                       floorMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       ceilingMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       wallMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -2237,13 +2363,13 @@ world:
                       liquidType: Water
                       floorMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       ceilingMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       wallMaterial:
                         kind: subMaterial
-                        reference: builtin.plain.grey
+                        reference: builtin.basalt
                       floorEmbossPreset: ""
                       ceilingEmbossPreset: ""
                       wallEmbossPreset: ""
@@ -2440,7 +2566,7 @@ world:
           primitives:
             - type: Mesh
               vertexTransformerObject:
-                id: 718
+                id: 743
                 parentId: -1
                 position: [-16, 8]
                 transformOffset: [0, 0]
