@@ -10,3 +10,6 @@
 [submodule "ext/sol2"]
 	path = ext/sol2
 	url = https://github.com/ThePhD/sol2.git
+[submodule "ext/dev-scripts"]
+	path = ext/dev-scripts
+	url = https://github.com/ajare/dev-scripts.git
