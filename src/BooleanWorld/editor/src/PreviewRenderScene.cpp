@@ -16,15 +16,6 @@
 namespace editor {
 namespace {
 
-// The named output is always the final offscreen shaded image. Ambient
-// occlusion adds three graph images ahead of its composite; generated water
-// then appends SceneColourResolved and WaterComposite. See
-// StatePlayBooleanWorld::renderWorldThroughTarget, which derives the same
-// layout for gameplay. GTAO from depth adds no scene attachments of its own,
-// so the MRT-normal variant's higher index does not apply here. An active
-// shadow domain inserts one imported graph image before AO output.
-constexpr std::uint32_t outputImageIndex = 6u;
-
 // Launcher's own defaults (StatePlayBooleanWorld::DebugDisplay), so the
 // preview lights the world exactly as the game does. Exposing these as
 // editor-side preview settings is deliberately a later ticket.
@@ -231,16 +222,9 @@ std::uint32_t PreviewRenderScene::render(
   mwRenderSystem->renderScene(
       mScene, camera, {0.0f, 0.0f}, mPipeline->getName());
 
-  auto activeShadowImage =
-      mwRenderSystem->getShadowDomainOptions(
-                        std::string(bw::app::playerTorchShadowDomain))
-          .enabled;
-  auto target = mPipeline->getGraphImageRenderTarget(
-      {outputImageIndex + (activeShadowImage ? 1u : 0u), 1});
-  if (!target) {
-    return 0;
-  }
-
+  // The declared output follows the generated graph's latest WaterComposite
+  // version regardless of images inserted by AO, shadows, or later features.
+  auto target = mPipeline->getOutputRenderTarget("World");
   auto textureId = static_cast<mpp::RenderTexture*>(target.get())->getId();
 
   // After every pass the pipeline runs, straight over the image it resolved.

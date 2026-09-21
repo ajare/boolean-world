@@ -152,9 +152,6 @@ discoverLiquidReflectionPlanes(
 // LIQUID_RETENTION on location 3 in every mode; nothing samples their
 // contents, hence the cheapest format.
 //
-// This is also the count that shifts every later graph image along, so
-// renderWorldThroughTarget resolves its output index through this same
-// function rather than hard-coding a second copy of the total.
 std::vector<mpp::RenderPipelineSceneExtraOutput> worldSceneExtraOutputs(
     bool reservesMrtNormalSlots) {
   std::vector<mpp::RenderPipelineSceneExtraOutput> outputs;
@@ -1781,74 +1778,11 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
         pipeline->getLastGraphExecutionStats());
   }
 
-  // The named output is always the final offscreen shaded image, addressed by
-  // its position among the pipeline's graph images. Every image MPP creates
-  // ahead of it shifts that position: generated water appends the resolved
-  // scene copy and WaterComposite, AO adds three, MRT-normal GTAO also
-  // inserts two scene attachments, an active shadow domain inserts its
-  // imported depth image between the scene depth and the AO images, and the
-  // scene extra outputs are created before all of those. Miscounting does not
-  // fail cleanly - it silently addresses a different image, and presenting one
-  // with no colour attachment (the imported shadow cube) crashes in
-  // Texture::bind on an empty texture list. Derive the extras count from the
-  // same function the pipeline is built from rather than restating it.
-  auto ambientOcclusionEnabled =
-      !mDebugDisplay.fragmentOverdraw &&
-      mDebugDisplay.ambientOcclusionEnabled &&
-      mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
-  auto usesMrtNormals =
-      ambientOcclusionEnabled &&
-      mDebugDisplay.ambientOcclusion == bw::app::AmbientOcclusion::GtaoNormals;
-  auto activeShadowImage =
-      !mDebugDisplay.fragmentOverdraw &&
-      renderSystem->getShadowDomainDepthTarget(
-          std::string(bw::app::playerTorchShadowDomain)) != nullptr;
-  auto sceneExtraOutputCount =
-      ambientOcclusionEnabled
-          ? static_cast<std::uint32_t>(
-                worldSceneExtraOutputs(usesMrtNormals).size())
-          : 0u;
-  auto preWaterOutputImage = ambientOcclusionEnabled
-                                 ? (usesMrtNormals ? 6u : 4u) +
-                                       sceneExtraOutputCount +
-                                       (activeShadowImage ? 1u : 0u)
-                                 : 0u;
-  // Without AO, SceneDepth (and optionally the shadow import) sits between
-  // SceneLdr and the generated-water images. With AO, those earlier images are
-  // already included in preWaterOutputImage, so only the technique-specific
-  // reflection images and WaterComposite remain to be added.
-  auto screenSpaceWater =
-      technique == bw::app::WaterReflectionTechnique::ScreenSpace;
-  auto planarRequested =
-      technique == bw::app::WaterReflectionTechnique::Planar &&
-      !planarPlanes.empty();
-  auto planarWater = planarRequested && !mPlanarReflectionSessionFailed;
-  auto failedPlanarWater = planarRequested && mPlanarReflectionSessionFailed;
-  auto outputImage = preWaterOutputImage;
-  if (mDebugDisplay.fragmentOverdraw) {
-    outputImage = preWaterOutputImage;
-  } else if (ambientOcclusionEnabled) {
-    // Each Planar plane declares its colour and depth images before the opaque
-    // and AO images, then WaterComposite follows the final AO image.
-    outputImage =
-        preWaterOutputImage +
-        (planarWater         ? 2u * static_cast<std::uint32_t>(planarPlanes.size()) + 1u
-         : failedPlanarWater ? 1u
-         : screenSpaceWater  ? 2u
-                             : 0u);
-  } else if (screenSpaceWater) {
-    outputImage = 3u + (activeShadowImage ? 1u : 0u);
-  } else if (planarWater) {
-    outputImage = 2u +
-                  2u * static_cast<std::uint32_t>(planarPlanes.size()) +
-                  (activeShadowImage ? 1u : 0u);
-  } else if (failedPlanarWater) {
-    outputImage = 2u + (activeShadowImage ? 1u : 0u);
-  } else {
-    outputImage = 0u;
-  }
-  auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
-  assert(sceneTarget);
+  // Retrieve the declared final output directly. Its graph image and latest
+  // produced version may move whenever AO, water, shadows, bloom, or MRT
+  // topology changes; the pipeline keeps that implementation detail private.
+  auto sceneTarget = pipeline->getOutputRenderTarget(
+      mDebugDisplay.fragmentOverdraw ? "FragmentOverdraw" : "World");
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
   auto worldTexture = static_cast<mpp::RenderTexture*>(worldTarget.get());
 
