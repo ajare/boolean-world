@@ -10,6 +10,8 @@
 
 #include <core/SurfaceMaterialReference.h>
 
+inline constexpr char PortalWallRenderVariantIdentity[] = "portal-projective-view";
+
 // Rendering-only data that distinguishes one wall surface from another without
 // changing the Surface material it resolves. `identity` is the complete stable
 // value identity of the variant; equivalent values must use the same string.

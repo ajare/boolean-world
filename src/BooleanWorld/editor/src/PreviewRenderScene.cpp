@@ -184,6 +184,10 @@ std::uint32_t PreviewRenderScene::worldSurfaceTriangleCount(
   return mRenderer->getSurfaceTriangleCount(surfaceSet);
 }
 
+bool PreviewRenderScene::renderedPortalView() const {
+  return mRenderer->getSelectedPortal().has_value();
+}
+
 void PreviewRenderScene::worldGeometryChanged() {
   mRenderer->setWorldChanged();
   // WorldRenderer rebuilds model resources lazily. Mark the domain as well so
@@ -219,8 +223,9 @@ std::uint32_t PreviewRenderScene::render(
       pixelSize, secondaryMaterial, frameTime);
 
   mScene->setViewport(0, 0, mWidth, mHeight);
-  mwRenderSystem->renderScene(
-      mScene, camera, {0.0f, 0.0f}, mPipeline->getName());
+  mRenderer->renderScene(
+      worldData, camera, mPipeline,
+      static_cast<uint32_t>(mWidth), static_cast<uint32_t>(mHeight));
 
   // The declared output follows the generated graph's latest WaterComposite
   // version regardless of images inserted by AO, shadows, or later features.

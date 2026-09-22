@@ -63,6 +63,7 @@ struct RenderFixture {
   bool triplanarWallOnly{};
   bool angled{};
   bool continuityJunction{};
+  bool portal{};
   // 0 uses the built-in material; 1 and 2 use identical RGB with alpha 0/1.
   int triplanarAlphaVariant{};
 };
@@ -250,10 +251,18 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     });
   }
   generator.generate(primitives);
+  std::vector<bw::core::PortalPairSnapshot> portalPairs;
+  if (fixture.portal) {
+    auto* layer = world.getActiveLayer();
+    auto pairId = layer->addPortalPair(
+        {{0.0f, 16.0f}, 12.0f, 4.0f, 36.0f},
+        {{0.0f, -16.0f}, 12.0f, 4.0f, 36.0f});
+    portalPairs.push_back({layer->getId(), *layer->getPortalPair(pairId)});
+  }
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
-      world.getWedgeGenerationParameters());
+      world.getWedgeGenerationParameters(), false, portalPairs);
   if (fixture.map == MapFixture::Image) {
     auto mappedWalls = std::ranges::count_if(
         result->getWalls(), [](auto const& wall) {
@@ -393,6 +402,10 @@ std::vector<float> render(
   }
   if (texture == 0)
     throw std::runtime_error("WorldRenderer produced no render texture");
+  if (fixture.portal && !scene.renderedPortalView()) {
+    throw std::runtime_error(
+        "public WorldRenderer scene path did not select or render a Portal view");
+  }
   if (surfaceTriangles) {
     *surfaceTriangles = {
         scene.worldSurfaceTriangleCount(WorldSurfaceSet::Horizontal),
@@ -404,6 +417,17 @@ std::vector<float> render(
 
 void require(bool condition, char const* message) {
   if (!condition) throw std::runtime_error(message);
+}
+
+void portalRendersThroughPublicSceneAndNamedFinalOutput(
+    editor::EditorRenderSystem& renderSystem) {
+  auto image = render(renderSystem, {.portal = true});
+  require(centreRegionEnergy(image) > 0.02,
+          "public Portal render-scene path produced no final named-output image");
+  auto nonBlack = std::ranges::count_if(
+      image, [](float channel) { return channel > 0.08f; });
+  require(nonBlack > image.size() / 20,
+          "Portal final named output retained only its initialized fallback");
 }
 
 void triplanarMaterialsRenderThroughTheRealWorldPrograms(
@@ -583,6 +607,8 @@ int main(int argc, char** argv) {
         triplanarComposesWithEstablishedSurfaceFeatures(renderSystem);
       } else if (scenario == "triplanar-continuity") {
         triplanarWallContinuityRendersThroughTheRealWorldProgram(renderSystem);
+      } else if (scenario == "portal") {
+        portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
       } else {
         std::array<uint32_t, 3> drySurfaceTriangles;
       auto unset = render(renderSystem, {}, &drySurfaceTriangles);

@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <mpp/RenderSystem.h>
@@ -53,6 +54,16 @@ class WorldRenderer3d {
   // The renderer-owned 1x1 zero mask texture bound to TEX2 for every wall
   // mesh without a mask, keeping the shader's mask contract uniform.
   mpp::ResourcePtr mWallMaskZeroTexture;
+  mpp::ResourcePtr mPortalMaterial;
+  mpp::ResourcePtr mPortalFallbackTexture;
+  struct PortalMeshBinding {
+    std::string meshName;
+    std::shared_ptr<mpp::UniformCollection> uniforms;
+    uint32_t textureUnit{};
+  };
+  std::vector<PortalMeshBinding> mPortalMeshBindings;
+  std::set<std::string> mPortalMeshNames;
+  std::set<size_t> mPortalMeshIndices;
   std::string mBatchNamePrefix;
 
   float mGlobalTime;
@@ -105,6 +116,15 @@ public:
   // Replaces every material bucket with the fixed-cost overdraw material and
   // enables blending so repeated fragments accumulate in the scene target.
   void setFragmentOverdraw(bool enabled);
+
+  // Every Portal material bucket shares the selected slot's initialized
+  // texture and projective source-to-auxiliary transform. Calling the fallback
+  // form before the auxiliary draw prevents a pass from sampling its own
+  // render target.
+  void setPortalFallback();
+  void setPortalView(
+      mpp::ResourcePtr const& texture,
+      glm::mat4 const& sourceProjectiveTransform);
 
   void update(
       glm::vec3 const& playerPosition,

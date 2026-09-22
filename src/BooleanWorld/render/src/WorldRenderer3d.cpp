@@ -7,6 +7,7 @@
 #include <mpp/ProgrammaticBasicMaterialStream.h>
 #include <mpp/ProgrammaticProgramStream.h>
 #include <mpp/ProgrammaticTextureStream.h>
+#include <mpp/RenderTexture.h>
 #include <mpp/program/Parser.h>
 
 #include <core/Defines.h>
@@ -25,6 +26,37 @@ using namespace wp::application::resourcesystem;
 namespace {
 constexpr char const* debugProgramName = "BooleanWorldRender.DebugMaterial.Program";
 constexpr char const* debugMaterialName = "BooleanWorldRender.DebugMaterial";
+constexpr char const* portalProgramName = "BooleanWorldRender.Portal.Program";
+constexpr char const* portalMaterialName = "BooleanWorldRender.Portal.Material";
+constexpr char const* portalFallbackTextureName =
+    "BooleanWorldRender.Portal.Fallback";
+
+constexpr char const* portalVertexShader = R"(@@Version
+@@Uniform(mat4 PORTAL_PROJECTIVE_MATRIX);
+void main()
+{
+    vec4 worldPosition = @MMatrix * vec4(@In(POSITION), 1.0);
+    @Out(vec4 PORTAL_CLIP) = @Uniform(PORTAL_PROJECTIVE_MATRIX) * worldPosition;
+    gl_Position = @MCPMatrix * @Vec4(@In(POSITION));
+}
+)";
+
+constexpr char const* portalFragmentShader = R"(@@Version
+@@Texture(sampler2D PORTAL_COLOUR);
+void main()
+{
+    vec4 projected = @In(PORTAL_CLIP);
+    vec2 uv = projected.xy / max(projected.w, 0.00001) * 0.5 + 0.5;
+    vec4 colour = texture(@Texture(PORTAL_COLOUR), clamp(uv, vec2(0.0), vec2(1.0)));
+    // The auxiliary image is already in the scene's pre-presentation colour
+    // domain. Publish it directly so the primary pipeline performs final
+    // colour processing exactly once.
+    @Out(vec4 COLOUR) = vec4(colour.rgb, 1.0);
+    @Out(vec4 BLOOM_MASK) = vec4(0.0);
+    @Out(vec2 SHADING_NORMAL) = vec2(0.0);
+    @Out(float LIQUID_RETENTION) = 1.0;
+}
+)";
 
 // The neutral mask blend set bound before a mesh's primary parameters are
 // known. Wall meshes overwrite it with their primary parameters; masked
@@ -87,6 +119,63 @@ mpp::ResourcePtr getOrCreateDebugMaterial(
 // multiplies the sampled channel by WALL_MASK_ENABLED, which those meshes
 // bind to zero. A 1x1 single-channel zero texture is the neutral bound value,
 // so the mask contract never needs a per-mesh branch on mask availability.
+struct PortalResources {
+  mpp::ResourcePtr material;
+  mpp::ResourcePtr fallbackTexture;
+};
+
+PortalResources getOrCreatePortalResources(
+    mpp::ResourceManager* resourceMgr,
+    mpp::mesh::MeshSpecification const& specification) {
+  auto fallback = resourceMgr->getResource(portalFallbackTextureName, true);
+  if (!fallback) {
+    auto texture = std::make_shared<mpp::ProgrammaticTextureStream>(resourceMgr);
+    texture->setTarget(mpp::TextureTarget::Texture2D);
+    texture->setColourSpace(mpp::TextureColourSpace::Linear);
+    texture->setData([](std::string const&) {
+      mpp::TextureData data;
+      data.width = 1;
+      data.height = 1;
+      data.bitsPerPixel = 32;
+      data.dataType = GL_UNSIGNED_BYTE;
+      data.pixelFormat = GL_RGBA;
+      data.data = new uint8_t[4]{32, 48, 64, 255};
+      return data;
+    });
+    texture->setFiltering(
+        mpp::TextureParams::MinFilter::Linear,
+        mpp::TextureParams::MagFilter::Linear);
+    fallback = resourceMgr->declareResource(
+                              portalFallbackTextureName, texture)
+                   .first;
+  }
+
+  auto program = resourceMgr->getResource(portalProgramName, true);
+  if (!program) {
+    auto parser = std::make_shared<mpp::program::Parser>();
+    parser->setMeshSpecification(specification);
+    parser->setVertexSource(portalVertexShader);
+    parser->setFragmentSource(portalFragmentShader);
+    auto stream = std::make_shared<mpp::ProgrammaticProgramStream>(resourceMgr);
+    stream->setParser(parser);
+    program = resourceMgr->declareResource(portalProgramName, stream).first;
+  }
+
+  auto material = resourceMgr->getResource(portalMaterialName, true);
+  if (!material) {
+    auto stream =
+        std::make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
+    stream->setProgram(portalProgramName);
+    stream->setTexture("PORTAL_COLOUR", portalFallbackTextureName);
+    mpp::ShadowCasterContract shadow;
+    shadow.behaviour = mpp::ShadowCasterContract::Behaviour::Disabled;
+    stream->setShadowCasterContract(shadow);
+    material = resourceMgr->declareResource(portalMaterialName, stream).first;
+  }
+  material->create();
+  return {material, fallback};
+}
+
 mpp::ResourcePtr getOrCreateWallMaskZeroTexture(
     mpp::ResourceManager* resourceMgr) {
   constexpr char const* name = "BooleanWorld.WallMaskZero";
@@ -311,9 +400,13 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
   mDebugMaterial = getOrCreateDebugMaterial(
       resourceMgr, mRenderer->getWorldBatch()->getSpecification());
 
-  // Only the wall batch needs the mask sampler, and only walls can be masked.
+  // Only the wall batch needs the mask sampler and projective Portal material.
   if (mSurfaceSet == WorldSurfaceSet::Walls) {
     mWallMaskZeroTexture = getOrCreateWallMaskZeroTexture(resourceMgr);
+    auto portal = getOrCreatePortalResources(
+        resourceMgr, mRenderer->getWorldBatch()->getSpecification());
+    mPortalMaterial = std::move(portal.material);
+    mPortalFallbackTexture = std::move(portal.fallbackTexture);
   }
 
   mDataProvider->setMeshCount(static_pointer_cast<mpp::Model>(mRenderer->getModel())->getNumMeshes());
@@ -548,6 +641,32 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       auto meshName = worldBatch->formatMeshName(hashValue, false, variant);
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
+
+      if (variant.identity == PortalWallRenderVariantIdentity) {
+        auto material = dynamic_pointer_cast<mpp::Material>(mPortalMaterial);
+        auto program = material
+                           ? dynamic_pointer_cast<mpp::Program>(
+                                 material->getProgram())
+                           : nullptr;
+        auto textureUnit =
+            program ? program->getSamplerUnit("PORTAL_COLOUR") : -1;
+        if (textureUnit < 0) {
+          throw logic_error("Portal projective sampler is unavailable.");
+        }
+        uniforms->setUniform("PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
+        params->setMeshMaterial(meshName, mPortalMaterial);
+        params->setMeshTexture(
+            meshName, static_cast<uint32_t>(textureUnit),
+            mPortalFallbackTexture);
+        mPortalMeshBindings.push_back(
+            {meshName, uniforms, static_cast<uint32_t>(textureUnit)});
+        mPortalMeshNames.insert(meshName);
+        mPortalMeshIndices.insert(meshIndex);
+        mUniforms[meshIndex] = uniforms;
+        mMaterialIndices[meshIndex] = 0;
+        continue;
+      }
+
       useDebugMaterialFor(meshName, resolved.materialIndex);
       if (variant.texture) {
         auto material = dynamic_pointer_cast<mpp::Material>(
@@ -704,7 +823,9 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
   for (auto const& meshName : meshNames) {
     params->setMeshMaterial(
         meshName, enabled ? material
-                          : (mDebugMeshNames.contains(meshName)
+                          : (mPortalMeshNames.contains(meshName)
+                                 ? mPortalMaterial
+                             : mDebugMeshNames.contains(meshName)
                                  ? mDebugMaterial
                                  : mpp::ResourcePtr{}));
     // Turning the diagnostic off restores each mesh's own classification. A
@@ -718,6 +839,29 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
     // Clearing the override restores normal opaque/blended classification.
     params->setMeshDepthPrepass(
         meshName, enabled ? std::optional<bool>{true} : std::nullopt);
+  }
+}
+
+void WorldRenderer3d::setPortalFallback() {
+  if (!mSceneModel || !mPortalFallbackTexture) return;
+  auto params = mSceneModel->getParams();
+  for (auto const& binding : mPortalMeshBindings) {
+    binding.uniforms->updateUniform(
+        "PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
+    params->setMeshTexture(
+        binding.meshName, binding.textureUnit, mPortalFallbackTexture);
+  }
+}
+
+void WorldRenderer3d::setPortalView(
+    mpp::ResourcePtr const& texture,
+    glm::mat4 const& sourceProjectiveTransform) {
+  if (!mSceneModel || !texture) return;
+  auto params = mSceneModel->getParams();
+  for (auto const& binding : mPortalMeshBindings) {
+    binding.uniforms->updateUniform(
+        "PORTAL_PROJECTIVE_MATRIX", sourceProjectiveTransform);
+    params->setMeshTexture(binding.meshName, binding.textureUnit, texture);
   }
 }
 
@@ -743,7 +887,7 @@ void WorldRenderer3d::update(
   // Globals
   for (size_t i = 0; i < mUniforms.size(); ++i) {
     auto const& uc = mUniforms[i];
-    if (uc == nullptr) {
+    if (uc == nullptr || mPortalMeshIndices.contains(i)) {
       continue;
     }
     uc->updateUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);

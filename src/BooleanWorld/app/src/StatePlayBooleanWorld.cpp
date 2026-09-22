@@ -1884,8 +1884,10 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   if (captureRenderGraph) {
     pipeline->requestGraphImageCapture();
   }
-  renderSystem->renderScene(
-      mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
+  mwRenderer->renderScene(
+      *mWorldData, mCamera3d, pipeline,
+      static_cast<uint32_t>(worldTarget->getWidth()),
+      static_cast<uint32_t>(worldTarget->getHeight()));
   if (pipeline->planarReflectionRuntimeFailed() &&
       !mPlanarReflectionSessionFailed) {
     mPlanarReflectionSessionFailed = true;

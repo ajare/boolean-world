@@ -18,6 +18,7 @@
 
 #include <core/World.h>
 
+#include "PortalView.h"
 #include "SecondaryMaterialOptions.h"
 #include "SubMaterialResolver.h"
 #include "SurfaceMaterialResolver.h"
@@ -86,6 +87,10 @@ private:
   // All scale targets are ready for the map's lifetime (ADR 0012), so changing
   // the model's active scale only chooses another target.
   RenderTargets mWorldTargets;
+
+  mpp::ScenePtr mScene;
+  mpp::RenderSystem* mRenderSystem{};
+  std::optional<PortalEndpointKey> mSelectedPortal;
 
 private:
   // Floor/ceiling triangle geometry - unaffected by player position, so
@@ -210,6 +215,19 @@ public:
   // identities held by MPP. Must be called on the main/render thread.
   void publishWorldRenderData(
       PreparedWorldRenderDataPtr const& prepared);
+
+  // Selects and renders at most one live Portal view, then executes the public
+  // scene pipeline. Both gameplay and the editor preview use this entry point;
+  // callers retrieve the declared final output from the pipeline normally.
+  void renderScene(
+      bw::core::WorldData const& worldData,
+      mpp::CameraPtr const& camera,
+      mpp::RenderPipelinePtr const& pipeline,
+      uint32_t width,
+      uint32_t height);
+
+  [[nodiscard]] std::optional<PortalEndpointKey> const&
+  getSelectedPortal() const;
 
   void update(
       bw::core::World* world,

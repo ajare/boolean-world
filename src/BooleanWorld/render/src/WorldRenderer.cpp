@@ -12,6 +12,7 @@
 #include <core/MaterialDefinition.h>
 #include <core/World.h>
 
+#include <mpp/RenderTexture.h>
 #include <willpower/application/resourcesystem/ImageResource.h>
 
 #include "WorldRenderer.h"
@@ -54,6 +55,24 @@ struct NormalMapPayload {
   float strength{1.0f};
   float aspectRatio{1.0f};
 };
+
+bool portalFallbackBelongsTo(
+    bw::core::arr::DetailTriangle const& triangle,
+    bw::core::ResolvedAperture const& aperture) {
+  wp::Vector2 centre{};
+  float elevation{};
+  for (auto const& vertex : triangle.v) {
+    centre += {vertex.position[0], vertex.position[1]};
+    elevation += vertex.position[2];
+  }
+  centre /= 3.0f;
+  elevation /= 3.0f;
+  auto offset = centre - aperture.centre;
+  return std::abs(offset.dot(aperture.front)) <= 0.01f &&
+         std::abs(offset.dot(aperture.tangent)) <= aperture.width * 0.5f + 0.01f &&
+         elevation >= aperture.bottom - 0.01f &&
+         elevation <= aperture.top + 0.01f;
+}
 
 struct MaskPayload {
   mpp::ResourcePtr texture;
@@ -216,6 +235,8 @@ void WorldRenderer::publishWorldRenderData(
 
 void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   mwWorld = world;
+  mScene = scene;
+  mRenderSystem = renderSystem;
 
   // Turn authored ImageResource references into stable variant buckets before
   // the wall batch is created. Disabled and Unset intentionally seed nothing.
@@ -374,6 +395,13 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
       mWallRenderSurfaces.push_back(
           {material, variant, embossPresetId});
     }
+    // Every wall Surface-material bucket has one renderer-owned projective
+    // Portal variant. Only the deterministically selected fallback triangles
+    // enter it; all other endpoints stay in the ordinary initialized bucket.
+    mWallRenderSurfaces.push_back(
+        {material,
+         WallRenderVariant{.identity = PortalWallRenderVariantIdentity},
+         embossPresetId});
   }
   auto fallbackResolver = move(mWallRenderVariantResolver);
   mWallRenderVariantResolver =
@@ -863,6 +891,30 @@ void WorldRenderer::updateWallDataProvider(
                    : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
       };
 
+  bw::core::ResolvedAperture const* selectedAperture = nullptr;
+  if (mSelectedPortal) {
+    auto const* pair = snapshot.findPortalPair(
+        mSelectedPortal->layerId, mSelectedPortal->pairId);
+    if (pair && pair->active) {
+      auto found = std::ranges::find_if(
+          pair->endpoints, [&](auto const& endpoint) {
+            return endpoint.endpointId == mSelectedPortal->endpointId;
+          });
+      if (found != pair->endpoints.end()) selectedAperture = &found->aperture;
+    }
+  }
+  auto isSelectedPortalFallback =
+      [&](uint32_t wallIndex,
+          bw::core::arr::DetailTriangle const& triangle) {
+        return selectedAperture &&
+               std::ranges::find(
+                   selectedAperture->wallIndices, wallIndex) !=
+                   selectedAperture->wallIndices.end() &&
+               triangle.kind ==
+                   bw::core::arr::DetailTriangleKind::PortalFallback &&
+               portalFallbackBelongsTo(triangle, *selectedAperture);
+      };
+
   // A chipped wall draws its remainder plus the chamfer facets instead of its
   // plain surface. Only the coplanar wall remainder follows the player-facing
   // material decision above. A facet is an outward-facing surface in its own
@@ -892,6 +944,9 @@ void WorldRenderer::updateWallDataProvider(
         hash, false, variant);
     auto unmappedAuthoredMesh =
         wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
+    auto portalMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
+        hash, false,
+        WallRenderVariant{.identity = PortalWallRenderVariantIdentity});
     auto backMesh =
         wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
@@ -901,6 +956,8 @@ void WorldRenderer::updateWallDataProvider(
           ++wallCounts[replacement.kind ==
                                bw::core::arr::DetailTriangleKind::SurfaceRemainder
                            ? authoredMesh
+                       : isSelectedPortalFallback(wallIndex, replacement)
+                           ? portalMesh
                        : replacement.kind ==
                                bw::core::arr::DetailTriangleKind::PortalFallback
                            ? backMesh
@@ -958,6 +1015,9 @@ void WorldRenderer::updateWallDataProvider(
           hash, false, variantFor(wall));
       auto unmappedMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
           hash, false);
+      auto portalMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
+          hash, false,
+          WallRenderVariant{.identity = PortalWallRenderVariantIdentity});
       auto backMesh =
           wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
       auto colour = int32_t(wallIndex) == highlightedWall
@@ -972,6 +1032,8 @@ void WorldRenderer::updateWallDataProvider(
               replacement.kind ==
                       bw::core::arr::DetailTriangleKind::SurfaceRemainder
                   ? mesh
+              : isSelectedPortalFallback(uint32_t(wallIndex), replacement)
+                  ? portalMesh
               : replacement.kind ==
                       bw::core::arr::DetailTriangleKind::PortalFallback
                   ? backMesh
@@ -1071,6 +1133,67 @@ void WorldRenderer::updateWallDataProvider(
   }
   wallRenderer.dataProvider->finalizeInternals();
   wallRenderer.dataProvider->setNumPrimitives(wallRenderer.dataProvider->getNumTriangles());
+}
+
+void WorldRenderer::renderScene(
+    bw::core::WorldData const& worldData,
+    mpp::CameraPtr const& camera,
+    mpp::RenderPipelinePtr const& pipeline,
+    uint32_t width,
+    uint32_t height) {
+  if (!mScene || !mRenderSystem || !camera || !pipeline) {
+    throw std::invalid_argument(
+        "Portal-capable World rendering requires a created scene, camera, and pipeline");
+  }
+
+  auto selected = SelectPortalView(
+      worldData.getPortalPairs(),
+      camera->getProjectionTransform() * camera->getViewTransform(),
+      camera->getPosition());
+  auto selectedKey = selected
+                         ? std::optional<PortalEndpointKey>{selected->key}
+                         : std::nullopt;
+  auto facingNormalSides = wallFacingNormalSides(
+      worldData, camera->getPosition());
+  if (selectedKey != mSelectedPortal ||
+      facingNormalSides != mWallFacingNormalSides) {
+    mSelectedPortal = selectedKey;
+    updateWallDataProvider(
+        worldData, facingNormalSides, -1, mMaterialRenderers[2].dataProvider);
+    mWallFacingNormalSides = std::move(facingNormalSides);
+  }
+
+  auto& walls = mMaterialRenderers[2].renderer;
+  if (selected) {
+    auto built = BuildPortalView(
+        *selected, camera->getViewTransform(),
+        camera->getProjectionTransform(), camera->getNearClipDistance(),
+        camera->getFarClipDistance(), width, height);
+    // The auxiliary pass must never sample the target it is producing. Its
+    // visible Portal surfaces therefore use a deterministic initialized
+    // fallback until that pass has completed.
+    walls->setPortalFallback();
+    auto outputs = mRenderSystem->renderAuxiliaryScene(
+        mScene, camera, pipeline->getName(), built.auxiliary);
+    auto renderTexture =
+        std::dynamic_pointer_cast<mpp::RenderTexture>(outputs.colour);
+    if (!renderTexture) {
+      throw std::runtime_error("Portal auxiliary colour output is not a texture");
+    }
+    walls->setPortalView(
+        std::static_pointer_cast<mpp::Resource>(renderTexture),
+        built.sourceProjectiveTransform);
+  } else {
+    walls->setPortalFallback();
+  }
+
+  mRenderSystem->renderScene(
+      mScene, camera, {0.0f, 0.0f}, pipeline->getName());
+}
+
+std::optional<PortalEndpointKey> const&
+WorldRenderer::getSelectedPortal() const {
+  return mSelectedPortal;
 }
 
 void WorldRenderer::update(
