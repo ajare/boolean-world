@@ -25,6 +25,7 @@
 #include <core/World.h>
 #include <mpp/ResourceManager.h>
 
+#include <PortalView.h>
 #include <WorldBatch.h>
 
 #include "EditorRenderSystem.h"
@@ -254,10 +255,12 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   std::vector<bw::core::PortalPairSnapshot> portalPairs;
   if (fixture.portal) {
     auto* layer = world.getActiveLayer();
-    auto pairId = layer->addPortalPair(
-        {{0.0f, 16.0f}, 12.0f, 4.0f, 36.0f},
-        {{0.0f, -16.0f}, 12.0f, 4.0f, 36.0f});
-    portalPairs.push_back({layer->getId(), *layer->getPortalPair(pairId)});
+    for (auto centreX : {-8.0f, 8.0f}) {
+      auto pairId = layer->addPortalPair(
+          {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
+          {{centreX, -16.0f}, 12.0f, 4.0f, 36.0f});
+      portalPairs.push_back({layer->getId(), *layer->getPortalPair(pairId)});
+    }
   }
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(),
@@ -349,7 +352,9 @@ double regionDifference(
 
 std::vector<float> render(
     editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture,
-    std::array<uint32_t, 3>* surfaceTriangles = nullptr) {
+    std::array<uint32_t, 3>* surfaceTriangles = nullptr,
+    uint32_t* portalPasses = nullptr,
+    uint32_t* selectedPortalEndpoints = nullptr) {
   std::string dependencyError;
   auto triplanarDependency = fixture.continuityJunction
                                  ? "World/TriplanarWallContinuityDiagnostic"
@@ -406,6 +411,10 @@ std::vector<float> render(
     throw std::runtime_error(
         "public WorldRenderer scene path did not select or render a Portal view");
   }
+  if (portalPasses) *portalPasses = scene.portalRenderedPassCount();
+  if (selectedPortalEndpoints) {
+    *selectedPortalEndpoints = scene.portalSelectedEndpointCount();
+  }
   if (surfaceTriangles) {
     *surfaceTriangles = {
         scene.worldSurfaceTriangleCount(WorldSurfaceSet::Horizontal),
@@ -421,13 +430,29 @@ void require(bool condition, char const* message) {
 
 void portalRendersThroughPublicSceneAndNamedFinalOutput(
     editor::EditorRenderSystem& renderSystem) {
-  auto image = render(renderSystem, {.portal = true});
+  uint32_t firstPasses{};
+  uint32_t firstSelected{};
+  auto image = render(
+      renderSystem, {.portal = true}, nullptr, &firstPasses, &firstSelected);
   require(centreRegionEnergy(image) > 0.02,
           "public Portal render-scene path produced no final named-output image");
   auto nonBlack = std::ranges::count_if(
       image, [](float channel) { return channel > 0.08f; });
   require(nonBlack > image.size() / 20,
           "Portal final named output retained only its initialized fallback");
+  require(firstSelected >= 2,
+          "multiple visible Portal endpoints did not replace their fallback surfaces");
+  require(firstPasses > firstSelected &&
+              firstPasses <= PortalViewSlotCount,
+          "mutually visible Portal branches did not recurse within the fixed GPU pass budget");
+
+  uint32_t secondPasses{};
+  uint32_t secondSelected{};
+  (void)render(
+      renderSystem, {.portal = true}, nullptr, &secondPasses,
+      &secondSelected);
+  require(secondPasses == firstPasses && secondSelected == firstSelected,
+          "the GPU Portal loop changed its deterministic selected endpoint or pass count");
 }
 
 void triplanarMaterialsRenderThroughTheRealWorldPrograms(

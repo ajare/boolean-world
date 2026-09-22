@@ -214,7 +214,7 @@ WorldRenderer::prepareWorldRenderData(
       wallFacingNormalSides(*prepared->worldData, viewerPosition);
   updateWallDataProvider(
       *prepared->worldData, prepared->wallFacingNormalSides, -1,
-      prepared->providers[2]);
+      prepared->providers[2], {});
   return prepared;
 }
 
@@ -228,6 +228,8 @@ void WorldRenderer::publishWorldRenderData(
         *prepared->providers[index]);
   }
   mWallFacingNormalSides = prepared->wallFacingNormalSides;
+  // Worker-prepared walls intentionally contain fallback surfaces only.
+  mPortalSurfaceSlots.clear();
   mWorldHasChanged = false;
   mHighlightedTriangle = -1;
   mHighlightedCeiling = false;
@@ -395,13 +397,16 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
       mWallRenderSurfaces.push_back(
           {material, variant, embossPresetId});
     }
-    // Every wall Surface-material bucket has one renderer-owned projective
-    // Portal variant. Only the deterministically selected fallback triangles
-    // enter it; all other endpoints stay in the ordinary initialized bucket.
-    mWallRenderSurfaces.push_back(
-        {material,
-         WallRenderVariant{.identity = PortalWallRenderVariantIdentity},
-         embossPresetId});
+    // Fixed projective buckets are created once for the map lifetime. Portal
+    // visibility only moves fallback triangles between these reusable meshes;
+    // it never changes render-pipeline topology.
+    for (uint32_t slot = 0; slot < PortalViewSlotCount; ++slot) {
+      mWallRenderSurfaces.push_back(
+          {material,
+           WallRenderVariant{
+               .identity = portalWallRenderVariantIdentity(slot)},
+           embossPresetId});
+    }
   }
   auto fallbackResolver = move(mWallRenderVariantResolver);
   mWallRenderVariantResolver =
@@ -847,7 +852,8 @@ std::vector<uint8_t> WorldRenderer::wallFacingNormalSides(
 void WorldRenderer::updateWallDataProvider(
     bw::core::WorldData const& snapshot,
     std::vector<uint8_t> const& facingNormalSides,
-    int32_t highlightedWall, DataProvider const& dataProvider) {
+    int32_t highlightedWall, DataProvider const& dataProvider,
+    std::map<PortalEndpointKey, uint32_t> const& portalSurfaceSlots) {
   auto const& worldData = snapshot.getArrangement();
   auto const& walls = snapshot.getWalls();
   if (facingNormalSides.size() != walls.size()) {
@@ -891,29 +897,30 @@ void WorldRenderer::updateWallDataProvider(
                    : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
       };
 
-  bw::core::ResolvedAperture const* selectedAperture = nullptr;
-  if (mSelectedPortal) {
-    auto const* pair = snapshot.findPortalPair(
-        mSelectedPortal->layerId, mSelectedPortal->pairId);
-    if (pair && pair->active) {
+  auto portalSurfaceSlot =
+      [&](uint32_t wallIndex,
+          bw::core::arr::DetailTriangle const& triangle)
+      -> std::optional<uint32_t> {
+    if (triangle.kind !=
+        bw::core::arr::DetailTriangleKind::PortalFallback) {
+      return std::nullopt;
+    }
+    for (auto const& [key, slot] : portalSurfaceSlots) {
+      auto const* pair = snapshot.findPortalPair(key.layerId, key.pairId);
+      if (!pair || !pair->active) continue;
       auto found = std::ranges::find_if(
           pair->endpoints, [&](auto const& endpoint) {
-            return endpoint.endpointId == mSelectedPortal->endpointId;
+            return endpoint.endpointId == key.endpointId;
           });
-      if (found != pair->endpoints.end()) selectedAperture = &found->aperture;
+      if (found == pair->endpoints.end() ||
+          std::ranges::find(found->aperture.wallIndices, wallIndex) ==
+              found->aperture.wallIndices.end()) {
+        continue;
+      }
+      if (portalFallbackBelongsTo(triangle, found->aperture)) return slot;
     }
-  }
-  auto isSelectedPortalFallback =
-      [&](uint32_t wallIndex,
-          bw::core::arr::DetailTriangle const& triangle) {
-        return selectedAperture &&
-               std::ranges::find(
-                   selectedAperture->wallIndices, wallIndex) !=
-                   selectedAperture->wallIndices.end() &&
-               triangle.kind ==
-                   bw::core::arr::DetailTriangleKind::PortalFallback &&
-               portalFallbackBelongsTo(triangle, *selectedAperture);
-      };
+    return std::nullopt;
+  };
 
   // A chipped wall draws its remainder plus the chamfer facets instead of its
   // plain surface. Only the coplanar wall remainder follows the player-facing
@@ -944,24 +951,28 @@ void WorldRenderer::updateWallDataProvider(
         hash, false, variant);
     auto unmappedAuthoredMesh =
         wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
-    auto portalMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
-        hash, false,
-        WallRenderVariant{.identity = PortalWallRenderVariantIdentity});
     auto backMesh =
         wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
     auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
     if (facingNormalSides[wallIndex]) {
       if (suppressed) {
         for (auto const& replacement : replacements) {
-          ++wallCounts[replacement.kind ==
-                               bw::core::arr::DetailTriangleKind::SurfaceRemainder
-                           ? authoredMesh
-                       : isSelectedPortalFallback(wallIndex, replacement)
-                           ? portalMesh
-                       : replacement.kind ==
-                               bw::core::arr::DetailTriangleKind::PortalFallback
-                           ? backMesh
-                           : unmappedAuthoredMesh];
+          auto portalSlot = portalSurfaceSlot(wallIndex, replacement);
+          auto replacementMesh =
+              replacement.kind ==
+                      bw::core::arr::DetailTriangleKind::SurfaceRemainder
+                  ? authoredMesh
+              : portalSlot
+                  ? wallRenderer.renderer->getMeshIndexForMaterialHash(
+                        hash, false,
+                        WallRenderVariant{.identity =
+                                              portalWallRenderVariantIdentity(
+                                                  *portalSlot)})
+              : replacement.kind ==
+                      bw::core::arr::DetailTriangleKind::PortalFallback
+                  ? backMesh
+                  : unmappedAuthoredMesh;
+          ++wallCounts[replacementMesh];
         }
       } else if (projectionData[wallIndex].usesTriplanar) {
         wallCounts[authoredMesh] += static_cast<uint32_t>(
@@ -1015,9 +1026,6 @@ void WorldRenderer::updateWallDataProvider(
           hash, false, variantFor(wall));
       auto unmappedMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
           hash, false);
-      auto portalMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
-          hash, false,
-          WallRenderVariant{.identity = PortalWallRenderVariantIdentity});
       auto backMesh =
           wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
       auto colour = int32_t(wallIndex) == highlightedWall
@@ -1027,19 +1035,26 @@ void WorldRenderer::updateWallDataProvider(
         for (auto const& replacement : replacements) {
           auto rendered = replacement;
           ApplyWallPhysicalUvToRemainder(orientation, wall, rendered);
-          addDetailTriangleToDataProvider(
-              wallRenderer.dataProvider,
+          auto portalSlot =
+              portalSurfaceSlot(uint32_t(wallIndex), replacement);
+          auto replacementMesh =
               replacement.kind ==
                       bw::core::arr::DetailTriangleKind::SurfaceRemainder
                   ? mesh
-              : isSelectedPortalFallback(uint32_t(wallIndex), replacement)
-                  ? portalMesh
+              : portalSlot
+                  ? wallRenderer.renderer->getMeshIndexForMaterialHash(
+                        hash, false,
+                        WallRenderVariant{.identity =
+                                              portalWallRenderVariantIdentity(
+                                                  *portalSlot)})
               : replacement.kind ==
                       bw::core::arr::DetailTriangleKind::PortalFallback
                   ? backMesh
-                  : unmappedMesh,
-              rendered, false, colour, liquidSurfaceHeight, orientation.normal.x,
-              0.0f, -orientation.normal.y);
+                  : unmappedMesh;
+          addDetailTriangleToDataProvider(
+              wallRenderer.dataProvider, replacementMesh, rendered, false,
+              colour, liquidSurfaceHeight, orientation.normal.x, 0.0f,
+              -orientation.normal.y);
         }
         continue;
       }
@@ -1146,47 +1161,73 @@ void WorldRenderer::renderScene(
         "Portal-capable World rendering requires a created scene, camera, and pipeline");
   }
 
-  auto selected = SelectPortalView(
-      worldData.getPortalPairs(),
-      camera->getProjectionTransform() * camera->getViewTransform(),
-      camera->getPosition());
-  auto selectedKey = selected
-                         ? std::optional<PortalEndpointKey>{selected->key}
-                         : std::nullopt;
-  auto facingNormalSides = wallFacingNormalSides(
-      worldData, camera->getPosition());
-  if (selectedKey != mSelectedPortal ||
-      facingNormalSides != mWallFacingNormalSides) {
-    mSelectedPortal = selectedKey;
-    updateWallDataProvider(
-        worldData, facingNormalSides, -1, mMaterialRenderers[2].dataProvider);
-    mWallFacingNormalSides = std::move(facingNormalSides);
-  }
+  mLastPortalViewPlan = mPortalViewPlanner.build(
+      worldData.getPortalPairs(), camera->getViewTransform(),
+      camera->getProjectionTransform(), camera->getNearClipDistance(),
+      camera->getFarClipDistance(), width, height);
+  mSelectedPortal = mLastPortalViewPlan.rootChildren.empty()
+                        ? std::nullopt
+                        : std::optional<PortalEndpointKey>{
+                              mLastPortalViewPlan.rootChildren.front().endpoint};
 
   auto& walls = mMaterialRenderers[2].renderer;
-  if (selected) {
-    auto built = BuildPortalView(
-        *selected, camera->getViewTransform(),
-        camera->getProjectionTransform(), camera->getNearClipDistance(),
-        camera->getFarClipDistance(), width, height);
-    // The auxiliary pass must never sample the target it is producing. Its
-    // visible Portal surfaces therefore use a deterministic initialized
-    // fallback until that pass has completed.
+  std::vector<mpp::ResourcePtr> renderedTextures(
+      mLastPortalViewPlan.nodes.size());
+
+  // Reusing one scene for every node keeps pipeline topology fixed. Geometry
+  // is rebound to the node's visible endpoint slots, and each slot samples
+  // only a child target that completed earlier in deepest-first order.
+  auto currentPortalSurfaceSlots = mPortalSurfaceSlots;
+  auto currentFacingNormalSides = mWallFacingNormalSides;
+  auto configurePortalSurfaces = [&](std::vector<PortalViewPlanEdge> const& edges,
+                                     glm::vec3 const& viewerPosition) {
+    std::map<PortalEndpointKey, uint32_t> desiredSlots;
+    for (auto const& edge : edges) {
+      auto const& child = mLastPortalViewPlan.nodes[edge.childNode];
+      desiredSlots.emplace(edge.endpoint, child.slot);
+    }
+
+    auto facingNormalSides = wallFacingNormalSides(worldData, viewerPosition);
+    if (desiredSlots != currentPortalSurfaceSlots ||
+        facingNormalSides != currentFacingNormalSides) {
+      mPortalSurfaceSlots = desiredSlots;
+      updateWallDataProvider(
+          worldData, facingNormalSides, -1,
+          mMaterialRenderers[2].dataProvider, mPortalSurfaceSlots);
+      walls->refreshGeometry();
+      currentPortalSurfaceSlots = std::move(desiredSlots);
+      currentFacingNormalSides = facingNormalSides;
+    }
     walls->setPortalFallback();
+    for (auto const& edge : edges) {
+      auto const& child = mLastPortalViewPlan.nodes[edge.childNode];
+      auto const& texture = renderedTextures[edge.childNode];
+      if (!texture) {
+        throw std::logic_error(
+            "Portal view dependency was not rendered deepest-first");
+      }
+      walls->setPortalView(
+          child.slot, texture, edge.sourceProjectiveTransform);
+    }
+    return facingNormalSides;
+  };
+
+  for (auto nodeIndex : mLastPortalViewPlan.deepestFirst) {
+    auto const& node = mLastPortalViewPlan.nodes[nodeIndex];
+    configurePortalSurfaces(node.children, node.cameraPosition);
     auto outputs = mRenderSystem->renderAuxiliaryScene(
-        mScene, camera, pipeline->getName(), built.auxiliary);
+        mScene, camera, pipeline->getName(), node.auxiliary);
     auto renderTexture =
         std::dynamic_pointer_cast<mpp::RenderTexture>(outputs.colour);
     if (!renderTexture) {
       throw std::runtime_error("Portal auxiliary colour output is not a texture");
     }
-    walls->setPortalView(
-        std::static_pointer_cast<mpp::Resource>(renderTexture),
-        built.sourceProjectiveTransform);
-  } else {
-    walls->setPortalFallback();
+    renderedTextures[nodeIndex] =
+        std::static_pointer_cast<mpp::Resource>(renderTexture);
   }
 
+  mWallFacingNormalSides = configurePortalSurfaces(
+      mLastPortalViewPlan.rootChildren, camera->getPosition());
   mRenderSystem->renderScene(
       mScene, camera, {0.0f, 0.0f}, pipeline->getName());
 }
@@ -1194,6 +1235,10 @@ void WorldRenderer::renderScene(
 std::optional<PortalEndpointKey> const&
 WorldRenderer::getSelectedPortal() const {
   return mSelectedPortal;
+}
+
+PortalViewPlan const& WorldRenderer::getPortalViewDiagnostics() const {
+  return mLastPortalViewPlan;
 }
 
 void WorldRenderer::update(
@@ -1242,7 +1287,7 @@ void WorldRenderer::update(
       facingNormalSides != mWallFacingNormalSides) {
     updateWallDataProvider(
         worldData, facingNormalSides, highlightedWall,
-        mMaterialRenderers[2].dataProvider);
+        mMaterialRenderers[2].dataProvider, mPortalSurfaceSlots);
     mWallFacingNormalSides = std::move(facingNormalSides);
   }
   mWorldHasChanged = false;

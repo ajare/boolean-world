@@ -60,6 +60,7 @@ class WorldRenderer3d {
     std::string meshName;
     std::shared_ptr<mpp::UniformCollection> uniforms;
     uint32_t textureUnit{};
+    uint32_t slot{};
   };
   std::vector<PortalMeshBinding> mPortalMeshBindings;
   std::set<std::string> mPortalMeshNames;
@@ -123,8 +124,13 @@ public:
   // render target.
   void setPortalFallback();
   void setPortalView(
+      uint32_t slot,
       mpp::ResourcePtr const& texture,
       glm::mat4 const& sourceProjectiveTransform);
+
+  // Uploads a rebuilt CPU wall payload between auxiliary passes without
+  // changing materials, pipeline topology, or frame-global uniforms.
+  void refreshGeometry();
 
   void update(
       glm::vec3 const& playerPosition,

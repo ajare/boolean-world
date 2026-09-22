@@ -188,6 +188,15 @@ bool PreviewRenderScene::renderedPortalView() const {
   return mRenderer->getSelectedPortal().has_value();
 }
 
+std::uint32_t PreviewRenderScene::portalRenderedPassCount() const {
+  return mRenderer->getPortalViewDiagnostics().renderedPassCount;
+}
+
+std::uint32_t PreviewRenderScene::portalSelectedEndpointCount() const {
+  return static_cast<std::uint32_t>(
+      mRenderer->getPortalViewDiagnostics().rootChildren.size());
+}
+
 void PreviewRenderScene::worldGeometryChanged() {
   mRenderer->setWorldChanged();
   // WorldRenderer rebuilds model resources lazily. Mark the domain as well so

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -35,6 +36,15 @@ bw::core::ResolvedPortalPair pair(
   return result;
 }
 
+bw::core::ResolvedPortalPair identityLoopPair(
+    uint32_t layerId, uint32_t pairId, float centreX = 0.0f) {
+  auto result = pair(
+      layerId, pairId, {centreX, 4.0f}, {0.0f, -1.0f}, 1.5f);
+  result.endpoints[1].aperture = {
+      {centreX, 4.0f}, {-1.0f, 0.0f}, {0.0f, 1.0f}, 1.5f, -1.0f, 1.0f, {1}};
+  return result;
+}
+
 void selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering() {
   auto projection = glm::perspective(
       glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
@@ -65,6 +75,124 @@ void selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering() {
   selected = SelectPortalView(candidates, projection * view, {0.0f, 0.0f, 0.0f});
   require(selected && selected->key.layerId == 1,
           "stable Portal identity did not break exact coverage/distance ties");
+}
+
+void plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork() {
+  auto projection = glm::perspective(
+      glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
+  auto view = glm::lookAt(
+      glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
+      glm::vec3{0.0f, 1.0f, 0.0f});
+  std::vector pairs{
+      identityLoopPair(0, 10, -0.75f),
+      identityLoopPair(0, 11, 0.75f)};
+  PortalViewLimits limits;
+  limits.maxRecursionDepth = 1;
+  PortalViewPlanner planner(limits);
+  auto plan = planner.build(
+      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+
+  require(plan.rootChildren.size() == 2,
+          "several visible Portal endpoints did not receive live views");
+  require(plan.renderedPassCount == 1 &&
+              plan.rootChildren[0].childNode == plan.rootChildren[1].childNode,
+          "exact equivalent transformed camera states did not safely share work");
+  require(plan.deepestFirst.size() == 1,
+          "equivalent Portal work produced duplicate auxiliary passes");
+}
+
+void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
+  auto projection = glm::perspective(
+      glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
+  auto view = glm::lookAt(
+      glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
+      glm::vec3{0.0f, 1.0f, 0.0f});
+  std::vector pairs{identityLoopPair(0, 20)};
+
+  PortalViewLimits limits;
+  limits.maxRecursionDepth = 3;
+  PortalViewPlanner planner(limits);
+  auto first = planner.build(
+      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+  require(first.renderedPassCount == 3 && first.deepestFirst.size() == 3,
+          "a mutually visible Portal loop did not produce a bounded deterministic pass count");
+  require(first.cutoffCount(PortalViewCutoffReason::RecursionDepth) != 0,
+          "Portal loop did not report its recursion-depth cutoff");
+  auto revisits = std::ranges::count_if(
+      first.diagnostics, [](auto const& diagnostic) {
+        return diagnostic.selected && diagnostic.endpoint.pairId == 20;
+      });
+  require(revisits == 3,
+          "revisiting a Portal endpoint incorrectly terminated visual recursion");
+
+  auto movedView = glm::lookAt(
+      glm::vec3{0.001f, 0.0f, 0.0f},
+      glm::vec3{0.001f, 0.0f, -1.0f},
+      glm::vec3{0.0f, 1.0f, 0.0f});
+  auto second = planner.build(
+      pairs, movedView, projection, 0.1f, 100.0f, 320, 240);
+  require(second.renderedPassCount == first.renderedPassCount &&
+              second.nodes.size() == first.nodes.size(),
+          "an unchanged Portal loop changed its pass budget");
+  for (size_t index = 0; index < first.nodes.size(); ++index) {
+    require(first.nodes[index].slot == second.nodes[index].slot,
+            "stable Portal slots churned without a visibility change");
+  }
+
+  limits.maxRecursionDepth = 10;
+  limits.maxTargets = 2;
+  limits.maxRenderedPasses = 8;
+  auto targetLimited = PortalViewPlanner(limits).build(
+      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+  require(targetLimited.renderedPassCount == 2 &&
+              targetLimited.cutoffCount(
+                  PortalViewCutoffReason::TargetBudget) != 0,
+          "Portal target budget did not terminate and diagnose a loop");
+
+  limits.maxTargets = 8;
+  limits.maxRenderedPasses = 2;
+  auto frameLimited = PortalViewPlanner(limits).build(
+      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+  require(frameLimited.renderedPassCount == 2 &&
+              frameLimited.cutoffCount(
+                  PortalViewCutoffReason::FrameBudget) != 0,
+          "Portal frame budget did not terminate and diagnose a loop");
+}
+
+void invisibleAndSubThresholdBranchesConsumeNoSlots() {
+  auto projection = glm::perspective(
+      glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
+  auto view = glm::lookAt(
+      glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
+      glm::vec3{0.0f, 1.0f, 0.0f});
+  auto visible = pair(0, 30, {0.0f, 5.0f}, {0.0f, -1.0f});
+  auto backFacing = pair(0, 31, {0.0f, 4.0f}, {0.0f, 1.0f});
+  auto outside = pair(0, 32, {100.0f, 4.0f}, {0.0f, -1.0f});
+  auto tiny = pair(
+      0, 33, {0.0f, 80.0f}, {0.0f, -1.0f}, 0.01f,
+      -0.005f, 0.005f);
+  std::vector pairs{visible, backFacing, outside, tiny};
+  PortalViewLimits limits;
+  limits.maxRecursionDepth = 1;
+  limits.minimumProjectedCoverage = 0.001f;
+  PortalViewPlanner planner(limits);
+  auto plan = planner.build(
+      pairs, view, projection, 0.1f, 100.0f, 320, 240,
+      [](PortalEndpointKey const& key,
+         bw::core::ResolvedAperture const&, glm::mat4 const&) {
+        return key.pairId == 30;
+      });
+
+  require(plan.renderedPassCount == 0 && plan.rootChildren.empty(),
+          "culled Portal branches consumed recursive slots");
+  require(plan.cutoffCount(
+              PortalViewCutoffReason::VisibilityBackFacing) != 0 &&
+              plan.cutoffCount(
+                  PortalViewCutoffReason::VisibilityOutOfFrustum) != 0 &&
+              plan.cutoffCount(
+                  PortalViewCutoffReason::VisibilityOccluded) != 0 &&
+              plan.cutoffCount(PortalViewCutoffReason::ProjectedArea) != 0,
+          "Portal visibility and projected-area cutoff diagnostics were incomplete");
 }
 
 void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
@@ -117,8 +245,11 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
 int main() {
   try {
     selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering();
+    plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork();
+    loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots();
+    invisibleAndSubThresholdBranchesConsumeNoSlots();
     observingCameraUsesTheCanonicalRigidTransformAndExactProjection();
-    std::cout << "Portal view selection and transforms passed\n";
+    std::cout << "Bounded Portal view planning and transforms passed\n";
     return 0;
   } catch (std::exception const& error) {
     std::cerr << error.what() << '\n';

@@ -90,6 +90,9 @@ private:
 
   mpp::ScenePtr mScene;
   mpp::RenderSystem* mRenderSystem{};
+  PortalViewPlanner mPortalViewPlanner;
+  PortalViewPlan mLastPortalViewPlan;
+  std::map<PortalEndpointKey, uint32_t> mPortalSurfaceSlots;
   std::optional<PortalEndpointKey> mSelectedPortal;
 
 private:
@@ -119,7 +122,8 @@ private:
   void updateWallDataProvider(
       bw::core::WorldData const& worldData,
       std::vector<uint8_t> const& facingNormalSides,
-      int32_t highlightedWall, DataProvider const& dataProvider);
+      int32_t highlightedWall, DataProvider const& dataProvider,
+      std::map<PortalEndpointKey, uint32_t> const& portalSurfaceSlots);
 
   uint32_t addVertexToDataProvider(
       DataProvider dataProvider, uint32_t meshIndex, float px, float py,
@@ -216,9 +220,9 @@ public:
   void publishWorldRenderData(
       PreparedWorldRenderDataPtr const& prepared);
 
-  // Selects and renders at most one live Portal view, then executes the public
-  // scene pipeline. Both gameplay and the editor preview use this entry point;
-  // callers retrieve the declared final output from the pipeline normally.
+  // Plans and renders bounded Portal branches deepest-first, then executes the
+  // public scene pipeline. Both gameplay and the editor preview use this entry
+  // point; callers retrieve the declared final output normally.
   void renderScene(
       bw::core::WorldData const& worldData,
       mpp::CameraPtr const& camera,
@@ -228,6 +232,7 @@ public:
 
   [[nodiscard]] std::optional<PortalEndpointKey> const&
   getSelectedPortal() const;
+  [[nodiscard]] PortalViewPlan const& getPortalViewDiagnostics() const;
 
   void update(
       bw::core::World* world,

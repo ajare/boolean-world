@@ -4,13 +4,30 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include <mpp/Resource.h>
 #include <mpp/UniformCollection.h>
 
 #include <core/SurfaceMaterialReference.h>
 
-inline constexpr char PortalWallRenderVariantIdentity[] = "portal-projective-view";
+inline std::string portalWallRenderVariantIdentity(uint32_t slot) {
+  return "portal-projective-view-" + std::to_string(slot);
+}
+
+inline std::optional<uint32_t> portalWallRenderVariantSlot(
+    std::string const& identity) {
+  constexpr std::string_view prefix = "portal-projective-view-";
+  if (!identity.starts_with(prefix)) return std::nullopt;
+  auto suffix = identity.substr(prefix.size());
+  if (suffix.empty()) return std::nullopt;
+  uint32_t slot{};
+  for (auto character : suffix) {
+    if (character < '0' || character > '9') return std::nullopt;
+    slot = slot * 10u + static_cast<uint32_t>(character - '0');
+  }
+  return slot;
+}
 
 // Rendering-only data that distinguishes one wall surface from another without
 // changing the Surface material it resolves. `identity` is the complete stable

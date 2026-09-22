@@ -100,6 +100,8 @@ public:
   [[nodiscard]] std::uint32_t worldSurfaceTriangleCount(
       WorldSurfaceSet surfaceSet) const;
   [[nodiscard]] bool renderedPortalView() const;
+  [[nodiscard]] std::uint32_t portalRenderedPassCount() const;
+  [[nodiscard]] std::uint32_t portalSelectedEndpointCount() const;
 
   // Rebuilds this frame's world geometry and renders it into the pipeline's
   // offscreen images. Returns the OpenGL texture id of the resolved output

@@ -357,6 +357,12 @@ void WorldRenderer3d::updateMaterialUniforms(
   // mapped variant as well as the ordinary bucket, without touching the
   // variant's independently bound image uniforms and texture.
   for (auto const& surface : mWallRenderSurfaces) {
+    // Portal buckets use their own minimal projective program and carry none
+    // of the authored wall-material uniforms updated by editor drafts.
+    if (surface.variant &&
+        portalWallRenderVariantSlot(surface.variant->identity)) {
+      continue;
+    }
     auto resolved = mwResolver->resolve(
         surface.material, surface.embossPresetId);
     if (resolved.hash() == bakedMaterialHash) {
@@ -642,7 +648,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
 
-      if (variant.identity == PortalWallRenderVariantIdentity) {
+      if (auto portalSlot = portalWallRenderVariantSlot(variant.identity)) {
         auto material = dynamic_pointer_cast<mpp::Material>(mPortalMaterial);
         auto program = material
                            ? dynamic_pointer_cast<mpp::Program>(
@@ -659,7 +665,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
             meshName, static_cast<uint32_t>(textureUnit),
             mPortalFallbackTexture);
         mPortalMeshBindings.push_back(
-            {meshName, uniforms, static_cast<uint32_t>(textureUnit)});
+            {meshName, uniforms, static_cast<uint32_t>(textureUnit),
+             *portalSlot});
         mPortalMeshNames.insert(meshName);
         mPortalMeshIndices.insert(meshIndex);
         mUniforms[meshIndex] = uniforms;
@@ -854,15 +861,21 @@ void WorldRenderer3d::setPortalFallback() {
 }
 
 void WorldRenderer3d::setPortalView(
+    uint32_t slot,
     mpp::ResourcePtr const& texture,
     glm::mat4 const& sourceProjectiveTransform) {
   if (!mSceneModel || !texture) return;
   auto params = mSceneModel->getParams();
   for (auto const& binding : mPortalMeshBindings) {
+    if (binding.slot != slot) continue;
     binding.uniforms->updateUniform(
         "PORTAL_PROJECTIVE_MATRIX", sourceProjectiveTransform);
     params->setMeshTexture(binding.meshName, binding.textureUnit, texture);
   }
+}
+
+void WorldRenderer3d::refreshGeometry() {
+  if (mRenderer) mRenderer->update();
 }
 
 void WorldRenderer3d::update(
