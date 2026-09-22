@@ -281,8 +281,12 @@ The per-dimension fraction of the active 3D world target used by Planar water-re
 _Avoid_: reflection render scale (Render scale already names the resolution of the 3D world)
 
 **Liquid-adjacency**:
-The relation between two solid Arrangement faces across whose shared edge Hydraulic cells may link: both faces must be solid and some positive-clearance part of the shared opening must exist. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face only where the Border wall is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where reached, an open exterior link acts as a permanent drain.
-_Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when no traversable opening exists)
+The relation between two solid Arrangement faces across whose shared edge Hydraulic cells may link: both faces must be solid and some positive-clearance part of the shared opening must exist. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face only where the Border wall is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where reached, an open exterior link acts as a permanent drain. Distinct from Portal liquid-adjacency, which joins faces that share no Arrangement edge.
+_Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when no traversable opening exists), Portal liquid-adjacency
+
+**Portal liquid-adjacency**:
+The generated bidirectional relation between Hydraulic cells touching the two resolved apertures of an active Portal pair. It is separate from ordinary shared-edge Liquid-adjacency and wall collision. Each resolved lower edge is its side's Portal Sill, and surface elevation maps by the same height above that edge at both endpoints. Generation accepts Portal pairs into one deterministic elevation-offset graph; a pair that would close a contradictory accumulated-offset cycle is diagnosed and omitted from this relation without deactivating its rendering or player traversal. Resolved width decides whether the relation exists and is retained for possible future conductance, but does not weight instantaneous equilibrium.
+_Avoid_: Liquid-adjacency (the ordinary shared-edge relation), Hydraulic link (which crosses a shared edge), Portal flow rate (equilibrium is instantaneous)
 
 **Hydraulic cell**:
 One generated Arrangement triangle together with its affine floor and ceiling functions and derived Liquid state. It is the unit whose integrated capacity determines how much of a horizontal Pool it can hold and whose wet portion is clipped to produce visible Liquid geometry; its World-plane triangle remains ordinary derived triangulation, never new Arrangement topology.
@@ -297,7 +301,7 @@ A maximal set of Hydraulic cells connected by Hydraulic links. Its liquid settle
 _Avoid_: lake, basin, pond, Pool (a Wet component may hold several)
 
 **Pool**:
-One set of Hydraulic cells within a Wet component holding Liquid at a single shared surface elevation. Two Pools become one the moment their combined equilibrium would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
+One set of Hydraulic cells within a Wet component holding Liquid at a single shared surface elevation, or at endpoint-relative elevations when joined by Portal liquid-adjacency. Two Pools become one the moment their combined equilibrium would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
 _Avoid_: Wet component (the connectivity, not the body of Liquid), lake, pond
 
 **Sill**:

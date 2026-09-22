@@ -13,6 +13,7 @@
 #include "core/ChipGenerationParameters.h"
 #include "core/Elevation.h"
 #include "core/Primitive.h"
+#include "core/Portal.h"
 #include "core/Stats.h"
 #include "core/WallMaskOverride.h"
 #include "core/WallNormalMapOverride.h"
@@ -477,7 +478,8 @@ bool PointInFace(
 // assumption remains. Pools cross only links whose sloped Sill they reach.
 [[nodiscard]] LiquidState ComputeLiquidState(
     ArrangementResult const& arrangement,
-    std::vector<ArrangementTriangle> const& triangles);
+    std::vector<ArrangementTriangle> const& triangles,
+    std::vector<PortalLiquidAdjacency> const& portalAdjacency = {});
 
 // Flat-world compatibility view: one settled depth per Arrangement face.
 // New position-dependent consumers use LiquidState through ArrangementWorldData.

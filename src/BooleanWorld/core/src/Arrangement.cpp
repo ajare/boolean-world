@@ -2163,29 +2163,107 @@ vector<float> ComputeUndistributedLiquidDepths(
 }
 
 namespace {
-// Integrated capacity of one prospective Pool at a horizontal elevation.
+struct LiquidSettlementLink {
+  uint32_t cell0{};
+  uint32_t cell1{};
+  double canonicalSill{};
+  bool drain{false};
+};
+
+// Every accepted edge contributes an elevation relation, independently of
+// whether Liquid reaches its Sill. Offsets put each Hydraulic cell into one
+// canonical elevation frame: localSurface = canonicalSurface + offset[cell].
+// Portal cycle consistency was already checked while building adjacency.
+vector<double> BuildLiquidElevationOffsets(
+    uint32_t cellCount,
+    vector<HydraulicLink> const& ordinaryLinks,
+    vector<PortalLiquidAdjacency> const& portalAdjacency) {
+  vector<vector<pair<uint32_t, double>>> graph(cellCount);
+  auto append = [&](uint32_t first, uint32_t second, double delta) {
+    if (first >= cellCount || second >= cellCount) return;
+    graph[first].push_back({second, delta});
+    graph[second].push_back({first, -delta});
+  };
+  for (auto const& link : ordinaryLinks) {
+    if (!link.drain) append(link.cell0, link.cell1, 0.0);
+  }
+  for (auto const& link : portalAdjacency) {
+    append(link.cell0, link.cell1, link.elevationOffset);
+  }
+
+  vector<double> offsets(cellCount, 0.0);
+  vector<bool> visited(cellCount, false);
+  vector<uint32_t> pending;
+  for (uint32_t start = 0; start < cellCount; ++start) {
+    if (visited[start]) continue;
+    visited[start] = true;
+    pending = {start};
+    for (size_t next = 0; next < pending.size(); ++next) {
+      auto cell = pending[next];
+      for (auto const& [neighbour, delta] : graph[cell]) {
+        if (visited[neighbour]) continue;
+        offsets[neighbour] = offsets[cell] + delta;
+        visited[neighbour] = true;
+        pending.push_back(neighbour);
+      }
+    }
+  }
+  return offsets;
+}
+
+vector<LiquidSettlementLink> BuildLiquidSettlementLinks(
+    vector<HydraulicLink> const& ordinaryLinks,
+    vector<PortalLiquidAdjacency> const& portalAdjacency,
+    vector<double> const& offsets) {
+  vector<LiquidSettlementLink> result;
+  result.reserve(ordinaryLinks.size() + portalAdjacency.size());
+  for (auto const& link : ordinaryLinks) {
+    result.push_back(
+        {link.cell0, link.cell1, link.sill - offsets[link.cell0],
+         link.drain});
+  }
+  for (auto const& link : portalAdjacency) {
+    result.push_back(
+        {link.cell0, link.cell1, link.sill0 - offsets[link.cell0], false});
+  }
+  sort(result.begin(), result.end(), [](auto const& left, auto const& right) {
+    return tie(
+               left.canonicalSill, left.cell0, left.cell1, left.drain) <
+           tie(
+               right.canonicalSill, right.cell0, right.cell1, right.drain);
+  });
+  return result;
+}
+
+// Integrated capacity of one prospective Pool at a canonical elevation.
 double LiquidCapacityBelow(
     vector<HydraulicCell> const& cells,
     vector<uint32_t> const& cellIndices,
+    vector<double> const& offsets,
     double elevation) {
   double total = 0.0;
   for (auto cellIndex : cellIndices) {
-    total += cells[cellIndex].volumeBelow(elevation);
+    total += cells[cellIndex].volumeBelow(elevation + offsets[cellIndex]);
   }
   return total;
 }
 
 std::array<double, 2> LiquidElevationBounds(
     vector<HydraulicCell> const& cells,
-    vector<uint32_t> const& cellIndices) {
+    vector<uint32_t> const& cellIndices,
+    vector<double> const& offsets) {
   std::array<double, 2> bounds{
       numeric_limits<double>::infinity(),
       -numeric_limits<double>::infinity()};
   for (auto cellIndex : cellIndices) {
     auto const& cell = cells[cellIndex];
     for (auto const& position : cell.positions) {
-      bounds[0] = min(bounds[0], double(cell.floor.evaluate(position)));
-      bounds[1] = max(bounds[1], double(cell.ceiling.evaluate(position)));
+      bounds[0] = min(
+          bounds[0],
+          double(cell.floor.evaluate(position)) - offsets[cellIndex]);
+      bounds[1] = max(
+          bounds[1],
+          double(cell.ceiling.evaluate(position)) - offsets[cellIndex]);
     }
   }
   return bounds;
@@ -2197,13 +2275,15 @@ std::array<double, 2> LiquidElevationBounds(
 double SolveLiquidLevel(
     vector<HydraulicCell> const& cells,
     vector<uint32_t> const& cellIndices,
+    vector<double> const& offsets,
     double volume) {
   if (cellIndices.empty()) {
     return -numeric_limits<double>::infinity();
   }
-  auto bounds = LiquidElevationBounds(cells, cellIndices);
+  auto bounds = LiquidElevationBounds(cells, cellIndices, offsets);
   if (volume <= 0.0) return bounds[0];
-  if (LiquidCapacityBelow(cells, cellIndices, bounds[1]) <= volume) {
+  if (LiquidCapacityBelow(
+          cells, cellIndices, offsets, bounds[1]) <= volume) {
     return bounds[1];
   }
 
@@ -2213,7 +2293,7 @@ double SolveLiquidLevel(
   // ULP for ordinary World scales while keeping the work data-independent.
   for (int iteration = 0; iteration < 64; ++iteration) {
     auto middle = std::midpoint(lower, upper);
-    if (LiquidCapacityBelow(cells, cellIndices, middle) < volume) {
+    if (LiquidCapacityBelow(cells, cellIndices, offsets, middle) < volume) {
       lower = middle;
     } else {
       upper = middle;
@@ -2309,7 +2389,8 @@ vector<LiquidSurfaceTriangle> BuildLiquidSurfaceTriangles(
 
 LiquidState ComputeLiquidState(
     ArrangementResult const& arrangement,
-    vector<ArrangementTriangle> const& triangles) {
+    vector<ArrangementTriangle> const& triangles,
+    vector<PortalLiquidAdjacency> const& portalAdjacency) {
   LiquidState result;
   auto faceCount = uint32_t(arrangement.faces.size());
   result.faceDepths.assign(faceCount, 0.0f);
@@ -2333,9 +2414,16 @@ LiquidState ComputeLiquidState(
         undistributed[face] * result.cells[cellIndex].worldArea;
   }
 
+  auto ordinaryLinks = BuildHydraulicLinks(arrangement, result.cells);
+  auto elevationOffsets = BuildLiquidElevationOffsets(
+      cellCount, ordinaryLinks, portalAdjacency);
+  auto links = BuildLiquidSettlementLinks(
+      ordinaryLinks, portalAdjacency, elevationOffsets);
+
   // Union-find over Hydraulic cells plus one permanent exterior-drain node.
-  // Each group is a Pool: its cells share one surface elevation, conserve one
-  // volume, and remember whether they have reached the exterior and emptied.
+  // Each group is a Pool: its cells share one canonical surface elevation
+  // (mapped to local elevations by Portal offsets), conserve one volume, and
+  // remember whether they have reached the exterior and emptied.
   auto drainNode = cellCount;
   auto nodeCount = cellCount + 1;
   vector<uint32_t> parent(nodeCount);
@@ -2352,8 +2440,8 @@ LiquidState ComputeLiquidState(
     members[node] = {node};
     groupVolume[node] = volumes[node];
     if (volumes[node] > 0.0) {
-      groupLevel[node] =
-          SolveLiquidLevel(result.cells, members[node], volumes[node]);
+      groupLevel[node] = SolveLiquidLevel(
+          result.cells, members[node], elevationOffsets, volumes[node]);
     }
   }
 
@@ -2364,8 +2452,6 @@ LiquidState ComputeLiquidState(
     }
     return node;
   };
-
-  auto links = BuildHydraulicLinks(arrangement, result.cells);
 
   // Rising-level fill: repeatedly take the lowest sill whose liquid has
   // actually risen high enough to cross it, and resolve what crossing it
@@ -2393,7 +2479,8 @@ LiquidState ComputeLiquidState(
       auto root0 = findRoot(link.cell0);
       auto root1 = findRoot(link.drain ? drainNode : link.cell1);
       if (root0 == root1 ||
-          max(groupLevel[root0], groupLevel[root1]) < link.sill) {
+          max(groupLevel[root0], groupLevel[root1]) <
+              link.canonicalSill) {
         continue;
       }
 
@@ -2407,9 +2494,11 @@ LiquidState ComputeLiquidState(
       auto combinedLevel =
           drained || combinedVolume <= 0.0
               ? -numeric_limits<double>::infinity()
-              : SolveLiquidLevel(result.cells, combined, combinedVolume);
+              : SolveLiquidLevel(
+                    result.cells, combined, elevationOffsets,
+                    combinedVolume);
 
-      if (drained || combinedLevel >= link.sill) {
+      if (drained || combinedLevel >= link.canonicalSill) {
         // One body of liquid. Merging changes its surface elevation, so
         // restart from the lowest sill rather than continuing down a stale
         // ordering.
@@ -2428,8 +2517,9 @@ LiquidState ComputeLiquidState(
       // elevations, with the donor left exactly at the sill.
       auto donor = groupLevel[root0] >= groupLevel[root1] ? root0 : root1;
       auto recipient = donor == root0 ? root1 : root0;
-      auto retained =
-          LiquidCapacityBelow(result.cells, members[donor], link.sill);
+      auto retained = LiquidCapacityBelow(
+          result.cells, members[donor], elevationOffsets,
+          link.canonicalSill);
       auto spilled = groupVolume[donor] - retained;
       if (spilled <= 0.0) {
         // Already brim-full at this sill and holding nothing back. Re-running
@@ -2439,12 +2529,13 @@ LiquidState ComputeLiquidState(
         continue;
       }
       groupVolume[donor] = retained;
-      groupLevel[donor] = link.sill;
+      groupLevel[donor] = link.canonicalSill;
       groupVolume[recipient] += spilled;
       groupLevel[recipient] =
           groupVolume[recipient] > 0.0
               ? SolveLiquidLevel(
-                    result.cells, members[recipient], groupVolume[recipient])
+                    result.cells, members[recipient], elevationOffsets,
+                    groupVolume[recipient])
               : -numeric_limits<double>::infinity();
       flowing = true;
       break;
@@ -2453,7 +2544,8 @@ LiquidState ComputeLiquidState(
 
   for (uint32_t cellIndex = 0; cellIndex < cellCount; ++cellIndex) {
     auto level = groupLevel[findRoot(cellIndex)];
-    result.poolElevations[cellIndex] = level;
+    auto localLevel = level + elevationOffsets[cellIndex];
+    result.poolElevations[cellIndex] = localLevel;
 
     // Legacy flat-world callers still receive one depth per face. There is no
     // truthful scalar depth for a sloped face, so its compatibility value
@@ -2469,7 +2561,7 @@ LiquidState ComputeLiquidState(
         0.0, double(properties.ceilingZ.baseElevation) -
                  properties.floorZ.baseElevation);
     auto depth = float(clamp(
-        level - properties.floorZ.baseElevation, 0.0, clearance));
+        localLevel - properties.floorZ.baseElevation, 0.0, clearance));
     result.faceDepths[faceIndex] = max(result.faceDepths[faceIndex], depth);
   }
   result.surfaceTriangles =

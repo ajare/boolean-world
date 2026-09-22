@@ -13,6 +13,7 @@ namespace bw::core {
 namespace arr {
 struct ArrangementResult;
 struct ArrangementWall;
+struct HydraulicCell;
 }  // namespace arr
 
 // The authored rectangular opening requested by one Portal endpoint. The
@@ -77,6 +78,17 @@ enum class PortalResolutionDiagnostic : uint8_t {
 [[nodiscard]] BW_API std::string_view PortalResolutionDiagnosticText(
     PortalResolutionDiagnostic diagnostic);
 
+// Liquid-specific generation failures do not deactivate rendering or player
+// traversal. A conflicting pair remains an active Portal but contributes no
+// portal liquid-adjacency to this snapshot.
+enum class PortalLiquidDiagnostic : uint8_t {
+  NoHydraulicCellAtEndpoint,
+  ContradictoryElevationCycle
+};
+
+[[nodiscard]] BW_API std::string_view PortalLiquidDiagnosticText(
+    PortalLiquidDiagnostic diagnostic);
+
 // Immutable generation-side rectangle. wallIndices refer only to the owning
 // ArrangementWorldData snapshot and are intentionally absent from authored
 // serialization.
@@ -105,6 +117,36 @@ struct ResolvedPortalPair {
   bool active{false};
   PortalResolutionDiagnostic diagnostic{PortalResolutionDiagnostic::None};
   std::array<ResolvedPortalEndpoint, 2> endpoints{};
+};
+
+// A generated, bidirectional connection between Hydraulic cells touching the
+// two resolved apertures. This is intentionally distinct from ordinary
+// shared-edge Hydraulic links and from wall collision. At equilibrium the
+// destination surface is elevationOffset above the source surface; sill0 and
+// sill1 are the two resolved lower edges and differ by that same offset.
+struct PortalLiquidAdjacency {
+  uint32_t layerId{};
+  uint32_t pairId{};
+  uint32_t cell0{};
+  uint32_t cell1{};
+  uint32_t face0{};
+  uint32_t face1{};
+  double sill0{};
+  double sill1{};
+  double elevationOffset{};
+  float resolvedWidth{};
+};
+
+struct PortalLiquidAdjacencyDiagnostic {
+  uint32_t layerId{};
+  uint32_t pairId{};
+  PortalLiquidDiagnostic diagnostic{
+      PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint};
+};
+
+struct PortalLiquidAdjacencyResult {
+  std::vector<PortalLiquidAdjacency> adjacency;
+  std::vector<PortalLiquidAdjacencyDiagnostic> diagnostics;
 };
 
 // The canonical rigid mapping between the two vertical endpoint frames. The
@@ -141,5 +183,16 @@ struct PortalPairSnapshot {
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
     std::vector<PortalPairSnapshot> const& pairs);
+
+// Resolves active apertures onto their incident Hydraulic cells, then accepts
+// Portal pairs in stable (Layer id, pair id) order. Ordinary links participate
+// in the offset graph. A pair that would close a contradictory elevation cycle
+// is diagnosed and omitted atomically.
+[[nodiscard]] BW_API PortalLiquidAdjacencyResult
+BuildPortalLiquidAdjacency(
+    arr::ArrangementResult const& arrangement,
+    std::vector<arr::ArrangementWall> const& walls,
+    std::vector<arr::HydraulicCell> const& cells,
+    std::vector<ResolvedPortalPair> const& pairs);
 
 }  // namespace bw::core

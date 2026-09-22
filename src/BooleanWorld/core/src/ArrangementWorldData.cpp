@@ -158,7 +158,17 @@ ArrangementWorldData::ArrangementWorldData(
   }
   timer.restart();
 
-  mLiquidState = arr::ComputeLiquidState(*mArrangement, mTriangles);
+  auto hasActivePortal = std::ranges::any_of(
+      mPortalPairs, [](auto const& pair) { return pair.active; });
+  if (hasActivePortal) {
+    auto portalLiquid = BuildPortalLiquidAdjacency(
+        *mArrangement, mWalls,
+        arr::BuildHydraulicCells(*mArrangement, mTriangles), mPortalPairs);
+    mPortalLiquidAdjacency = std::move(portalLiquid.adjacency);
+    mPortalLiquidDiagnostics = std::move(portalLiquid.diagnostics);
+  }
+  mLiquidState = arr::ComputeLiquidState(
+      *mArrangement, mTriangles, mPortalLiquidAdjacency);
   if (stats != nullptr) {
     stats->liquidEquilibriumTimeNs = timer.elapsedNanoseconds();
   }
@@ -361,6 +371,16 @@ ResolvedPortalPair const* ArrangementWorldData::findPortalPair(
         return pair.layerId == layerId && pair.pairId == pairId;
       });
   return found == mPortalPairs.end() ? nullptr : &*found;
+}
+
+std::vector<PortalLiquidAdjacency> const&
+ArrangementWorldData::getPortalLiquidAdjacency() const {
+  return mPortalLiquidAdjacency;
+}
+
+std::vector<PortalLiquidAdjacencyDiagnostic> const&
+ArrangementWorldData::getPortalLiquidDiagnostics() const {
+  return mPortalLiquidDiagnostics;
 }
 
 std::vector<arr::HydraulicCell> const&

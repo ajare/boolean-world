@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 
 #include "common/GameDefines.h"
@@ -42,6 +44,51 @@ struct Interval {
   float begin{};
   float end{};
   uint32_t wallIndex{};
+};
+
+// Weighted union-find for elevation constraints. weight[node] is the local
+// surface-elevation offset from node to its parent. A constraint (a,b,delta)
+// means elevation(b) - elevation(a) == delta.
+class ElevationOffsetGraph {
+  std::vector<uint32_t> mParent;
+  std::vector<uint32_t> mSize;
+  std::vector<double> mWeight;
+
+  std::pair<uint32_t, double> rootAndWeight(uint32_t node) {
+    if (mParent[node] == node) return {node, 0.0};
+    auto [root, parentWeight] = rootAndWeight(mParent[node]);
+    mWeight[node] += parentWeight;
+    mParent[node] = root;
+    return {root, mWeight[node]};
+  }
+
+public:
+  explicit ElevationOffsetGraph(size_t count)
+      : mParent(count), mSize(count, 1), mWeight(count, 0.0) {
+    std::iota(mParent.begin(), mParent.end(), 0u);
+  }
+
+  bool constrain(uint32_t first, uint32_t second, double delta) {
+    auto [firstRoot, firstWeight] = rootAndWeight(first);
+    auto [secondRoot, secondWeight] = rootAndWeight(second);
+    if (firstRoot == secondRoot) {
+      return std::abs((secondWeight - firstWeight) - delta) <=
+             ElevationTolerance;
+    }
+
+    // potential(secondRoot) - potential(firstRoot)
+    auto secondToFirst = delta + firstWeight - secondWeight;
+    if (mSize[firstRoot] < mSize[secondRoot]) {
+      mParent[firstRoot] = secondRoot;
+      mWeight[firstRoot] = -secondToFirst;
+      mSize[secondRoot] += mSize[firstRoot];
+    } else {
+      mParent[secondRoot] = firstRoot;
+      mWeight[secondRoot] = secondToFirst;
+      mSize[firstRoot] += mSize[secondRoot];
+    }
+    return true;
+  }
 };
 
 // Clips [begin,end], measured in world units along the candidate tangent, to
@@ -294,6 +341,17 @@ std::string_view PortalResolutionDiagnosticText(
   return "Inactive: unknown Portal resolution failure";
 }
 
+std::string_view PortalLiquidDiagnosticText(
+    PortalLiquidDiagnostic diagnostic) {
+  switch (diagnostic) {
+    case PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint:
+      return "No Hydraulic cell touches one resolved aperture";
+    case PortalLiquidDiagnostic::ContradictoryElevationCycle:
+      return "Contradictory accumulated Portal Liquid elevation offset";
+  }
+  return "Unknown Portal Liquid failure";
+}
+
 bool AuthoredApertureIsValid(AuthoredAperture const& aperture) {
   return std::isfinite(aperture.centre.x) &&
          std::isfinite(aperture.centre.y) && std::isfinite(aperture.width) &&
@@ -356,6 +414,102 @@ std::vector<ResolvedPortalPair> ResolvePortalPairs(
       }
     }
     result.push_back(std::move(resolved));
+  }
+  return result;
+}
+
+PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
+    arr::ArrangementResult const& arrangement,
+    std::vector<arr::ArrangementWall> const& walls,
+    std::vector<arr::HydraulicCell> const& cells,
+    std::vector<ResolvedPortalPair> const& pairs) {
+  PortalLiquidAdjacencyResult result;
+  auto ordinaryLinks = arr::BuildHydraulicLinks(arrangement, cells);
+  ElevationOffsetGraph offsets(cells.size());
+  for (auto const& link : ordinaryLinks) {
+    if (!link.drain) offsets.constrain(link.cell0, link.cell1, 0.0);
+  }
+
+  auto incidentCells = [&](ResolvedPortalEndpoint const& endpoint) {
+    std::vector<uint32_t> found;
+    for (auto wallIndex : endpoint.aperture.wallIndices) {
+      if (wallIndex >= walls.size()) continue;
+      auto const& wall = walls[wallIndex];
+      if (wall.edge >= arrangement.edges.size()) continue;
+      auto const& edge = arrangement.edges[wall.edge];
+      for (uint32_t cellIndex = 0; cellIndex < cells.size(); ++cellIndex) {
+        auto const& triangle = cells[cellIndex].triangle;
+        if (triangle.face != wall.frontFace) continue;
+        auto hasBoundaryEdge = false;
+        for (size_t corner = 0; corner < 3; ++corner) {
+          auto first = triangle.v[corner];
+          auto second = triangle.v[(corner + 1) % 3];
+          hasBoundaryEdge |=
+              (first == edge.v[0] && second == edge.v[1]) ||
+              (first == edge.v[1] && second == edge.v[0]);
+        }
+        if (hasBoundaryEdge) found.push_back(cellIndex);
+      }
+    }
+    std::sort(found.begin(), found.end());
+    found.erase(std::unique(found.begin(), found.end()), found.end());
+    return found;
+  };
+
+  std::vector<ResolvedPortalPair const*> orderedPairs;
+  orderedPairs.reserve(pairs.size());
+  for (auto const& pair : pairs) {
+    if (pair.active) orderedPairs.push_back(&pair);
+  }
+  std::sort(
+      orderedPairs.begin(), orderedPairs.end(), [](auto* left, auto* right) {
+        return std::tie(left->layerId, left->pairId) <
+               std::tie(right->layerId, right->pairId);
+      });
+
+  for (auto const* pair : orderedPairs) {
+    auto firstCells = incidentCells(pair->endpoints[0]);
+    auto secondCells = incidentCells(pair->endpoints[1]);
+    if (firstCells.empty() || secondCells.empty()) {
+      result.diagnostics.push_back(
+          {pair->layerId, pair->pairId,
+           PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint});
+      continue;
+    }
+
+    auto const& first = pair->endpoints[0].aperture;
+    auto const& second = pair->endpoints[1].aperture;
+    auto const delta = double(second.bottom) - double(first.bottom);
+    auto trial = offsets;
+    auto consistent = true;
+    for (auto cell0 : firstCells) {
+      for (auto cell1 : secondCells) {
+        consistent &= trial.constrain(cell0, cell1, delta);
+      }
+    }
+    if (!consistent) {
+      result.diagnostics.push_back(
+          {pair->layerId, pair->pairId,
+           PortalLiquidDiagnostic::ContradictoryElevationCycle});
+      continue;
+    }
+    offsets = std::move(trial);
+
+    for (auto cell0 : firstCells) {
+      for (auto cell1 : secondCells) {
+        result.adjacency.push_back(
+            {pair->layerId,
+             pair->pairId,
+             cell0,
+             cell1,
+             cells[cell0].triangle.face,
+             cells[cell1].triangle.face,
+             first.bottom,
+             second.bottom,
+             delta,
+             first.width});
+      }
+    }
   }
   return result;
 }

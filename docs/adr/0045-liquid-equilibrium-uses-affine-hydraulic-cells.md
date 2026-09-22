@@ -52,6 +52,25 @@ face-wide truth. Face-level liquid-adjacency likewise remains a compatibility
 projection, but is derived from Hydraulic links so sloped and pinched openings
 are classified correctly.
 
+### Portal Liquid amendment
+
+An active Portal pair contributes generated **Portal liquid-adjacency** between
+the Hydraulic cells touching its resolved apertures. This relation is separate
+from ordinary shared-edge Hydraulic links and wall collision. The two resolved
+lower edges are corresponding Sills, and a Pool's local surface elevations
+differ by the same offset as those endpoint bottoms. Resolved width decides
+whether usable connectivity exists but does not weight instantaneous
+equilibrium.
+
+Before settlement, ordinary links and Portal liquid-adjacency form one weighted
+elevation graph. Portal pairs are considered in stable Layer-id/pair-id order.
+A pair whose offset constraints contradict an already accepted path is omitted
+atomically and receives a deterministic generated diagnostic; rendering and
+player traversal remain active. Settlement then runs once in a canonical
+elevation frame for each graph component, evaluating every Hydraulic cell's
+capacity at its local offset, rather than recursively transferring volume
+between Portal endpoints.
+
 Chip and Wedge detail generation does not yet construct geometry in arbitrary
 surface planes. Candidates involving non-horizontal floor or ceiling Arrises
 are therefore omitted rather than generated from base elevations. Horizontal

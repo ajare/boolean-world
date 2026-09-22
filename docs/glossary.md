@@ -157,8 +157,17 @@ including an artificial triangulation edge within one Arrangement face, or an
 explicitly open edge from a cell to the exterior drain. A link exists only over
 positive-clearance portions of the edge and becomes reachable at its Sill.
 
+**Portal liquid-adjacency** — The generated bidirectional relation between
+Hydraulic cells touching the two resolved apertures of an active Portal pair,
+separate from ordinary shared-edge Liquid-adjacency and wall collision. The
+resolved lower edges are its Sills, surface elevations map relative to them,
+and a pair that closes a contradictory elevation-offset cycle is diagnosed and
+omitted. Resolved width decides whether connectivity exists but does not weight
+instantaneous equilibrium.
+
 **Pool** — One set of Hydraulic cells holding Liquid at a single shared
-horizontal surface elevation. Two Pools merge when their combined equilibrium
+horizontal surface elevation, or at endpoint-relative elevations when joined
+by Portal liquid-adjacency. Two Pools merge when their combined equilibrium
 reaches the Sill between them; below it, only Liquid above the Sill spills and
 the donor remains brim-full.
 

@@ -87,6 +87,11 @@ class BW_API ArrangementWorldData {
   // Resolution is derived from this snapshot's rendered ArrangementWalls.
   // It never mutates either authored Portal data or the wall collection.
   std::vector<ResolvedPortalPair> mPortalPairs;
+  // Kept separate from ordinary shared-edge Hydraulic links and collision.
+  // Conflicting offset cycles omit the offending pair from adjacency and
+  // retain a stable diagnostic here instead.
+  std::vector<PortalLiquidAdjacency> mPortalLiquidAdjacency;
+  std::vector<PortalLiquidAdjacencyDiagnostic> mPortalLiquidDiagnostics;
 
 public:
   ArrangementWorldData(
@@ -125,6 +130,11 @@ public:
   getPortalPairs() const;
   [[nodiscard]] ResolvedPortalPair const* findPortalPair(
       uint32_t layerId, uint32_t pairId) const;
+
+  [[nodiscard]] std::vector<PortalLiquidAdjacency> const&
+  getPortalLiquidAdjacency() const;
+  [[nodiscard]] std::vector<PortalLiquidAdjacencyDiagnostic> const&
+  getPortalLiquidDiagnostics() const;
 
   [[nodiscard]] WedgeGenerationParameters const&
   getWedgeGenerationParameters() const;
