@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -244,6 +245,79 @@ void identityAndEndpointStateRoundTripCopyAndAssignment() {
           "reload reused a deleted Portal pair's stable id");
 }
 
+void activeAperturesCutWallRenderingCollisionAndExposeFallback() {
+  bw::core::World world(200.0f, 10.0f);
+  addRoom(world);
+  auto* layer = world.getActiveLayer();
+  auto pairId = layer->addPortalPair(
+      aperture(-50.0f, 0.0f, 16.0f),
+      aperture(50.0f, 0.0f, 16.0f));
+  auto snapshot = world.getWorldData();
+  auto const* pair = snapshot->findPortalPair(layer->getId(), pairId);
+  require(pair && pair->active, "Portal aperture fixture did not resolve");
+
+  auto wallIndex = pair->endpoints[0].aperture.wallIndices.front();
+  auto segments = snapshot->getWallCollisionSegments(wallIndex);
+  require(segments.size() == 2,
+          "active aperture did not split its source wall collision span");
+  auto const& opening = pair->endpoints[0].aperture;
+  auto midpoint = opening.centre;
+  require(std::ranges::none_of(segments, [&](auto const& segment) {
+            return midpoint.distanceToLine(segment.v0, segment.v1) < 0.01f;
+          }),
+          "source wall collision remained intact inside the aperture");
+  require(snapshot->circleIntersectsWall(midpoint, 2.0f) < 0,
+          "a collider wholly inside the aperture still hit its source wall");
+  auto framePosition = midpoint + opening.tangent * 7.0f;
+  require(snapshot->circleIntersectsWall(framePosition, 2.0f) >= 0,
+          "the collider did not retain the aperture's solid frame");
+
+  auto replacements = snapshot->getDetail().replacementsFor(
+      bw::core::arr::DetailSurfaceKind::Wall, wallIndex);
+  auto fallbackCount = std::ranges::count_if(
+      replacements, [](auto const& triangle) {
+        return triangle.kind ==
+               bw::core::arr::DetailTriangleKind::PortalFallback;
+      });
+  require(snapshot->getDetail().isSuppressed(
+              bw::core::arr::DetailSurfaceKind::Wall, wallIndex) &&
+              fallbackCount == 2,
+          "active aperture did not replace the intact wall with one initialized fallback quad");
+  for (auto const& triangle : replacements) {
+    if (triangle.kind == bw::core::arr::DetailTriangleKind::PortalFallback) {
+      continue;
+    }
+    wp::Vector2 centre{};
+    float elevation = 0.0f;
+    for (auto const& vertex : triangle.v) {
+      centre += wp::Vector2{vertex.position[0], vertex.position[1]} / 3.0f;
+      elevation += vertex.position[2] / 3.0f;
+    }
+    auto along = std::abs((centre - opening.centre).dot(opening.tangent));
+    require(along >= opening.width * 0.5f - 0.01f ||
+                elevation <= opening.bottom + 0.01f ||
+                elevation >= opening.top - 0.01f,
+            "a coplanar wall replacement remained inside the active aperture");
+  }
+}
+
+void canonicalRigidTransformPreservesScaleAndWorldUp() {
+  bw::core::World world(200.0f, 10.0f);
+  addRoom(world);
+  auto* layer = world.getActiveLayer();
+  auto pairId = layer->addPortalPair(
+      aperture(-50.0f, 0.0f, 16.0f, 2.0f, 26.0f),
+      aperture(0.0f, 50.0f, 16.0f, 10.0f, 34.0f));
+  auto snapshot = world.getWorldData();
+  auto const* pair = snapshot->findPortalPair(layer->getId(), pairId);
+  require(pair && pair->active, "rigid Portal transform fixture did not resolve");
+  auto transform = bw::core::BuildPortalRigidTransform(*pair, 0);
+  auto vector = transform.transformVector({3.0f, 4.0f});
+  require(std::abs(vector.length() - 5.0f) < 0.001f &&
+              std::abs(transform.transformElevation(7.0f) - 15.0f) < 0.001f,
+          "canonical Portal transform changed horizontal scale or world-up elevation offset");
+}
+
 void noPortalWorldKeepsItsKeyedSerializationShapeAndGeometry() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
@@ -268,6 +342,8 @@ int main() {
     invalidPairsStayWholeAndDiagnosable();
     layerSelectionIncludesCompletePairsOnly();
     identityAndEndpointStateRoundTripCopyAndAssignment();
+    activeAperturesCutWallRenderingCollisionAndExposeFallback();
+    canonicalRigidTransformPreservesScaleAndWorldUp();
     noPortalWorldKeepsItsKeyedSerializationShapeAndGeometry();
     std::cout << "Portal pair authoring and resolution passed\n";
     return 0;

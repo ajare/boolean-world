@@ -13,10 +13,16 @@ void WorldCollisionSim::addSlidingCollider(
     unique_ptr<wp::collide::Collider> collider,
     std::function<void()> const& onWallHit) {
   collider->setHitLineCallback(
-      [onWallHit](wp::collide::SweepResult* result,
-                  wp::collide::StaticLine const& line,
-                  float t,
-                  void*) {
+      [this, onWallHit](wp::collide::SweepResult* result,
+                        wp::collide::StaticLine const& line,
+                        float t,
+                        void*) {
+        if (line.getUserData() <= -2 && mPortalHitCallback) {
+          auto portalLineIndex = uint32_t(-2 - line.getUserData());
+          auto response = mPortalHitCallback(result, portalLineIndex);
+          if (response == PortalLineResponse::Ignore) return false;
+          if (response == PortalLineResponse::Traverse) return true;
+        }
         if (onWallHit) {
           onWallHit();
         }
@@ -64,8 +70,21 @@ vector<wp::collide::StaticLine> const& WorldCollisionSim::getLines() const {
 
 void WorldCollisionSim::clearLines() {
   mStaticLines.clear();
+  mPortalLineCount = 0;
+}
+
+void WorldCollisionSim::setPortalHitCallback(PortalHitCallback callback) {
+  mPortalHitCallback = std::move(callback);
 }
 
 void WorldCollisionSim::addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t index) {
   mStaticLines.push_back({v0, v1, true, 1.0f, (int32_t)index});
+}
+
+uint32_t WorldCollisionSim::addPortalLine(
+    wp::Vector2 const& v0, wp::Vector2 const& v1) {
+  auto index = mPortalLineCount++;
+  mStaticLines.push_back(
+      {v0, v1, true, 1.0f, -2 - static_cast<int32_t>(index)});
+  return index;
 }

@@ -49,6 +49,15 @@ struct SurfaceTraversalSegment {
   std::optional<SurfaceSample> endSurface;
 };
 
+// One collidable horizontal remainder of an ArrangementWall after every
+// active resolved aperture on that wall has been removed. The source wall
+// index is retained for traversal diagnostics and Step policy.
+struct WallCollisionSegment {
+  wp::Vector2 v0;
+  wp::Vector2 v1;
+  uint32_t wallIndex;
+};
+
 class BW_API ArrangementWorldData {
   arr::ArrangementResultPtr mArrangement;
   std::vector<arr::ArrangementTriangle> mTriangles;
@@ -196,6 +205,13 @@ public:
   [[nodiscard]] std::vector<uint32_t> getWallsNear(
       wp::Vector2 const& position,
       float radius) const;
+
+  // Splits one colliding wall around all active resolved horizontal aperture
+  // spans. Inactive pairs leave the wall intact. Vertical eligibility remains
+  // the swept Portal traversal's responsibility, so an ineligible crossing
+  // resolves against the special aperture collision span instead.
+  [[nodiscard]] std::vector<WallCollisionSegment> getWallCollisionSegments(
+      uint32_t wallIndex) const;
 
   // Filters nearby collision walls for movement beginning at sourcePosition.
   // A FloorStep above BW_PLAYER_STEP_HEIGHT blocks from its lower face but not

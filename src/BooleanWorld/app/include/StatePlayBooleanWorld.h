@@ -38,6 +38,7 @@
 #include "Map.h"
 #include "DisplayMessage.h"
 #include "ClippingRecord.h"
+#include "PlayerPortalTraversal.h"
 #include "PlayerTorchShadows.h"
 #include "PlayerWallDepenetration.h"
 #include "LiquidReflectionSelection.h"
@@ -129,6 +130,15 @@ private:
   WorldCollisionSim* mWorldCollisionSim;
 
   wp::collide::Collider* mPlayerCollider;
+
+  struct PortalCollisionEndpoint {
+    bw::core::ResolvedPortalPair const* pair{};
+    uint32_t endpoint{};
+    bool sourceWallBlocks{};
+  };
+  std::vector<PortalCollisionEndpoint> mPortalCollisionEndpoints;
+  bw::app::PlayerPortalMotion mPlayerPortalMotion;
+  bw::app::PlayerPortalUpdateState mPlayerPortalUpdateState;
 
   // Debug toggle: fold across every Layer, or just the first one.
   bool mAllLayers;
@@ -307,6 +317,9 @@ private:
   void setupPlayerCollision();
 
   void createWorldCollisions(wp::Vector2 const& predictedPosition);
+
+  WorldCollisionSim::PortalLineResponse handlePlayerPortalLine(
+      wp::collide::SweepResult* result, uint32_t portalLineIndex);
 
   void liftPlayerOffOverlappingWalls(
       std::span<bw::app::WallSegment const> walls);

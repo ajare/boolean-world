@@ -543,6 +543,10 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
   mWorldCollisionSim->addSlidingCollider(
       move(playerCollider),
       [this] { ++mCollisionsProcessed; });
+  mWorldCollisionSim->setPortalHitCallback(
+      [this](wp::collide::SweepResult* result, uint32_t portalLineIndex) {
+        return handlePlayerPortalLine(result, portalLineIndex);
+      });
   mPlayerCollider = playerColliderObserver;
 
   applib::ModelInstance::entityHandler()->setupCollisions(mWorldCollisionSim, mPlayerCollider);
@@ -568,43 +572,66 @@ void StatePlayBooleanWorld::getWorldInput(wp::Vector2* curPosition, wp::Vector2*
 void StatePlayBooleanWorld::createWorldCollisions(
     wp::Vector2 const& predictedPosition) {
   mWorldCollisionSim->clearLines();
+  mPortalCollisionEndpoints.clear();
   if (!mWorldData) {
     return;
   }
 
   auto const& arrangement = mWorldData->getArrangement();
   auto const& walls = mWorldData->getWalls();
-  auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
   auto const& physicalStats = getPlayerPhysicalStats();
   auto const& playerPosition = physicalStats.position;
+  auto movementReach = playerPosition.distanceTo(predictedPosition);
+  auto radius = movementReach + BW_PLAYER_RADIUS + 1.0f;
   auto swimming = isPlayerSwimming();
-  std::vector<bw::app::WallSegment> addedWalls;
   auto descendingForTraversal =
       bw::app::isDescendingForTallStepTraversal(
           swimming, mPlayerVerticalVelocity);
-  for (auto wallIndex : mWorldData->getWallsNearForTraversal(
-           predictedPosition, radius, playerPosition,
-           descendingForTraversal)) {
+
+  std::vector<uint32_t> candidateWalls =
+      mWorldData->getWallsNearForTraversal(
+          predictedPosition, radius, playerPosition,
+          descendingForTraversal);
+  // A crossing may move the remainder to a remote endpoint, and several
+  // endpoints may chain in one update. Stage collision around every possible
+  // emergence point before Willpower begins its recursive sweep.
+  for (auto const& pair : mWorldData->getPortalPairs()) {
+    if (!pair.active) continue;
+    for (auto const& endpoint : pair.endpoints) {
+      auto emergence = endpoint.aperture.centre +
+                       endpoint.aperture.front *
+                           bw::app::PortalExitPlaneEpsilon;
+      auto nearby = mWorldData->getWallsNearForTraversal(
+          emergence, radius, emergence, false);
+      candidateWalls.insert(
+          candidateWalls.end(), nearby.begin(), nearby.end());
+    }
+  }
+  std::sort(candidateWalls.begin(), candidateWalls.end());
+  candidateWalls.erase(
+      std::unique(candidateWalls.begin(), candidateWalls.end()),
+      candidateWalls.end());
+
+  std::vector<bw::app::WallSegment> addedWalls;
+  std::vector<uint32_t> addedWallIndices;
+  for (auto wallIndex : candidateWalls) {
     auto const& wall = walls[wallIndex];
     auto orientation =
         bw::core::arr::OrientArrangementWall(arrangement, wall);
-    auto const& v0 = orientation.v0;
-    auto const& v1 = orientation.v1;
 
     // The centre has to overlap a tall Step before it can leave the high side
     // and begin falling. Suppress that Step only while the dry player's feet
-    // are still above its lower floor. Once they land in a pit, reinstate and
-    // depenetrate the wall below rather than letting them cross underneath the
-    // high floor and be lifted up to it by vertical physics.
+    // are still above its lower floor.
     auto blocksOnlyByStepHeight =
         wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
         !mWorldData->wallBlocksTraversalWithoutStepAt(
             wallIndex, playerPosition);
-    auto span = v1 - v0;
+    auto span = orientation.v1 - orientation.v0;
     auto spanLengthSquared = span.lengthSq();
-    auto closest = playerPosition.closestPointOnLine(v0, v1);
+    auto closest = playerPosition.closestPointOnLine(
+        orientation.v0, orientation.v1);
     auto along = spanLengthSquared > 0.0f
-                     ? std::clamp((closest - v0).dot(span) /
+                     ? std::clamp((closest - orientation.v0).dot(span) /
                                       spanLengthSquared,
                                   0.0f, 1.0f)
                      : 0.0f;
@@ -613,15 +640,82 @@ void StatePlayBooleanWorld::createWorldCollisions(
     if (blocksOnlyByStepHeight &&
         bw::app::maySuppressOverlappingTallStep(
             swimming, physicalStats.feetElevation, lowerFloorElevation) &&
-        playerPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
+        playerPosition.distanceToLine(
+            orientation.v0, orientation.v1) < BW_PLAYER_RADIUS) {
       continue;
     }
 
-    mWorldCollisionSim->addLine(v0, v1, wallIndex);
-    addedWalls.push_back({v0, v1});
+    for (auto const& segment :
+         mWorldData->getWallCollisionSegments(wallIndex)) {
+      mWorldCollisionSim->addLine(segment.v0, segment.v1, wallIndex);
+      addedWalls.push_back({segment.v0, segment.v1});
+    }
+    addedWallIndices.push_back(wallIndex);
+  }
+
+  // The removed horizontal spans remain swept special planes. They pass a
+  // vertically eligible front-to-back crossing into the canonical transform,
+  // and otherwise use the ordinary wall response.
+  for (auto const& pair : mWorldData->getPortalPairs()) {
+    if (!pair.active) continue;
+    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
+      auto const& aperture = pair.endpoints[endpointIndex].aperture;
+      auto half = aperture.tangent * (aperture.width * 0.5f);
+      auto sourceWallBlocks = std::ranges::any_of(
+          aperture.wallIndices, [&](uint32_t wallIndex) {
+            return std::ranges::find(addedWallIndices, wallIndex) !=
+                   addedWallIndices.end();
+          });
+      mPortalCollisionEndpoints.push_back(
+          {&pair, endpointIndex, sourceWallBlocks});
+      mWorldCollisionSim->addPortalLine(
+          aperture.centre - half, aperture.centre + half);
+    }
   }
 
   liftPlayerOffOverlappingWalls(addedWalls);
+}
+
+WorldCollisionSim::PortalLineResponse
+StatePlayBooleanWorld::handlePlayerPortalLine(
+    wp::collide::SweepResult* result, uint32_t portalLineIndex) {
+  if (!mWorldData || portalLineIndex >= mPortalCollisionEndpoints.size()) {
+    return WorldCollisionSim::PortalLineResponse::Block;
+  }
+  auto const& source = mPortalCollisionEndpoints[portalLineIndex];
+  mPlayerPortalMotion.position = result->oldPosition;
+  mPlayerPortalMotion.unconsumedMovement = result->movementDesired;
+  auto response = bw::app::tryPlayerPortalCrossing(
+      *mWorldData, *source.pair, source.endpoint, BW_PLAYER_RADIUS,
+      BW_PLAYER_HEIGHT, mPlayerPortalMotion, mPlayerPortalUpdateState);
+  if (response == bw::app::PlayerPortalCrossingResult::Blocked) {
+    return source.sourceWallBlocks
+               ? WorldCollisionSim::PortalLineResponse::Block
+               : WorldCollisionSim::PortalLineResponse::Ignore;
+  }
+  if (response == bw::app::PlayerPortalCrossingResult::NotCrossing) {
+    bw::app::PortalEndpointIdentity identity{
+        source.pair->layerId, source.pair->pairId,
+        static_cast<uint8_t>(source.endpoint)};
+    return !source.sourceWallBlocks ||
+                   (mPlayerPortalUpdateState.exitSide.active &&
+                    mPlayerPortalUpdateState.exitSide.endpoint == identity)
+               ? WorldCollisionSim::PortalLineResponse::Ignore
+               : WorldCollisionSim::PortalLineResponse::Block;
+  }
+
+  auto desiredLength = result->movementDesired.length();
+  auto remainingLength = mPlayerPortalMotion.unconsumedMovement.length();
+  result->newPosition = mPlayerPortalMotion.position;
+  result->movementDone = result->newPosition - result->oldPosition;
+  result->movementLeft = mPlayerPortalMotion.unconsumedMovement;
+  result->distanceMoved = std::max(0.0f, desiredLength - remainingLength);
+  result->timeTaken = desiredLength > 0.0f
+                          ? result->distanceMoved / desiredLength
+                          : 0.0f;
+  getPlayerPhysicalStats().feetElevation =
+      mPlayerPortalMotion.feetElevation;
+  return WorldCollisionSim::PortalLineResponse::Traverse;
 }
 
 // A wall the player is already inside stops them dead in every direction at
@@ -1212,6 +1306,24 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
     }
   }
 
+  auto exitSide = mPlayerPortalUpdateState.exitSide;
+  bw::app::updatePortalExitSideState(
+      *mWorldData, curPosition, BW_PLAYER_RADIUS, exitSide);
+  mPlayerPortalUpdateState = {};
+  mPlayerPortalUpdateState.exitSide = exitSide;
+  auto const& portalStats = getPlayerPhysicalStats();
+  auto horizontalVelocity =
+      frameTime > 0.0f ? (newPosition - curPosition) / frameTime
+                       : wp::Vector2{};
+  mPlayerPortalMotion = {
+      curPosition,
+      portalStats.feetElevation,
+      newAngle,
+      portalStats.pitch,
+      horizontalVelocity,
+      mPlayerVerticalVelocity,
+      newPosition - curPosition};
+
   // Supply the physics step with walls around the predicted destination. Player
   // location is evaluated only after that step has resolved movement.
   createWorldCollisions(newPosition);
@@ -1235,7 +1347,8 @@ void StatePlayBooleanWorld::updateAudio(float frameTime) {
 void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
   auto& physicalStats = getPlayerPhysicalStats();
 
-  if (mPlayerTraversalStartValid && mWorldData) {
+  if (mPlayerTraversalStartValid && mWorldData &&
+      mPlayerPortalUpdateState.crossings == 0) {
     auto traversal = bw::app::evaluatePlayerSurfaceTraversal(
         *mWorldData, mPlayerTraversalStartPosition, physicalStats.position,
         mPlayerTraversalStartFeetElevation,
@@ -1247,6 +1360,16 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
     if (traversal.supportedFloorElevation) {
       physicalStats.feetElevation = *traversal.supportedFloorElevation;
       mPlayerVerticalVelocity = 0.0f;
+    }
+  }
+
+  if (mPlayerPortalUpdateState.crossings > 0) {
+    physicalStats.angle = mPlayerPortalMotion.yaw;
+    // The collider is already authoritative after the recursive transformed
+    // sweep; publish its destination before any location-dependent query.
+    physicalStats.position = mPlayerCollider->getCentre();
+    if (mPlayerPortalUpdateState.cameraCut && mCamera3d) {
+      mCamera3d->markCut();
     }
   }
 

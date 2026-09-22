@@ -196,6 +196,40 @@ ResolvedPortalEndpoint resolveEndpoint(
 }
 }  // namespace
 
+wp::Vector2 PortalRigidTransform::transformPoint(
+    wp::Vector2 const& point) const {
+  auto offset = point - source.centre;
+  auto tangentCoordinate = offset.dot(source.tangent);
+  auto frontCoordinate = offset.dot(source.front);
+  return destination.centre - destination.tangent * tangentCoordinate -
+         destination.front * frontCoordinate;
+}
+
+wp::Vector2 PortalRigidTransform::transformVector(
+    wp::Vector2 const& vector) const {
+  return -destination.tangent * vector.dot(source.tangent) -
+         destination.front * vector.dot(source.front);
+}
+
+float PortalRigidTransform::transformElevation(float elevation) const {
+  return destination.bottom + elevation - source.bottom;
+}
+
+float PortalRigidTransform::transformYaw(float yawDegrees) const {
+  auto forward = wp::Vector2::fromAngle(yawDegrees, wp::Clockwise);
+  return transformVector(forward).clockwiseAngle();
+}
+
+PortalRigidTransform BuildPortalRigidTransform(
+    ResolvedPortalPair const& pair, uint32_t sourceEndpoint) {
+  if (!pair.active || sourceEndpoint >= pair.endpoints.size()) {
+    throw CoreException("A Portal rigid transform requires an active pair and a valid source endpoint");
+  }
+  return {
+      pair.endpoints[sourceEndpoint].aperture,
+      pair.endpoints[1u - sourceEndpoint].aperture};
+}
+
 PortalEndpoint::PortalEndpoint(uint8_t id, AuthoredAperture aperture)
     : mId(id), mAperture(aperture) {
   if (id > 1 || !AuthoredApertureIsValid(aperture)) {

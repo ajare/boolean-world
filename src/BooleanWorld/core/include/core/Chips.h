@@ -2,12 +2,14 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <vector>
 
 #include "core/Arrangement.h"
 #include "core/Platform.h"
+#include "core/Portal.h"
 #include "core/WedgeGenerationParameters.h"
 
 namespace bw::core::arr {
@@ -50,7 +52,11 @@ enum struct DetailTriangleKind : uint8_t {
   HorizontalChipFacet,
   VerticalChipFacet,
   CornerChipFacet,
-  WedgeFacet
+  WedgeFacet,
+  // The initialized surface shown in an active aperture until a linked
+  // destination view replaces it. It is never coplanar with an intact wall:
+  // ApplyPortalApertures first cuts the source wall around the rectangle.
+  PortalFallback
 };
 
 struct DetailTriangle {
@@ -85,6 +91,13 @@ class BW_API DetailGeometry {
 public:
   void addSuppressed(DetailSurfaceKey const& key);
   void addTriangle(DetailTriangle const& triangle);
+  // Replaces every triangle for one source and suppresses its ordinary
+  // surface. Used by the Portal aperture pass after post-fold detail exists.
+  void replaceSurface(
+      DetailSurfaceKey const& key,
+      std::vector<DetailTriangle> replacements);
+  void removeTrianglesIf(
+      std::function<bool(DetailTriangle const&)> const& predicate);
   void countChip();
   void countWedge();
   // Restores the sorted-by-key invariant the queries rely on. Called once,
@@ -135,4 +148,14 @@ public:
     ArrangementResult const& arrangement,
     std::vector<ArrangementWall> const& walls,
     WedgeGenerationParameters const& wedgeParameters = {});
+
+// Cuts every active resolved aperture out of its source ArrangementWalls after
+// Chip/Wedge generation. Existing wall remainders and facets are clipped in
+// wall-local coordinates, preserving all detail outside the opening. One
+// deterministic initialized fallback quad is then emitted per endpoint.
+void ApplyPortalApertures(
+    DetailGeometry& detail,
+    ArrangementResult const& arrangement,
+    std::vector<ArrangementWall> const& walls,
+    std::vector<ResolvedPortalPair> const& portalPairs);
 }  // namespace bw::core::arr

@@ -107,6 +107,25 @@ struct ResolvedPortalPair {
   std::array<ResolvedPortalEndpoint, 2> endpoints{};
 };
 
+// The canonical rigid mapping between the two vertical endpoint frames. The
+// local tangent and front axes are both reversed (a 180-degree turn around
+// world-up); elevation is translated by the difference between aperture
+// bottoms. Scale, handedness, and world-up are therefore preserved.
+struct PortalRigidTransform {
+  ResolvedAperture source{};
+  ResolvedAperture destination{};
+
+  [[nodiscard]] wp::Vector2 transformPoint(
+      wp::Vector2 const& point) const;
+  [[nodiscard]] wp::Vector2 transformVector(
+      wp::Vector2 const& vector) const;
+  [[nodiscard]] float transformElevation(float elevation) const;
+  [[nodiscard]] float transformYaw(float yawDegrees) const;
+};
+
+[[nodiscard]] BW_API PortalRigidTransform BuildPortalRigidTransform(
+    ResolvedPortalPair const& pair, uint32_t sourceEndpoint);
+
 // A value-only copy made on the generation-requesting thread. It is safe to
 // carry to the asynchronous arrangement worker with the other generation
 // inputs.

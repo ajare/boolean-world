@@ -901,6 +901,9 @@ void WorldRenderer::updateWallDataProvider(
           ++wallCounts[replacement.kind ==
                                bw::core::arr::DetailTriangleKind::SurfaceRemainder
                            ? authoredMesh
+                       : replacement.kind ==
+                               bw::core::arr::DetailTriangleKind::PortalFallback
+                           ? backMesh
                            : unmappedAuthoredMesh];
         }
       } else if (projectionData[wallIndex].usesTriplanar) {
@@ -955,6 +958,8 @@ void WorldRenderer::updateWallDataProvider(
           hash, false, variantFor(wall));
       auto unmappedMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
           hash, false);
+      auto backMesh =
+          wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
       auto colour = int32_t(wallIndex) == highlightedWall
                         ? lookedAtVertexColour
                         : untintedVertexColour;
@@ -967,6 +972,9 @@ void WorldRenderer::updateWallDataProvider(
               replacement.kind ==
                       bw::core::arr::DetailTriangleKind::SurfaceRemainder
                   ? mesh
+              : replacement.kind ==
+                      bw::core::arr::DetailTriangleKind::PortalFallback
+                  ? backMesh
                   : unmappedMesh,
               rendered, false, colour, liquidSurfaceHeight, orientation.normal.x,
               0.0f, -orientation.normal.y);
