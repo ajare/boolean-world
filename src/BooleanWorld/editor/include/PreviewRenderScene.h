@@ -99,11 +99,13 @@ public:
 
   [[nodiscard]] std::uint32_t worldSurfaceTriangleCount(
       WorldSurfaceSet surfaceSet) const;
+  // CPU payload revision and completed GPU upload count, respectively.
+  [[nodiscard]] std::array<std::uint64_t, 2> wallGeometryCounters() const;
   [[nodiscard]] bool renderedPortalView() const;
   [[nodiscard]] std::uint32_t portalRenderedPassCount() const;
   [[nodiscard]] std::uint32_t portalSelectedEndpointCount() const;
 
-  // Rebuilds this frame's world geometry and renders it into the pipeline's
+  // Renders published world geometry into the pipeline's
   // offscreen images. Returns the OpenGL texture id of the resolved output
   // image, or zero if the pipeline produced no target.
   //

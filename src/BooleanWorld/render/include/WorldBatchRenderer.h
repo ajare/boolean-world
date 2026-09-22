@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 #include <mpp/RenderSystem.h>
 #include <mpp/ResourceManager.h>
 #include <mpp/BatchRenderer.h>
@@ -16,6 +19,8 @@ class WorldBatchRenderer : public mpp::BatchRenderer {
   mpp::ResourceManager* mResourceMgr{nullptr};
 
   WorldBatch* mBatch{nullptr};
+  std::optional<uint64_t> mUploadedRevision;
+  uint64_t mGeometryUploadCount{};
 
   std::shared_ptr<mpp::helper::TriangleBatch3DBufferDataProvider<mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeFloat, mpp::mesh::DataTypeUnsignedByte>> mDataProvider{nullptr};
 
@@ -35,6 +40,8 @@ public:
   mpp::ResourcePtr getModel();
 
   WorldBatch const* getWorldBatch() const;
+
+  [[nodiscard]] uint64_t geometryUploadCount() const { return mGeometryUploadCount; }
 
   void create() override;
 

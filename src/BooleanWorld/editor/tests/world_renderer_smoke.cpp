@@ -60,6 +60,7 @@ struct RenderFixture {
   bool lookAtWedges{};
   bool lookAtFloor{};
   bool lookAtCeiling{};
+  bool lookAtWallBack{};
   bool wet{};
   bool sloped{};
   bool fragmented{};
@@ -68,6 +69,7 @@ struct RenderFixture {
   bool angled{};
   bool continuityJunction{};
   bool portal{};
+  bool manyPortalEndpoints{};
   // 0 uses the built-in material; 1 and 2 use identical RGB with alpha 0/1.
   int triplanarAlphaVariant{};
 };
@@ -258,6 +260,16 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   std::vector<bw::core::PortalPairSnapshot> portalPairs;
   if (fixture.portal) {
     auto* layer = world.getActiveLayer();
+    if (fixture.manyPortalEndpoints) {
+      // Reserve more endpoint buckets than the recursive GPU target budget.
+      // The active endpoints below must still bind correctly at higher IDs.
+      for (uint32_t i = 0; i < PortalViewSlotCount; ++i) {
+        auto id = layer->addPortalPair(
+            {{1000.0f + float(i) * 20.0f, 1000.0f}, 12.0f, 4.0f, 36.0f},
+            {{1000.0f + float(i) * 20.0f, -1000.0f}, 12.0f, 4.0f, 36.0f});
+        portalPairs.push_back({layer->getId(), *layer->getPortalPair(id)});
+      }
+    }
     for (auto centreX : {-8.0f, 8.0f}) {
       auto pairId = layer->addPortalPair(
           {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
@@ -396,17 +408,21 @@ std::vector<float> render(
               : (fixture.lookAtWedges || fixture.lookAtFloor
                      ? 40.0f
                      : BW_PLAYER_EYE_HEIGHT),
-          0.0f},
-      bw::app::cameraYaw(0.0f),
+          fixture.lookAtWallBack ? -32.0f : 0.0f},
+      bw::app::cameraYaw(fixture.lookAtWallBack ? 180.0f : 0.0f),
       fixture.lookAtCeiling ? -45.0f : (fixture.lookAtFloor ? 45.0f : 0.0f),
       BW_PLAYER_FOV,
       kWidth / float(kHeight));
   camera->setClipDistances(0.1f, 1000000.0f);
   uint32_t texture{};
+  std::array<uint64_t, 2> wallCounters{};
   for (int frame = 0; frame < 3; ++frame) {
     texture = scene.render(
         &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f, {},
         -1, fixture.debugWallTechnique);
+    if (frame == 0) wallCounters = scene.wallGeometryCounters();
+    else if (scene.wallGeometryCounters() != wallCounters)
+      throw std::runtime_error("unchanged snapshot rebuilt or uploaded wall geometry");
   }
   if (texture == 0)
     throw std::runtime_error("WorldRenderer produced no render texture");
@@ -481,6 +497,7 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
   editor::PreviewRenderScene scene(
       renderSystem, &world, kWidth, kHeight,
       bw::app::HorizontalMaterials::TwoDimensional);
+  std::optional<std::array<uint64_t, 2>> publishedCounters;
   // Look straight into each aperture from 20 units away. The centre region
   // lies inside it, so surrounding lit walls cannot hide a black Portal image.
   for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
@@ -496,6 +513,9 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
       auto texture = scene.render(&world, *data, camera, camera->getPosition(),
                                   1.0f / 60.0f, {}, -1, -1);
       require(scene.renderedPortalView(), "mines Portal has no rendered view");
+      if (!publishedCounters) publishedCounters = scene.wallGeometryCounters();
+      require(scene.wallGeometryCounters() == *publishedCounters,
+              "moving between Portal views rebuilt or uploaded snapshot walls");
       auto image = readColour(texture);
       auto energy = centreRegionEnergy(image);
       if (frame == 2) {
@@ -522,6 +542,64 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
             ", energy " + std::to_string(energy));
     }
   }
+}
+
+void immutableWallsRenderBothSides(editor::EditorRenderSystem& renderSystem) {
+  auto back = render(renderSystem, {.lookAtWallBack = true});
+  auto texturedBack = render(renderSystem, {.lookAtWallBack = true, .triplanar = true});
+  auto decoratedBack = render(renderSystem,
+      {.emboss = true, .wallMask = true, .lookAtWallBack = true});
+  auto mappedBack = render(renderSystem,
+      {.map = MapFixture::Image, .lookAtWallBack = true, .triplanar = true});
+  auto wetBack = render(renderSystem, {.lookAtWallBack = true, .wet = true});
+  require(regionDifference(back, wetBack) < 0.0005,
+          "dry reverse wall used the wet front's Liquid height");
+  require(centreRegionEnergy(back) > 0.01, "immutable wall back rendered black");
+  require(regionDifference(back, texturedBack) < 0.0005 &&
+              regionDifference(back, decoratedBack) < 0.0005 &&
+              regionDifference(back, mappedBack) < 0.0005,
+          "wall back inherited authored texture, mask, or Embossing");
+  // These fixtures also assert that a second and third render never rebuild
+  // or upload walls, including Chip facets and both horizontal Programs.
+  (void)render(renderSystem, {.chips = true, .wet = true});
+  (void)render(renderSystem, {.chips = true, .lookAtWallBack = true, .wet = true});
+
+  auto ordinaryPortals = render(renderSystem, {.portal = true});
+  auto highIdPortals = render(renderSystem, {.portal = true, .manyPortalEndpoints = true});
+  require(regionDifference(ordinaryPortals, highIdPortals) < 0.0005,
+          "stable endpoint bucket IDs were confused with bounded GPU view slots");
+
+  bw::core::World world(1.0f, -1.0f);
+  auto data = buildWorldData(world, {.portal = true, .manyPortalEndpoints = true});
+  editor::PreviewRenderScene scene(renderSystem, &world, kWidth, kHeight);
+  auto draw = [&](glm::vec3 position, float yaw) {
+    auto camera = std::make_shared<ReactiveCamera>(position, bw::app::cameraYaw(yaw),
+        0.0f, BW_PLAYER_FOV, kWidth / float(kHeight));
+    camera->setClipDistances(0.1f, 1000000.0f);
+    require(scene.render(&world, *data, camera, position, 1.0f / 60.0f) != 0,
+            "immutable wall scene produced no image");
+  };
+  draw({0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f}, 0.0f);
+  require(scene.portalRenderedPassCount() > scene.portalSelectedEndpointCount(),
+          "immutability regression did not exercise recursive Portal cameras");
+  auto baseline = scene.wallGeometryCounters();
+  auto triangles = scene.worldSurfaceTriangleCount(WorldSurfaceSet::Walls);
+  for (int frame = 0; frame < 16; ++frame) {
+    draw({float(frame - 8), BW_PLAYER_EYE_HEIGHT, frame % 2 ? -32.0f : 0.0f},
+         float(frame * 90));
+    require(scene.wallGeometryCounters() == baseline,
+            "camera movement/Portal visibility changed immutable wall buffers");
+  }
+  scene.worldGeometryChanged();
+  draw({0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f}, 0.0f);
+  auto published = scene.wallGeometryCounters();
+  require(published[0] == baseline[0] + 1 && published[1] == baseline[1] + 1,
+          "world publication must rebuild/upload walls exactly once");
+  require(scene.worldSurfaceTriangleCount(WorldSurfaceSet::Walls) == triangles,
+          "unchanged snapshot publication changed the wall triangle count");
+  draw({0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f}, 270.0f);
+  require(scene.wallGeometryCounters() == published,
+          "post-publication view rebuilt wall buffers again");
 }
 
 void portalLightIsClippedToTheRenderedApertureProjection(
@@ -831,6 +909,8 @@ int main(int argc, char** argv) {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
       } else if (scenario == "mines-portal") {
         minesPortalRenders(renderSystem);
+      } else if (scenario == "immutable-walls") {
+        immutableWallsRenderBothSides(renderSystem);
       } else if (scenario == "portal-light") {
         portalLightIsClippedToTheRenderedApertureProjection(renderSystem);
       } else {

@@ -2,6 +2,10 @@
 
 // Native varying paired with world.vert; Pool elevation is constant per triangle.
 layout(location = 6) flat in float liquidSurfaceHeight;
+layout(location = 7) flat in vec2 wallData;
+@@Uniform(int HIGHLIGHTED_WALL);
+@@Uniform(int PORTAL_VIEW_ENABLED);
+@@Uniform(mat4 PORTAL_PROJECTIVE_MATRIX);
 
 // Global
 @@Uniform(float VIEW_DISTANCE);
@@ -3518,6 +3522,31 @@ void main()
     // the Liquid interface path, whose unlit reflection output is black there.
     int bucketMaterialIndex = @Uniform(MATERIAL_INDEX);
 
+    // Endpoint buckets are immutable. TEX3 is either the Triplanar albedo or,
+    // exclusively for a Portal bucket, this pass's completed child image.
+    // Back faces and unselected endpoints use the ordinary lit white fallback.
+    if (@Uniform(PORTAL_VIEW_ENABLED) != 0 &&
+        dot(@In(FRAGNORMAL), @ViewPos - @In(FRAGPOSITION)) > 0.0)
+    {
+        vec4 projected = @Uniform(PORTAL_PROJECTIVE_MATRIX) * vec4(@In(FRAGPOSITION), 1.0);
+        vec2 uv = projected.xy / max(projected.w, 0.00001) * 0.5 + 0.5;
+        @Out(vec4 COLOUR) = vec4(texture(@Texture(TEX3), clamp(uv, vec2(0.0), vec2(1.0))).rgb, 1.0);
+        @Out(vec4 BLOOM_MASK) = vec4(0.0);
+        @Out(vec2 SHADING_NORMAL) = vec2(0.0);
+        @Out(float LIQUID_RETENTION) = 1.0;
+        return;
+    }
+
+    if (bucketMaterialIndex < 0 &&
+        !(wallData.x > 0.0 && dot(@In(FRAGNORMAL), @ViewPos - @In(FRAGPOSITION)) < 0.0))
+    {
+        @Out(COLOUR) = vec4(1.0, 0.0, 1.0, 1.0);
+        @Out(BLOOM_MASK) = vec4(0.0);
+        @Out(SHADING_NORMAL) = vec2(0.0);
+        @Out(LIQUID_RETENTION) = 0.0;
+        return;
+    }
+
     // Liquid is an interface, not another lit volume. The water pass has no
     // depth attachment, so reject interfaces hidden by the sampled opaque
     // depth before marching that same point-sampled buffer.
@@ -3660,10 +3689,10 @@ void main()
         // Fixed-function alpha blending overlays reflection over the absorption
         // already in WaterComposite. Do not light or absorb this interface a
         // second time: alpha is exactly reflectance × Schlick(F0, N·V).
-        @Out(vec4 COLOUR) = vec4(reflectionColour, alpha);
-        @Out(vec4 BLOOM_MASK) = vec4(0.0);
-        @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(viewNormal);
-        @Out(float LIQUID_RETENTION) = 1.0;
+        @Out(COLOUR) = vec4(reflectionColour, alpha);
+        @Out(BLOOM_MASK) = vec4(0.0);
+        @Out(SHADING_NORMAL) = encodeOctahedralNormal(viewNormal);
+        @Out(LIQUID_RETENTION) = 1.0;
         return;
     }
 
@@ -3677,15 +3706,20 @@ void main()
 
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
-    vec3 normalDir = applyWallNormalMap(shadingNormal);
+    bool wallBackFace = wallData.x > 0.0 && dot(shadingNormal, viewDir) < 0.0;
+    bool liquidBackSide = wallData.x != 0.0 &&
+        dot(wallData.x > 0.0 ? shadingNormal : normalize(@In(SURFACE_UP)), viewDir) < 0.0;
+    float receiverLiquidHeight = liquidBackSide ? wallData.y : liquidSurfaceHeight;
+    if (wallBackFace) shadingNormal = -shadingNormal;
+    vec3 normalDir = wallBackFace ? shadingNormal : applyWallNormalMap(shadingNormal);
     vec3 texturePosition = snapToGrid(
         @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
     int materialIndex = floorMaterialIndex(
         @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 40));
-    materialIndex = clamp(materialIndex, 0, 40);
+    materialIndex = wallBackFace ? 40 : clamp(materialIndex, 0, 40);
     blendMaterialParams();
-    bool usesTriplanar = @Uniform(TRIPLANAR_ENABLED) != 0;
+    bool usesTriplanar = !wallBackFace && @Uniform(TRIPLANAR_ENABLED) != 0;
     Material material;
     if (usesTriplanar)
     {
@@ -3705,11 +3739,13 @@ void main()
     // lighting; the per-vertex tint (white unless the editor is marking a
     // surface out) is applied on top and leaves the material untouched when
     // white.
-    material.albedo *= blendedMaterialColour * @In(COLOUR).rgb;
+    material.albedo *= (wallBackFace ? vec3(1.0) : blendedMaterialColour) * @In(COLOUR).rgb;
+    if (wallData.x != 0.0 && int(abs(wallData.x)) - 1 == @Uniform(HIGHLIGHTED_WALL))
+        material.albedo *= vec3(1.0, 1.0, 89.0 / 255.0);
 
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
-    if (@Uniform(EMBOSS_PATTERN) != 0)
+    if (!wallBackFace && @Uniform(EMBOSS_PATTERN) != 0)
     {
         material.normal = embossSurface(
             material.normal, @In(FRAGPOSITION),
@@ -3736,7 +3772,7 @@ void main()
     vec3 outTransmittance;
     vec3 value = applyLiquidAbsorption(
         lighting.direct, ambientAndEmission, @ViewPos, @In(FRAGPOSITION),
-        @Uniform(LIQUID_EYE_SURFACE_Z), liquidSurfaceHeight, outTransmittance);
+        @Uniform(LIQUID_EYE_SURFACE_Z), receiverLiquidHeight, outTransmittance);
     value = value / (value + vec3(1.0));
     value = pow(value, vec3(1.0 / 2.2));
 

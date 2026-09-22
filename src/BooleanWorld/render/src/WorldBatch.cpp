@@ -21,6 +21,16 @@ string variantIdentity(optional<WallRenderVariant> const& variant) {
 mpp::mesh::MeshSpecification WorldBatch::createMeshSpecification(
     mpp::mesh::Primitive::Type primitiveType) {
   auto specification = TriangleBatch::createMeshSpecification(primitiveType);
+  // Keep the ordinary UV semantic while packing immutable wall metadata into
+  // zw. Recreate the interleaved layout so offsets/stride include all four.
+  auto& layout = specification.getVertexBufferAttributeLayout(0);
+  layout = mpp::mesh::VertexBufferAttributeLayout{0, false};
+  using Component = mpp::mesh::Vertex::Component;
+  using Type = mpp::mesh::Vertex::DataType;
+  layout.createAttribute(Component::Position3, Type::Float, false);
+  layout.createAttribute(Component::Normal3, Type::Float, false);
+  layout.createAttribute(Component::TexCoord4, Type::Float, false);
+  layout.createAttribute(Component::Colour4, Type::UnsignedByte, true);
   // The resource-manifest mesh parser gives every user-defined component the
   // same USER identifier, so separate UserDefined1 and UserDefined3 channels
   // cannot coexist in the resource Programs. Pack surface up and Liquid

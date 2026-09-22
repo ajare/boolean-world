@@ -99,7 +99,6 @@ PreviewRenderScene::PreviewRenderScene(
   mRenderer = std::make_unique<WorldRenderer>(
       renderSystem.resourceManager(), renderSystem.logger(),
       bw::app::RenderTextureFilter::Linear, horizontalMaterials,
-      WorldRenderer::WallUpdatePolicy::EditorEveryUpdate,
       std::vector<WallRenderSurface>{},
       WorldRenderer::WallRenderVariantResolver{}, "World", true,
       "World3d." + instanceName);
@@ -195,6 +194,11 @@ std::uint32_t PreviewRenderScene::portalRenderedPassCount() const {
 std::uint32_t PreviewRenderScene::portalSelectedEndpointCount() const {
   return static_cast<std::uint32_t>(
       mRenderer->getPortalViewDiagnostics().rootChildren.size());
+}
+
+std::array<std::uint64_t, 2> PreviewRenderScene::wallGeometryCounters() const {
+  auto counters = mRenderer->wallGeometryDiagnostics();
+  return {counters.revision, counters.uploads};
 }
 
 void PreviewRenderScene::worldGeometryChanged() {

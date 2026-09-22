@@ -11,22 +11,24 @@
 
 #include <core/SurfaceMaterialReference.h>
 
-inline std::string portalWallRenderVariantIdentity(uint32_t slot) {
-  return "portal-projective-view-" + std::to_string(slot);
+// This number identifies a stable endpoint bucket, not a transient recursive
+// render-target slot. It is not bounded by PortalViewSlotCount.
+inline std::string portalWallRenderVariantIdentity(uint32_t bucket) {
+  return "portal-endpoint-" + std::to_string(bucket);
 }
 
-inline std::optional<uint32_t> portalWallRenderVariantSlot(
+inline std::optional<uint32_t> portalWallRenderVariantBucket(
     std::string const& identity) {
-  constexpr std::string_view prefix = "portal-projective-view-";
+  constexpr std::string_view prefix = "portal-endpoint-";
   if (!identity.starts_with(prefix)) return std::nullopt;
   auto suffix = identity.substr(prefix.size());
   if (suffix.empty()) return std::nullopt;
-  uint32_t slot{};
+  uint32_t bucket{};
   for (auto character : suffix) {
     if (character < '0' || character > '9') return std::nullopt;
-    slot = slot * 10u + static_cast<uint32_t>(character - '0');
+    bucket = bucket * 10u + static_cast<uint32_t>(character - '0');
   }
-  return slot;
+  return bucket;
 }
 
 // Rendering-only data that distinguishes one wall surface from another without

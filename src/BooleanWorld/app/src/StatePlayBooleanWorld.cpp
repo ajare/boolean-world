@@ -1153,16 +1153,13 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   // For subclasses
   createGameObjects(resourceMgr, renderSystem, renderResourceMgr, args);
   if (mWorldData) {
-    auto const& physicalStats = getPlayerPhysicalStats();
-    auto const viewerPosition = bw::app::worldToRendererAudioPosition(
-        physicalStats.position, physicalStats.feetElevation);
     auto initialArtifacts = std::async(
         std::launch::async,
-        [this, worldData = mWorldData, viewerPosition] {
+        [this, worldData = mWorldData] {
           PreparedGenerationArtifacts artifacts;
           artifacts.worldData = worldData;
           artifacts.renderData = mwRenderer->prepareWorldRenderData(
-              worldData, viewerPosition);
+              worldData);
           if (mSteamAudio) {
             artifacts.acousticScene = mSteamAudio->buildScene(
                 worldData, *mAcousticPresetResolver);
@@ -1600,11 +1597,9 @@ void StatePlayBooleanWorld::handleClippingUpdate(
 
     PreparedGenerationArtifacts artifacts;
     artifacts.worldData = details.worldData;
-    auto const viewerPosition = glm::vec3{
-        details.viewerPosition.x, 0.0f, -details.viewerPosition.y};
     try {
       artifacts.renderData = mwRenderer->prepareWorldRenderData(
-          details.worldData, viewerPosition);
+          details.worldData);
     } catch (std::exception const& error) {
       artifacts.renderError = error.what();
     }
@@ -1872,9 +1867,8 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // a newly created map renderer.
   mwRenderer->setWireframe(mDebugDisplay.wireframe);
   mwRenderer->setFragmentOverdraw(mDebugDisplay.fragmentOverdraw);
-  // MPP orders every 3D draw command while WorldRenderer orders the triangles
-  // inside each material command. Together these exercise the complete
-  // closest-first diagnostic path for this scene.
+  // MPP orders 3D draw commands. WorldRenderer can additionally order
+  // horizontal triangles; immutable wall buffers retain snapshot order.
   renderSystem->setSortGeometryFrontToBack(
       mDebugDisplay.sortGeometryFrontToBack);
 

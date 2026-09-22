@@ -60,11 +60,10 @@ class WorldRenderer3d {
     std::string meshName;
     std::shared_ptr<mpp::UniformCollection> uniforms;
     uint32_t textureUnit{};
-    uint32_t slot{};
+    uint32_t endpointBucket{};
   };
   std::vector<PortalMeshBinding> mPortalMeshBindings;
   std::set<std::string> mPortalMeshNames;
-  std::set<size_t> mPortalMeshIndices;
   std::string mBatchNamePrefix;
 
   float mGlobalTime;
@@ -118,19 +117,16 @@ public:
   // enables blending so repeated fragments accumulate in the scene target.
   void setFragmentOverdraw(bool enabled);
 
-  // Every Portal material bucket shares the selected slot's initialized
-  // texture and projective source-to-auxiliary transform. Calling the fallback
-  // form before the auxiliary draw prevents a pass from sampling its own
-  // render target.
+  // Stable endpoint buckets select a completed child image per pass. Reset
+  // before each pass so an endpoint can never sample the current render target.
   void setPortalFallback();
   void setPortalView(
-      uint32_t slot,
+      uint32_t endpointBucket,
       mpp::ResourcePtr const& texture,
       glm::mat4 const& sourceProjectiveTransform);
 
-  // Uploads a rebuilt CPU wall payload between auxiliary passes without
-  // changing materials, pipeline topology, or frame-global uniforms.
-  void refreshGeometry();
+  void setHighlightedWall(int32_t wall);
+  [[nodiscard]] uint64_t geometryUploadCount() const;
 
   void update(
       glm::vec3 const& playerPosition,

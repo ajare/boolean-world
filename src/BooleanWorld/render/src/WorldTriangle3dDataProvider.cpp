@@ -7,7 +7,7 @@
 
 #include <glm/geometric.hpp>
 
-static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 13 * sizeof(uint32_t));
+static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 15 * sizeof(uint32_t));
 
 size_t WorldTriangle3dDataProvider::VertexKeyHash::operator()(
     VertexKey const& key) const noexcept {
@@ -36,6 +36,7 @@ void WorldTriangle3dDataProvider::getBounds(glm::vec3& bMin, glm::vec3& bMax) {
 
 void WorldTriangle3dDataProvider::clear() {
   updateInternals(std::vector<uint32_t>(mMeshData.size()));
+  ++mRevision;
 }
 
 void WorldTriangle3dDataProvider::setMeshCount(uint32_t numMeshes) {
@@ -174,6 +175,7 @@ void WorldTriangle3dDataProvider::updateInternals(
 }
 
 void WorldTriangle3dDataProvider::finalizeInternals() {
+  ++mRevision;
   mTriangleOrder = TriangleOrder::Authored;
   for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
     auto& meshData = mMeshData[meshIndex];
@@ -213,6 +215,8 @@ void WorldTriangle3dDataProvider::replaceData(
   std::swap(mTriangleOrder, completed.mTriangleOrder);
   setNumPrimitives(getNumTriangles());
   completed.setNumPrimitives(completed.getNumTriangles());
+  ++mRevision;
+  ++completed.mRevision;
 }
 
 void WorldTriangle3dDataProvider::orderTrianglesForView(
@@ -280,4 +284,5 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     }
   }
   mTriangleOrder = order;
+  ++mRevision;
 }

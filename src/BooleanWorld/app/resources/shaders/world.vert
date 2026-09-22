@@ -8,6 +8,7 @@
 // leaving it implicit can collide with MPP's explicitly located outputs.
 // Both world fragment shaders must use the same reserved location.
 layout(location = 6) flat out float liquidSurfaceHeight;
+layout(location = 7) flat out vec2 wallData;
 
 void main()
 {
@@ -19,7 +20,8 @@ void main()
     // error for any consumer that does check. Lines below wrap one token each.
     @Out(vec3 FRAGPOSITION) = vec3(@MMatrix * vec4(@In(POSITION), 1.0));
     @Out(vec3 FRAGNORMAL) = normalize(@NormalMatrix * @Vec3(@In(NORMAL)));
-    @Out(vec2 TEXCOORDS) = @In(TEXCOORDS);
+    @Out(vec2 TEXCOORDS) = @In(TEXCOORDS).xy;
+    wallData = @In(TEXCOORDS).zw;
     vec4 surfaceData = @In(USER);
     @Out(vec3 SURFACE_UP) = normalize(@NormalMatrix * surfaceData.xyz);
     @Out(vec3 PROJECTION_NORMAL) =

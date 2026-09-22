@@ -30,11 +30,6 @@
 
 class WorldRenderer {
 public:
-  enum class WallUpdatePolicy {
-    GameplayViewerSideChanges,
-    EditorEveryUpdate,
-  };
-
   class PreparedWorldRenderData;
   using PreparedWorldRenderDataPtr =
       std::shared_ptr<PreparedWorldRenderData>;
@@ -71,14 +66,12 @@ private:
   std::vector<MaterialRenderer> mMaterialRenderers;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
   WallRenderVariantResolver mWallRenderVariantResolver;
-  WallUpdatePolicy mWallUpdatePolicy;
 
   bool mWorldHasChanged;
   bool mWireframe{false};
   bool mFragmentOverdraw{false};
   int32_t mHighlightedTriangle{-1};
   bool mHighlightedCeiling{};
-  std::vector<uint8_t> mWallFacingNormalSides;
 
   wp::Logger* mwLogger;
   bw::core::World* mwWorld{nullptr};
@@ -95,7 +88,7 @@ private:
   PortalViewPlan mLastPortalViewPlan;
   PortalLightLimits mPortalLightLimits;
   PortalLightPlan mLastPortalLightPlan;
-  std::map<PortalEndpointKey, uint32_t> mPortalSurfaceSlots;
+  std::map<PortalEndpointKey, uint32_t> mPortalEndpointBuckets;
   std::optional<PortalEndpointKey> mSelectedPortal;
   // The real Player Torch is persistent frame state. Transmitted copies are
   // derived from it only into individual auxiliary-pass overrides.
@@ -117,20 +110,10 @@ private:
       bw::core::WorldData const& worldData,
       DataProvider const& dataProvider);
 
-  // Wall surface geometry. Each wall picks whichever single triangular or
-  // quadrilateral side faces the supplied viewer position: its authored
-  // material on the side its normal points toward, or the reserved plain-white
-  // material otherwise. Gameplay rebuilds only when one of those side choices
-  // changes; the editor can opt into rebuilding on every preview update.
-  [[nodiscard]] std::vector<uint8_t> wallFacingNormalSides(
-      bw::core::WorldData const& worldData,
-      glm::vec3 const& viewerPosition) const;
-
+  // Snapshot-owned, two-sided wall geometry. Facing/material selection,
+  // highlights, and endpoint texture bindings never rebuild these buffers.
   void updateWallDataProvider(
-      bw::core::WorldData const& worldData,
-      std::vector<uint8_t> const& facingNormalSides,
-      int32_t highlightedWall, DataProvider const& dataProvider,
-      std::map<PortalEndpointKey, uint32_t> const& portalSurfaceSlots);
+      bw::core::WorldData const& worldData, DataProvider const& dataProvider);
 
   uint32_t addVertexToDataProvider(
       DataProvider dataProvider, uint32_t meshIndex, float px, float py,
@@ -142,9 +125,8 @@ private:
       std::optional<std::array<float, 3>> const& projectionNormal =
           std::nullopt);
 
-  // Emits one Chip detail triangle, mapping it out of arrangement space
-  // (Z up) into renderer space. `mirrored` flips it for a wall drawn from
-  // behind, exactly as the wall surface itself is flipped there.
+  // Emits one horizontal detail triangle, mapping arrangement space (Z up)
+  // into renderer space. `mirrored` explicitly flips normal and winding.
   void addDetailTriangleToDataProvider(
       DataProvider dataProvider,
       uint32_t meshIndex,
@@ -162,7 +144,6 @@ public:
       wp::Logger* logger,
       bw::app::RenderTextureFilter renderTextureFilter,
       bw::app::HorizontalMaterials horizontalMaterials,
-      WallUpdatePolicy wallUpdatePolicy,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       WallRenderVariantResolver wallRenderVariantResolver = {},
       std::string worldResourceNamespace = "World",
@@ -172,6 +153,16 @@ public:
   virtual ~WorldRenderer();
 
   void setWorldChanged();
+
+  struct WallGeometryDiagnostics {
+    uint64_t revision{};
+    uint64_t uploads{};
+    bool operator==(WallGeometryDiagnostics const&) const = default;
+  };
+  [[nodiscard]] WallGeometryDiagnostics wallGeometryDiagnostics() const {
+    auto const& walls = mMaterialRenderers[2];
+    return {walls.dataProvider->revision(), walls.renderer->geometryUploadCount()};
+  }
 
   // The current geometry count for one independently submitted surface set.
   // This is useful to renderer integrations that need to inspect a snapshot
@@ -219,8 +210,7 @@ public:
   // Builds immutable CPU-side mesh payloads without touching active providers
   // or OpenGL. Gameplay calls this from the world-generation worker.
   [[nodiscard]] PreparedWorldRenderDataPtr prepareWorldRenderData(
-      bw::core::WorldDataPtr worldData,
-      glm::vec3 const& viewerPosition);
+      bw::core::WorldDataPtr worldData);
 
   // Replaces the active providers' payloads while preserving the provider
   // identities held by MPP. Must be called on the main/render thread.

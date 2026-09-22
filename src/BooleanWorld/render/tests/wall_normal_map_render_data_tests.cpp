@@ -170,11 +170,12 @@ void shadersShareCompositionContract() {
               shader2d.find("if (type == 41)") != std::string::npos,
           "Granite or the following reserved materials are not dispatched by both procedural PBR programs");
 
-  auto sample = shader3d.find("vec3 normalDir = applyWallNormalMap");
+  auto sample = shader3d.find(
+      "wallBackFace ? shadingNormal : applyWallNormalMap(shadingNormal)");
   auto evaluate = shader3d.find("material = evaluateMaterial");
   auto emboss = shader3d.find("material.normal = embossSurface", evaluate);
   require(sample != std::string::npos && sample < evaluate && evaluate < emboss,
-          "3D shader does not compose Image before Technique and Embossing");
+          "3D shader must skip Image on wall backs and compose front Image before Technique and Embossing");
 
   auto horizontalApply = shader2d.find(
       "vec3 normal = applyWallNormalMap(shadingNormal)");
