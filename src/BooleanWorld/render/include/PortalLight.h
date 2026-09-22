@@ -5,8 +5,10 @@
 #include <optional>
 #include <span>
 
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 #include <mpp/RenderPipeline.h>
+#include <mpp/Resource.h>
 
 #include <core/Portal.h>
 
@@ -20,15 +22,38 @@ inline constexpr float PlayerTorchRadiance = 14.0f;
 
 struct PortalLightAttachment {
   glm::vec3 position{};
+  glm::vec3 sourcePosition{};
   glm::vec3 radiance{PlayerTorchRadiance};
   glm::vec3 apertureCentre{};
   glm::vec3 apertureTangent{};
   glm::vec3 apertureFront{};
+  glm::vec3 sourceApertureCentre{};
+  glm::vec3 sourceApertureTangent{};
+  glm::vec3 sourceApertureFront{};
+  glm::mat4 destinationToSource{1.0f};
   float apertureHalfWidth{};
   float apertureBottom{};
   float apertureTop{};
+  float sourceApertureBottom{};
+  float sourceApertureTop{};
   float attenuationRadius{};
   float attenuationFalloff{};
+};
+
+// A contribution is publishable only after both legs have complete comparison
+// cubemaps. Keeping the maps and their sampling parameters together makes
+// pass attachment atomic: there is no unshadowed Portal-light fallback.
+struct PortalLightShadowAttachment {
+  PortalLightAttachment light;
+  mpp::ResourcePtr sourceShadowMap;
+  mpp::ResourcePtr destinationShadowMap;
+  float shadowRange{};
+  float constantBias{};
+  float normalBias{};
+  float filterRadiusTexels{};
+  float fadeStartNormalized{};
+  float mapTexelSize{};
+  bool pcf{};
 };
 
 // Builds the destination-side virtual Player Torch only when the real Torch is
@@ -47,8 +72,13 @@ struct PortalLightAttachment {
     PortalLightAttachment const& light,
     glm::vec3 const& receiverPosition);
 
-// Copies a bounded attachment set into generic auxiliary-pass uniform
-// overrides. Failure is atomic; a clean pass therefore remains spill-free.
+// Copies a bounded, fully shadowed attachment set into pass-owned uniform and
+// sampler overrides. Failure is atomic; a clean pass therefore remains
+// spill-free and the ordinary Player Torch shadow domain stays independently
+// active. Both primary and Auxiliary views use this same contract.
+[[nodiscard]] bool AttachPortalLightsToPass(
+    mpp::ScenePassOverrides& pass,
+    std::span<PortalLightShadowAttachment const> lights);
 [[nodiscard]] bool AttachPortalLightsToPass(
     mpp::AuxiliarySceneView& view,
-    std::span<PortalLightAttachment const> lights);
+    std::span<PortalLightShadowAttachment const> lights);

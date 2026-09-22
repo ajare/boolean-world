@@ -1176,28 +1176,126 @@ void WorldRenderer::renderScene(
   std::vector<mpp::ResourcePtr> renderedTextures(
       mLastPortalViewPlan.nodes.size());
 
-  // Only depth-one views receive this ticket's one-hop contribution. Deeper
-  // visual recursion remains deliberately unlit by transformed copies until
-  // bounded recursive lighting supplies its own path policy.
-  std::map<uint32_t, std::vector<PortalLightAttachment>> rootPortalLights;
-  for (auto const& edge : mLastPortalViewPlan.rootChildren) {
-    auto pair = std::ranges::find_if(
-        worldData.getPortalPairs(), [&](auto const& candidate) {
-          return candidate.layerId == edge.endpoint.layerId &&
-                 candidate.pairId == edge.endpoint.pairId;
-        });
-    if (pair == worldData.getPortalPairs().end()) continue;
-    auto sourceEndpoint = std::ranges::find_if(
-        pair->endpoints, [&](auto const& endpoint) {
-          return endpoint.endpointId == edge.endpoint.endpointId;
-        });
-    if (sourceEndpoint == pair->endpoints.end()) continue;
-    auto sourceIndex = static_cast<uint32_t>(
-        std::distance(pair->endpoints.begin(), sourceEndpoint));
-    auto light = BuildPortalLightAttachment(
-        *pair, sourceIndex, mPlayerTorchPosition, mPlayerTorchOptions);
-    if (light) {
-      rootPortalLights[edge.childNode].push_back(*light);
+  // One-hop lighting is a property of the rendered World position, not of the
+  // camera that happens to observe it. Build the same bounded contribution for
+  // the primary view and every Auxiliary view; the aperture gate rejects
+  // receivers on the source side. Recursive path composition remains #439.
+  std::vector<PortalLightAttachment> portalLightCandidates;
+  for (auto const& pair : worldData.getPortalPairs()) {
+    for (uint32_t sourceEndpoint = 0;
+         sourceEndpoint < pair.endpoints.size(); ++sourceEndpoint) {
+      auto light = BuildPortalLightAttachment(
+          pair, sourceEndpoint, mPlayerTorchPosition, mPlayerTorchOptions);
+      if (light) portalLightCandidates.push_back(*light);
+    }
+  }
+
+  std::vector<PortalLightShadowAttachment> portalLights;
+  auto reportShadowFailure = [&](std::string const& reason) {
+    if (mwLogger) {
+      mwLogger->warn(
+          "Portal-transmitted Player Torch disabled: " + reason);
+    }
+  };
+  if (portalLightCandidates.size() > PortalLightAttachmentLimit) {
+    reportShadowFailure("one-hop light/shadow attachment budget exceeded");
+  } else if (!portalLightCandidates.empty()) {
+    auto const& ordinaryDomain = pipeline->getOptions().shadowDomain;
+    if (ordinaryDomain.empty() ||
+        !mRenderSystem->hasShadowDomain(ordinaryDomain)) {
+      reportShadowFailure("ordinary Player Torch shadow domain is unavailable");
+    } else {
+      auto const ordinaryOptions =
+          mRenderSystem->getShadowDomainOptions(ordinaryDomain);
+      if (!ordinaryOptions.enabled) {
+        reportShadowFailure("ordinary Player Torch shadows are disabled");
+      } else if (ordinaryOptions.light.type != mpp::ShadowLightType::Point) {
+        reportShadowFailure(
+            "ordinary Player Torch shadow domain is not point-light compatible");
+      } else {
+        auto const& light = portalLightCandidates.front();
+        auto pointCasterClip = [](glm::vec3 const& centre,
+                                  glm::vec3 const& tangent,
+                                  glm::vec3 const& front,
+                                  float halfWidth,
+                                  float bottom,
+                                  float top) {
+          mpp::PointShadowCasterClip clip;
+          clip.enabled = true;
+          auto normal = glm::normalize(front);
+          clip.retainedWorldPlane =
+              glm::vec4(normal, -glm::dot(normal, centre));
+          clip.openingCentre = {
+              centre.x, (bottom + top) * 0.5f, centre.z};
+          clip.openingTangent = glm::normalize(tangent);
+          clip.openingBitangent = {0.0f, 1.0f, 0.0f};
+          clip.openingHalfSize = {
+              halfWidth, (top - bottom) * 0.5f};
+          clip.planeTolerance = 0.01f;
+          return clip;
+        };
+
+        auto sourceOptions = ordinaryOptions;
+        sourceOptions.light.position = light.sourcePosition;
+        sourceOptions.pointCasterClip = pointCasterClip(
+            light.sourceApertureCentre, light.sourceApertureTangent,
+            light.sourceApertureFront, light.apertureHalfWidth,
+            light.sourceApertureBottom, light.sourceApertureTop);
+        auto destinationOptions = ordinaryOptions;
+        destinationOptions.light.position = light.position;
+        destinationOptions.pointCasterClip = pointCasterClip(
+            light.apertureCentre, light.apertureTangent,
+            light.apertureFront, light.apertureHalfWidth,
+            light.apertureBottom, light.apertureTop);
+
+        try {
+          constexpr char const* sourceDomain =
+              "BooleanWorld.PortalTorch.SourceLeg";
+          constexpr char const* destinationDomain =
+              "BooleanWorld.PortalTorch.DestinationLeg";
+          auto renderLeg = [&](char const* domain,
+                               mpp::ShadowOptions const& options) {
+            mRenderSystem->configureShadowDomain(domain, options);
+            auto target = mRenderSystem->getShadowDomainDepthTarget(domain);
+            if (!target ||
+                !mRenderSystem->getShadowDomainOptions(domain).enabled) {
+              throw std::runtime_error(
+                  std::string(domain) + " cubemap allocation failed");
+            }
+            auto casters = mScene->get3dModelsInSphere(
+                options.light.position, options.light.range);
+            mRenderSystem->renderShadowDomain(domain, casters);
+            auto diagnostics =
+                mRenderSystem->getShadowDomainDiagnostics(domain);
+            if (!diagnostics.cacheComplete) {
+              throw std::runtime_error(
+                  std::string(domain) + " cubemap execution was incomplete");
+            }
+            return std::dynamic_pointer_cast<mpp::Resource>(target);
+          };
+
+          auto sourceMap = renderLeg(sourceDomain, sourceOptions);
+          auto destinationMap =
+              renderLeg(destinationDomain, destinationOptions);
+          if (!sourceMap || !destinationMap) {
+            throw std::runtime_error(
+                "point-shadow targets are not sampleable resources");
+          }
+          portalLights.push_back({
+              light,
+              std::move(sourceMap),
+              std::move(destinationMap),
+              ordinaryOptions.light.range,
+              ordinaryOptions.constantBias,
+              ordinaryOptions.normalBias,
+              ordinaryOptions.filterRadiusTexels,
+              ordinaryOptions.fadeStartNormalized,
+              1.0f / static_cast<float>(ordinaryOptions.resolution),
+              ordinaryOptions.filterMode == mpp::ShadowFilterMode::Pcf3x3});
+        } catch (std::exception const& error) {
+          reportShadowFailure(error.what());
+        }
+      }
     }
   }
 
@@ -1243,11 +1341,9 @@ void WorldRenderer::renderScene(
     auto const& node = mLastPortalViewPlan.nodes[nodeIndex];
     configurePortalSurfaces(node.children, node.cameraPosition);
     auto auxiliary = node.auxiliary;
-    if (auto lights = rootPortalLights.find(nodeIndex);
-        lights != rootPortalLights.end()) {
-      // Overflow is an intentional no-spill result. The pass still renders,
-      // but receives no partial or unbounded virtual-light list.
-      (void)AttachPortalLightsToPass(auxiliary, lights->second);
+    if (!AttachPortalLightsToPass(auxiliary, portalLights)) {
+      reportShadowFailure(
+          "Auxiliary pass rejected incomplete or conflicting shadow state");
     }
     auto outputs = mRenderSystem->renderAuxiliaryScene(
         mScene, camera, pipeline->getName(), auxiliary);
@@ -1262,8 +1358,13 @@ void WorldRenderer::renderScene(
 
   mWallFacingNormalSides = configurePortalSurfaces(
       mLastPortalViewPlan.rootChildren, camera->getPosition());
+  mpp::ScenePassOverrides primaryPass;
+  if (!AttachPortalLightsToPass(primaryPass, portalLights)) {
+    reportShadowFailure(
+        "primary pass rejected incomplete or conflicting shadow state");
+  }
   mRenderSystem->renderScene(
-      mScene, camera, {0.0f, 0.0f}, pipeline->getName());
+      mScene, camera, {0.0f, 0.0f}, pipeline->getName(), primaryPass);
 }
 
 std::optional<PortalEndpointKey> const&

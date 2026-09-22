@@ -17,11 +17,16 @@ layout(location = 6) flat in float liquidSurfaceHeight;
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(int PORTAL_LIGHT_COUNT);
 @@Uniform(vec3 PORTAL_LIGHT_POSITION);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_POSITION);
 @@Uniform(vec3 PORTAL_LIGHT_RADIANCE);
 @@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE);
 @@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT);
 @@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT);
 @@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE);
+@@Uniform(vec4 PORTAL_LIGHT_SHADOW_PARAMS);
+@@Uniform(vec3 PORTAL_LIGHT_SHADOW_BIAS);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
@@ -65,6 +70,8 @@ vec3 blendedMaterialColour;
 ##
 @@Texture(sampler2DShadow SHADOW_MAP);
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_0);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_1);
 
 layout(std140, binding = 2) uniform ShadowFrame
 {
@@ -1325,8 +1332,10 @@ float playerTorchAttenuation(float lightDistance)
     return physicalAttenuation * edgeAttenuation;
 }
 
-float portalLightGate(vec3 receiverPosition, vec3 lightPosition)
+float portalLightGate(
+    vec3 receiverPosition, vec3 lightPosition, out vec3 intersection)
 {
+    intersection = receiverPosition;
     vec3 centre = @Uniform(PORTAL_LIGHT_APERTURE_CENTRE);
     vec3 front = normalize(@Uniform(PORTAL_LIGHT_APERTURE_FRONT));
     float receiverSide = dot(receiverPosition - centre, front);
@@ -1341,7 +1350,7 @@ float portalLightGate(vec3 receiverPosition, vec3 lightPosition)
     if (alongRay < 0.0 || alongRay > 1.0)
         return 0.0;
 
-    vec3 intersection = receiverPosition +
+    intersection = receiverPosition +
         alongRay * (lightPosition - receiverPosition);
     vec3 tangent = normalize(@Uniform(PORTAL_LIGHT_APERTURE_TANGENT));
     vec3 bounds = @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS);
@@ -1349,6 +1358,49 @@ float portalLightGate(vec3 receiverPosition, vec3 lightPosition)
     return across <= bounds.x &&
            intersection.y >= bounds.y && intersection.y <= bounds.z
         ? 1.0 : 0.0;
+}
+
+float portalPointShadowVisibility(
+    samplerCubeShadow shadowMap, vec3 worldPosition, vec3 normal,
+    vec3 lightDirection, vec3 lightPosition)
+{
+    vec4 params = @Uniform(PORTAL_LIGHT_SHADOW_PARAMS);
+    vec3 lightToFragment = worldPosition - lightPosition;
+    float distanceToLight = length(lightToFragment);
+    if (distanceToLight >= params.w) return 0.0;
+    vec3 biases = @Uniform(PORTAL_LIGHT_SHADOW_BIAS);
+    float bias = biases.x + biases.y *
+        (1.0 - max(dot(normal, lightDirection), 0.0));
+    float compareDepth = distanceToLight / params.w - bias;
+    float visibility;
+    if (params.z < 0.5)
+    {
+        visibility = texture(shadowMap, vec4(lightToFragment, compareDepth));
+    }
+    else
+    {
+        vec3 direction = lightToFragment / max(distanceToLight, 0.00001);
+        vec3 reference = abs(direction.z) < 0.999
+            ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+        vec3 tangent = normalize(cross(reference, direction));
+        vec3 bitangent = cross(direction, tangent);
+        float radius = 2.0 * params.x * params.y;
+        visibility = 0.0;
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x)
+            {
+                vec3 tapDirection = normalize(direction +
+                    tangent * (float(x) * radius) +
+                    bitangent * (float(y) * radius));
+                visibility += texture(
+                    shadowMap, vec4(tapDirection, compareDepth));
+            }
+        visibility /= 9.0;
+    }
+    float fade = clamp((distanceToLight / params.w - biases.z) /
+        max(1.0 - biases.z, 0.00001), 0.0, 1.0);
+    fade = fade * fade * (3.0 - 2.0 * fade);
+    return mix(visibility, 1.0, fade);
 }
 
 struct PbrLighting
@@ -1371,11 +1423,26 @@ PbrLighting shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
         vec3 toVirtualLight = virtualPosition - worldPos;
         float virtualDistance = max(length(toVirtualLight), 0.0001);
         vec3 virtualDirection = toVirtualLight / virtualDistance;
-        float gate = portalLightGate(worldPos, virtualPosition);
+        vec3 destinationIntersection;
+        float gate = portalLightGate(
+            worldPos, virtualPosition, destinationIntersection);
+        vec3 sourceIntersection = vec3(
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE) *
+            vec4(destinationIntersection, 1.0));
+        vec3 sourcePosition = @Uniform(PORTAL_LIGHT_SOURCE_POSITION);
+        vec3 sourceDirection = normalize(sourcePosition - sourceIntersection);
+        float sourceVisibility = portalPointShadowVisibility(
+            @Texture(PASS_POINT_SHADOW_MAP_0), sourceIntersection,
+            normalize(@Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT)),
+            sourceDirection, sourcePosition);
+        float destinationVisibility = portalPointShadowVisibility(
+            @Texture(PASS_POINT_SHADOW_MAP_1), worldPos,
+            m.normal, virtualDirection, virtualPosition);
         direct += evaluatePbrLight(
             m, viewDir, virtualDirection,
             @Uniform(PORTAL_LIGHT_RADIANCE) *
-                playerTorchAttenuation(virtualDistance) * gate);
+                playerTorchAttenuation(virtualDistance) * gate *
+                sourceVisibility * destinationVisibility);
     }
     vec3 ambient = vec3(0.12);
     vec3 f0 = mix(vec3(0.04), m.albedo, m.metallic);

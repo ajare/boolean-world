@@ -82,29 +82,32 @@ void apertureGateRejectsFrameAndBackSideReceivers() {
           "a receiver path above the resolved aperture was lit");
 }
 
-void attachmentsAreBoundedAndPassScoped() {
+void attachmentsFailAtomicallyWithoutCompleteShadows() {
   auto light = *BuildPortalLightAttachment(
       portalPair(), 0, {0.0f, 2.0f, -2.0f},
       bw::app::PlayerTorchOptions{});
+  require(light.sourcePosition == glm::vec3(0.0f, 2.0f, -2.0f) &&
+              light.sourceApertureFront != glm::vec3{} &&
+              light.destinationToSource != glm::mat4{1.0f},
+          "the one-hop attachment omitted its folded source-leg transform");
+
+  PortalLightShadowAttachment incomplete;
+  incomplete.light = light;
+  incomplete.shadowRange = 192.0f;
+  incomplete.mapTexelSize = 1.0f / 1024.0f;
   mpp::AuxiliarySceneView pass;
-  require(AttachPortalLightsToPass(pass, std::span(&light, 1)),
-          "one virtual Player Torch did not attach to its pass");
-  auto const& uniforms = pass.uniformOverrides.getUniformData();
-  require(uniforms.contains("PORTAL_LIGHT_COUNT") &&
-              uniforms.contains("PORTAL_LIGHT_POSITION") &&
-              uniforms.contains("PORTAL_LIGHT_APERTURE_BOUNDS"),
-          "the auxiliary pass did not own complete virtual-light state");
+  require(!AttachPortalLightsToPass(pass, std::span(&incomplete, 1)) &&
+              pass.uniformOverrides.getNumUniforms() == 0 &&
+              pass.samplerOverrides.empty(),
+          "an incomplete shadow allocation enabled transmitted light");
 
-  mpp::AuxiliarySceneView laterPass;
-  require(laterPass.uniformOverrides.getNumUniforms() == 0,
-          "virtual-light state contaminated a later auxiliary pass");
-
-  std::vector<PortalLightAttachment> overflow(
-      PortalLightAttachmentLimit + 1, light);
-  mpp::AuxiliarySceneView boundedPass;
+  std::vector<PortalLightShadowAttachment> overflow(
+      PortalLightAttachmentLimit + 1, incomplete);
+  mpp::ScenePassOverrides boundedPass;
   require(!AttachPortalLightsToPass(boundedPass, overflow) &&
-              boundedPass.uniformOverrides.getNumUniforms() == 0,
-          "an over-budget virtual-light list did not fail to no spill");
+              boundedPass.uniforms.getNumUniforms() == 0 &&
+              boundedPass.samplers.empty(),
+          "an over-budget shadow list did not fail atomically to no spill");
 }
 }  // namespace
 
@@ -112,7 +115,7 @@ int main() {
   try {
     canonicalTransformPreservesThePlayerTorch();
     apertureGateRejectsFrameAndBackSideReceivers();
-    attachmentsAreBoundedAndPassScoped();
+    attachmentsFailAtomicallyWithoutCompleteShadows();
     std::cout << "One-hop Portal Player Torch lighting passed\n";
     return 0;
   } catch (std::exception const& error) {
