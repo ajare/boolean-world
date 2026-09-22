@@ -40,17 +40,52 @@ layout(location = 6) flat in float liquidSurfaceHeight;
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(int PORTAL_LIGHT_COUNT);
-@@Uniform(vec3 PORTAL_LIGHT_POSITION);
-@@Uniform(vec3 PORTAL_LIGHT_SOURCE_POSITION);
-@@Uniform(vec3 PORTAL_LIGHT_RADIANCE);
-@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE);
-@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT);
-@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT);
-@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT);
-@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS);
-@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE);
 @@Uniform(vec4 PORTAL_LIGHT_SHADOW_PARAMS);
 @@Uniform(vec3 PORTAL_LIGHT_SHADOW_BIAS);
+@@Uniform(vec3 PORTAL_LIGHT_POSITION_0);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_POSITION_0);
+@@Uniform(vec3 PORTAL_LIGHT_RADIANCE_0);
+@@Uniform(int PORTAL_LIGHT_HOP_COUNT_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_0_0);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_0_1);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_0_2);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_POSITION_1);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_POSITION_1);
+@@Uniform(vec3 PORTAL_LIGHT_RADIANCE_1);
+@@Uniform(int PORTAL_LIGHT_HOP_COUNT_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_1_0);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_1_1);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_1_2);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_2);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
@@ -101,6 +136,12 @@ vec3 blendedMaterialColour;
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
 @@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_0);
 @@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_1);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_2);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_3);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_4);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_5);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_6);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_7);
 
 layout(std140, binding = 2) uniform ShadowFrame
 {
@@ -3005,11 +3046,12 @@ float playerTorchAttenuation(float lightDistance)
 }
 
 float portalLightGate(
-    vec3 receiverPosition, vec3 lightPosition, out vec3 intersection)
+    vec3 receiverPosition, vec3 lightPosition, vec3 centre,
+    vec3 tangentAxis, vec3 frontAxis, vec3 bounds,
+    out vec3 intersection)
 {
     intersection = receiverPosition;
-    vec3 centre = @Uniform(PORTAL_LIGHT_APERTURE_CENTRE);
-    vec3 front = normalize(@Uniform(PORTAL_LIGHT_APERTURE_FRONT));
+    vec3 front = normalize(frontAxis);
     float receiverSide = dot(receiverPosition - centre, front);
     float lightSide = dot(lightPosition - centre, front);
     if (receiverSide <= 0.0001 || lightSide >= -0.0001)
@@ -3024,8 +3066,7 @@ float portalLightGate(
 
     intersection = receiverPosition +
         alongRay * (lightPosition - receiverPosition);
-    vec3 tangent = normalize(@Uniform(PORTAL_LIGHT_APERTURE_TANGENT));
-    vec3 bounds = @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS);
+    vec3 tangent = normalize(tangentAxis);
     float across = abs(dot(intersection - centre, tangent));
     return across <= bounds.x &&
            intersection.y >= bounds.y && intersection.y <= bounds.z
@@ -3075,6 +3116,74 @@ float portalPointShadowVisibility(
     return mix(visibility, 1.0, fade);
 }
 
+vec3 portalLightContribution(
+    Material material, vec3 viewDir, vec3 worldPosition,
+    vec3 virtualPosition, vec3 sourcePosition, vec3 radiance, int hopCount,
+    vec3 centre0, vec3 tangent0, vec3 front0, vec3 sourceFront0,
+    vec3 bounds0, mat4 inverse0,
+    vec3 centre1, vec3 tangent1, vec3 front1, vec3 sourceFront1,
+    vec3 bounds1, mat4 inverse1,
+    vec3 centre2, vec3 tangent2, vec3 front2, vec3 sourceFront2,
+    vec3 bounds2, mat4 inverse2,
+    samplerCubeShadow shadow0, samplerCubeShadow shadow1,
+    samplerCubeShadow shadow2, samplerCubeShadow shadow3)
+{
+    if (hopCount < 1 || hopCount > 3)
+        return vec3(0.0);
+
+    vec3 toVirtualLight = virtualPosition - worldPosition;
+    float virtualDistance = max(length(toVirtualLight), 0.0001);
+    vec3 virtualDirection = toVirtualLight / virtualDistance;
+    vec3 foldedReceiver = worldPosition;
+    vec3 foldedLight = virtualPosition;
+    vec3 foldedNormal = material.normal;
+    vec3 intersection;
+    float visibility = 1.0;
+
+    if (hopCount == 3)
+    {
+        visibility *= portalPointShadowVisibility(
+            shadow3, foldedReceiver, foldedNormal,
+            normalize(foldedLight - foldedReceiver), foldedLight);
+        if (portalLightGate(
+                foldedReceiver, foldedLight, centre2, tangent2, front2,
+                bounds2, intersection) == 0.0)
+            return vec3(0.0);
+        foldedReceiver = vec3(inverse2 * vec4(intersection, 1.0));
+        foldedLight = vec3(inverse2 * vec4(foldedLight, 1.0));
+        foldedNormal = normalize(sourceFront2);
+    }
+    if (hopCount >= 2)
+    {
+        visibility *= portalPointShadowVisibility(
+            shadow2, foldedReceiver, foldedNormal,
+            normalize(foldedLight - foldedReceiver), foldedLight);
+        if (portalLightGate(
+                foldedReceiver, foldedLight, centre1, tangent1, front1,
+                bounds1, intersection) == 0.0)
+            return vec3(0.0);
+        foldedReceiver = vec3(inverse1 * vec4(intersection, 1.0));
+        foldedLight = vec3(inverse1 * vec4(foldedLight, 1.0));
+        foldedNormal = normalize(sourceFront1);
+    }
+
+    visibility *= portalPointShadowVisibility(
+        shadow1, foldedReceiver, foldedNormal,
+        normalize(foldedLight - foldedReceiver), foldedLight);
+    if (portalLightGate(
+            foldedReceiver, foldedLight, centre0, tangent0, front0,
+            bounds0, intersection) == 0.0)
+        return vec3(0.0);
+    foldedReceiver = vec3(inverse0 * vec4(intersection, 1.0));
+    visibility *= portalPointShadowVisibility(
+        shadow0, foldedReceiver, normalize(sourceFront0),
+        normalize(sourcePosition - foldedReceiver), sourcePosition);
+
+    return evaluatePbrLight(
+        material, viewDir, virtualDirection,
+        radiance * playerTorchAttenuation(virtualDistance) * visibility);
+}
+
 struct PbrLighting
 {
     vec3 direct;
@@ -3099,32 +3208,67 @@ PbrLighting shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     direct *= playerTorchVisibility(
         worldPosition, material.normal, lightDirection);
 
-    if (@Uniform(PORTAL_LIGHT_COUNT) == 1)
+    if (@Uniform(PORTAL_LIGHT_COUNT) >= 1)
     {
-        vec3 virtualPosition = @Uniform(PORTAL_LIGHT_POSITION);
-        vec3 toVirtualLight = virtualPosition - worldPosition;
-        float virtualDistance = max(length(toVirtualLight), 0.0001);
-        vec3 virtualDirection = toVirtualLight / virtualDistance;
-        vec3 destinationIntersection;
-        float gate = portalLightGate(
-            worldPosition, virtualPosition, destinationIntersection);
-        vec3 sourceIntersection = vec3(
-            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE) *
-            vec4(destinationIntersection, 1.0));
-        vec3 sourcePosition = @Uniform(PORTAL_LIGHT_SOURCE_POSITION);
-        vec3 sourceDirection = normalize(sourcePosition - sourceIntersection);
-        float sourceVisibility = portalPointShadowVisibility(
-            @Texture(PASS_POINT_SHADOW_MAP_0), sourceIntersection,
-            normalize(@Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT)),
-            sourceDirection, sourcePosition);
-        float destinationVisibility = portalPointShadowVisibility(
-            @Texture(PASS_POINT_SHADOW_MAP_1), worldPosition,
-            material.normal, virtualDirection, virtualPosition);
-        direct += evaluatePbrLight(
-            material, viewDir, virtualDirection,
-            @Uniform(PORTAL_LIGHT_RADIANCE) *
-                playerTorchAttenuation(virtualDistance) * gate *
-                sourceVisibility * destinationVisibility);
+        direct += portalLightContribution(
+            material, viewDir, worldPosition,
+            @Uniform(PORTAL_LIGHT_POSITION_0),
+            @Uniform(PORTAL_LIGHT_SOURCE_POSITION_0),
+            @Uniform(PORTAL_LIGHT_RADIANCE_0),
+            @Uniform(PORTAL_LIGHT_HOP_COUNT_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_0_0),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_0_0),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_0_1),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_0_1),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_0_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_0_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_0_2),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_0_2),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_2),
+            @Texture(PASS_POINT_SHADOW_MAP_0),
+            @Texture(PASS_POINT_SHADOW_MAP_1),
+            @Texture(PASS_POINT_SHADOW_MAP_2),
+            @Texture(PASS_POINT_SHADOW_MAP_3));
+    }
+    if (@Uniform(PORTAL_LIGHT_COUNT) >= 2)
+    {
+        direct += portalLightContribution(
+            material, viewDir, worldPosition,
+            @Uniform(PORTAL_LIGHT_POSITION_1),
+            @Uniform(PORTAL_LIGHT_SOURCE_POSITION_1),
+            @Uniform(PORTAL_LIGHT_RADIANCE_1),
+            @Uniform(PORTAL_LIGHT_HOP_COUNT_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_1_0),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_1_0),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_1_1),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_1_1),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_1_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_1_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_1_2),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_1_2),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_2),
+            @Texture(PASS_POINT_SHADOW_MAP_4),
+            @Texture(PASS_POINT_SHADOW_MAP_5),
+            @Texture(PASS_POINT_SHADOW_MAP_6),
+            @Texture(PASS_POINT_SHADOW_MAP_7));
     }
 
     // Keep ambient illumination orientation-independent so opposite floor and

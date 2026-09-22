@@ -514,18 +514,31 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
     uniforms.setUniform("PORTAL_LIGHT_COUNT", int32_t{0});
-    uniforms.setUniform("PORTAL_LIGHT_POSITION", glm::vec3{});
-    uniforms.setUniform("PORTAL_LIGHT_SOURCE_POSITION", glm::vec3{});
-    uniforms.setUniform("PORTAL_LIGHT_RADIANCE", glm::vec3{});
-    uniforms.setUniform("PORTAL_LIGHT_APERTURE_CENTRE", glm::vec3{});
-    uniforms.setUniform("PORTAL_LIGHT_APERTURE_TANGENT", glm::vec3{});
-    uniforms.setUniform("PORTAL_LIGHT_APERTURE_FRONT", glm::vec3{});
-    uniforms.setUniform("PORTAL_LIGHT_SOURCE_APERTURE_FRONT", glm::vec3{});
-    uniforms.setUniform("PORTAL_LIGHT_APERTURE_BOUNDS", glm::vec3{});
-    uniforms.setUniform(
-        "PORTAL_LIGHT_DESTINATION_TO_SOURCE", glm::mat4{1.0f});
     uniforms.setUniform("PORTAL_LIGHT_SHADOW_PARAMS", glm::vec4{});
     uniforms.setUniform("PORTAL_LIGHT_SHADOW_BIAS", glm::vec3{});
+    for (size_t light = 0; light < PortalLightAttachmentLimit; ++light) {
+      auto lightName = [&](char const* field) {
+        return "PORTAL_LIGHT_" + std::string(field) + "_" +
+               std::to_string(light);
+      };
+      uniforms.setUniform(lightName("POSITION"), glm::vec3{});
+      uniforms.setUniform(lightName("SOURCE_POSITION"), glm::vec3{});
+      uniforms.setUniform(lightName("RADIANCE"), glm::vec3{});
+      uniforms.setUniform(lightName("HOP_COUNT"), int32_t{0});
+      for (uint32_t hop = 0; hop < PortalLightHopLimit; ++hop) {
+        auto hopName = [&](char const* field) {
+          return lightName(field) + "_" + std::to_string(hop);
+        };
+        uniforms.setUniform(hopName("APERTURE_CENTRE"), glm::vec3{});
+        uniforms.setUniform(hopName("APERTURE_TANGENT"), glm::vec3{});
+        uniforms.setUniform(hopName("APERTURE_FRONT"), glm::vec3{});
+        uniforms.setUniform(
+            hopName("SOURCE_APERTURE_FRONT"), glm::vec3{});
+        uniforms.setUniform(hopName("APERTURE_BOUNDS"), glm::vec3{});
+        uniforms.setUniform(
+            hopName("DESTINATION_TO_SOURCE"), glm::mat4{1.0f});
+      }
+    }
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});

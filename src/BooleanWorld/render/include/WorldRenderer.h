@@ -18,6 +18,7 @@
 
 #include <core/World.h>
 
+#include "PortalLight.h"
 #include "PortalView.h"
 #include "SecondaryMaterialOptions.h"
 #include "SubMaterialResolver.h"
@@ -92,6 +93,8 @@ private:
   mpp::RenderSystem* mRenderSystem{};
   PortalViewPlanner mPortalViewPlanner;
   PortalViewPlan mLastPortalViewPlan;
+  PortalLightLimits mPortalLightLimits;
+  PortalLightPlan mLastPortalLightPlan;
   std::map<PortalEndpointKey, uint32_t> mPortalSurfaceSlots;
   std::optional<PortalEndpointKey> mSelectedPortal;
   // The real Player Torch is persistent frame state. Transmitted copies are
@@ -237,6 +240,8 @@ public:
   [[nodiscard]] std::optional<PortalEndpointKey> const&
   getSelectedPortal() const;
   [[nodiscard]] PortalViewPlan const& getPortalViewDiagnostics() const;
+  [[nodiscard]] PortalLightPlan const& getPortalLightDiagnostics() const;
+  void setPortalLightLimits(PortalLightLimits limits);
 
   void update(
       bw::core::World* world,
