@@ -137,7 +137,14 @@ namespace editor {
   X(SetNumTileMaps, "Set number of TileMaps", setNumTileMaps) \
   X(SetPrefabBuildVariable, "Set Prefab build variable", setPrefabBuildVariable) \
   X(RemovePrefabBuildVariable, "Remove Prefab build variable", removePrefabBuildVariable) \
-  X(RenamePrefabBuildVariable, "Rename Prefab build variable", renamePrefabBuildVariable)
+  X(RenamePrefabBuildVariable, "Rename Prefab build variable", renamePrefabBuildVariable) \
+  X(CreatePortalPair, "Create Portal pair", createPortalPair) \
+  X(DeletePortalPair, "Delete Portal pair", deletePortalPair) \
+  X(SelectPortalEndpoint, "Select Portal endpoint", selectPortalEndpoint) \
+  X(SetPortalEndpointPosition, "Move Portal endpoint", setPortalEndpointPosition) \
+  X(MovePortalEndpoint, "Move Portal endpoint", movePortalEndpoint) \
+  X(SetPortalEndpointWidth, "Set Portal endpoint width", setPortalEndpointWidth) \
+  X(SetPortalEndpointVerticalBounds, "Set Portal vertical bounds", setPortalEndpointVerticalBounds)
 
 #define EDITOR_GESTURE_COMMANDS(X) \
   X(Edit, "Edit") \
@@ -149,7 +156,8 @@ namespace editor {
   X(CreateTriggerLine, "Create TriggerLine") \
   X(PlacePrimitiveField, "Place Primitive field") \
   X(SwapPrimitivePriorities, "Swap Primitive priorities") \
-  X(PaintTileMapCells, "Paint TileMap cells")
+  X(PaintTileMapCells, "Paint TileMap cells") \
+  X(MovePortalEndpointGesture, "Move Portal endpoint")
 
 enum class CommandId : uint16_t {
 #define EDITOR_COMMAND_ENUM(type, label, function) type,

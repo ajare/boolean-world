@@ -462,7 +462,7 @@ void EditorInteraction::updateSelection(
   // Primitives: their interior is intentionally not a selectable solid face,
   // so treating release as a background click would clear their selection.
   if (mMovingSelectedPrimitives || mScalingSelectedPrimitives ||
-      mRotatingSelectedPrimitives) {
+      mRotatingSelectedPrimitives || mMovingSelectedPortalEndpoint) {
     if (input.leftReleased) {
       mPendingPrimitiveClick.clear();
       mBoxSelectPending = false;
@@ -496,6 +496,15 @@ void EditorInteraction::updateSelection(
 
       case HoverableType::WorldVertex:
         transact(doc, CommandId::SelectWorldVertex, [&] { selectWorldVertex(doc, mHover.indices.front()); });
+        break;
+
+      case HoverableType::PortalEndpoint:
+        if (mHover.indices.size() == 2) {
+          transact(doc, CommandId::SelectPortalEndpoint, [&] {
+            selectPortalEndpoint(
+                doc, layer->getId(), mHover.indices[0], mHover.indices[1]);
+          });
+        }
         break;
 
       case HoverableType::None:
@@ -668,7 +677,47 @@ void EditorInteraction::updateDrag(
 
   auto const& primitiveSelection = doc->getSelectedPrimitiveIndices();
   auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
-  if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u) {
+  auto selectedPortalPairId = doc->getSelectedPortalPairId();
+  if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u &&
+      selectedPortalPairId == ~0u) {
+    return;
+  }
+
+  if (selectedPortalPairId != ~0u) {
+    if (input.leftReleased) {
+      if (mMovingSelectedPortalEndpoint && undoableActionInProgress()) {
+        commitUndoableAction(doc);
+      }
+      mMovingSelectedPortalEndpoint = false;
+    } else if (input.leftDragging) {
+      auto* portalLayer = doc->getWorld()->getLayer(
+          doc->getSelectedPortalLayerId());
+      if (portalLayer && portalLayer->getPortalPair(selectedPortalPairId)) {
+        if (!mMovingSelectedPortalEndpoint) {
+          mMovingSelectedPortalEndpoint = true;
+          if (!undoableActionInProgress()) {
+            beginTransaction(
+                doc, CommandId::MovePortalEndpointGesture, 0.0f);
+          }
+        }
+        auto movement =
+            wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom;
+        if (settings.showGrid && settings.gridSize > 0.0f) {
+          auto const& endpoint = portalLayer->getPortalPair(selectedPortalPairId)
+                                     ->getEndpoint(
+                                         doc->getSelectedPortalEndpointIndex());
+          auto const current = endpoint.getAperture().centre;
+          auto const target = current + movement;
+          auto const snapped = wp::Vector2{
+              round(target.x / settings.gridSize) * settings.gridSize,
+              round(target.y / settings.gridSize) * settings.gridSize};
+          movement = snapped - current;
+        }
+        movePortalEndpoint(
+            doc, portalLayer, selectedPortalPairId,
+            doc->getSelectedPortalEndpointIndex(), movement);
+      }
+    }
     return;
   }
 

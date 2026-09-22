@@ -28,6 +28,7 @@ add_library(core STATIC
     src/MaterialDefinition.cpp
     src/MeshPrimitive.cpp
     src/Module.cpp
+    src/Portal.cpp
     src/Primitive.cpp
     src/PrimitiveFactory.cpp
     src/PrimitiveField.cpp
@@ -149,6 +150,15 @@ if(BUILD_TESTING)
     bw_output_dirs(boolean_world_audio_emitter_tests)
     bw_deploy_runtime_dlls(boolean_world_audio_emitter_tests)
     add_test(NAME boolean_world_audio_emitter COMMAND boolean_world_audio_emitter_tests)
+
+    add_executable(boolean_world_portal_pair_tests
+        tests/portal_pair_tests.cpp)
+    target_link_libraries(boolean_world_portal_pair_tests PRIVATE core)
+    target_compile_features(boolean_world_portal_pair_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_portal_pair_tests)
+    bw_output_dirs(boolean_world_portal_pair_tests)
+    bw_deploy_runtime_dlls(boolean_world_portal_pair_tests)
+    add_test(NAME boolean_world_portal_pair COMMAND boolean_world_portal_pair_tests)
 
     add_executable(boolean_world_mesh_primitive_serialization_tests
         tests/mesh_primitive_serialization_tests.cpp)

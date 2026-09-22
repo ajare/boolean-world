@@ -124,7 +124,8 @@ ArrangementWorldData::ArrangementWorldData(
     float gridCellSize,
     ArrangementStats* stats,
     WedgeGenerationParameters const& wedgeGenerationParameters,
-    bool createWayfinderMesh)
+    bool createWayfinderMesh,
+    std::vector<PortalPairSnapshot> const& portalPairs)
     : mArrangement(std::move(arrangement)),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
   wp::Timer timer;
@@ -136,6 +137,7 @@ ArrangementWorldData::ArrangementWorldData(
   timer.restart();
 
   mWalls = arr::BuildArrangementWalls(*mArrangement);
+  mPortalPairs = ResolvePortalPairs(*mArrangement, mWalls, portalPairs);
   if (stats != nullptr) {
     stats->wallCount = uint32_t(mWalls.size());
     stats->wallGenerationTimeNs = timer.elapsedNanoseconds();
@@ -342,6 +344,21 @@ ArrangementWorldData::getCapturedAudioEmitters() const {
 std::vector<FailedAudioEmitter> const&
 ArrangementWorldData::getFailedAudioEmitters() const {
   return mFailedAudioEmitters;
+}
+
+std::vector<ResolvedPortalPair> const&
+ArrangementWorldData::getPortalPairs() const {
+  return mPortalPairs;
+}
+
+ResolvedPortalPair const* ArrangementWorldData::findPortalPair(
+    uint32_t layerId, uint32_t pairId) const {
+  auto found = std::find_if(
+      mPortalPairs.begin(), mPortalPairs.end(),
+      [=](auto const& pair) {
+        return pair.layerId == layerId && pair.pairId == pairId;
+      });
+  return found == mPortalPairs.end() ? nullptr : &*found;
 }
 
 std::vector<arr::HydraulicCell> const&

@@ -7,6 +7,7 @@ enum struct HoverableType {
   Primitive,
   TriggerLine,
   WorldVertex,
+  PortalEndpoint,
   MeshSubObject
 };
 

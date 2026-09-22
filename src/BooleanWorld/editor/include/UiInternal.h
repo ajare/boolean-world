@@ -135,6 +135,7 @@ void renderDefineTileMapsView(
 void renderCreateTriggerLineView(ViewContext& context);
 void renderEditTriggerLineView(ViewContext& context,
                                uint32_t triggerLineIndex);
+void renderPortalsView(ViewContext& context);
 void renderArrangementFaceView(ViewContext& context);
 void renderConfigView(ViewContext& context);
 void renderHistoryView(ViewContext& context);

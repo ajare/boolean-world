@@ -297,6 +297,77 @@ void renderAudioEmitters(
   }
 }
 
+void renderPortalOverlays(
+    editor::Document const* doc,
+    bw::core::ArrangementWorldData const& worldData,
+    ImDrawList* drawList) {
+  auto const* layer = doc->getWorld()->getActiveLayer();
+  constexpr ImU32 authoredColour = IM_COL32(255, 175, 55, 255);
+  constexpr ImU32 selectedColour = IM_COL32(255, 235, 80, 255);
+  constexpr ImU32 resolvedColour = IM_COL32(70, 225, 245, 255);
+  constexpr ImU32 inactiveColour = IM_COL32(255, 70, 65, 255);
+
+  for (auto const& pair : layer->getPortalPairs()) {
+    auto const* generated =
+        worldData.findPortalPair(layer->getId(), pair.getId());
+    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
+      auto const& authored = pair.getEndpoint(endpointIndex).getAperture();
+      auto const* endpoint = generated ? &generated->endpoints[endpointIndex]
+                                       : nullptr;
+      auto tangent = endpoint && endpoint->resolved
+                         ? endpoint->aperture.tangent
+                         : wp::Vector2{1.0f, 0.0f};
+      auto const selected =
+          doc->getSelectedPortalLayerId() == layer->getId() &&
+          doc->getSelectedPortalPairId() == pair.getId() &&
+          doc->getSelectedPortalEndpointIndex() == endpointIndex;
+      auto const authoredHalf = tangent * (authored.width * 0.5f);
+      drawList->AddLine(
+          worldToScreen(authored.centre - authoredHalf),
+          worldToScreen(authored.centre + authoredHalf),
+          selected ? selectedColour : authoredColour, 5.0f);
+
+      if (endpoint && endpoint->resolved) {
+        auto const resolvedHalf =
+            tangent * (endpoint->aperture.width * 0.5f);
+        drawList->AddLine(
+            worldToScreen(endpoint->aperture.centre - resolvedHalf),
+            worldToScreen(endpoint->aperture.centre + resolvedHalf),
+            generated->active ? resolvedColour : inactiveColour, 2.0f);
+      }
+
+      auto centre = worldToScreen(authored.centre);
+      auto const active = generated && generated->active;
+      drawList->AddCircleFilled(
+          centre, 4.0f, active ? resolvedColour : inactiveColour, 12);
+      if (!active) {
+        drawList->AddLine(
+            {centre.x - 7.0f, centre.y - 7.0f},
+            {centre.x + 7.0f, centre.y + 7.0f}, inactiveColour, 2.0f);
+        drawList->AddLine(
+            {centre.x + 7.0f, centre.y - 7.0f},
+            {centre.x - 7.0f, centre.y + 7.0f}, inactiveColour, 2.0f);
+      }
+
+      if (selected || !active) {
+        auto diagnostic = endpoint
+                              ? bw::core::PortalResolutionDiagnosticText(
+                                    endpoint->diagnostic)
+                              : std::string_view{
+                                    "Inactive: owning Layer is not in this generation"};
+        char label[256];
+        std::snprintf(
+            label, sizeof(label), "Portal %u.%u [%.1f, %.1f]  %.*s",
+            pair.getId(), endpointIndex, authored.bottom, authored.top,
+            static_cast<int>(diagnostic.size()), diagnostic.data());
+        drawList->AddText(
+            {centre.x + 9.0f, centre.y + 7.0f},
+            active ? resolvedColour : inactiveColour, label);
+      }
+    }
+  }
+}
+
 void renderWorld(
     editor::Document* doc,
     editor::Settings const& settings,
@@ -1281,6 +1352,7 @@ void renderWorld(
   // them last keeps a discarded emitter and its reason visible even when its
   // parent has been cleared by later fold content.
   if (worldData) {
+    renderPortalOverlays(doc, *worldData, drawList);
     renderAudioEmitters(*worldData, drawList);
   }
 }

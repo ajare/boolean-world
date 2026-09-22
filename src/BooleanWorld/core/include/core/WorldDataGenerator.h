@@ -7,6 +7,7 @@
 
 #include "core/LayerSelection.h"
 #include "core/Platform.h"
+#include "core/Portal.h"
 #include "core/Primitive.h"
 #include "core/WorldData.h"
 #include "core/WorldUpdateData.h"
@@ -47,6 +48,11 @@ selectAndOrderPrimitiveEntries(
     World const& world,
     LayerSelection const& selection,
     PrimitiveFilter const& filter = {});
+
+// Copies complete pairs from selected owning Layers. Portal participation is
+// intentionally not inferred endpoint-by-endpoint.
+[[nodiscard]] BW_API std::vector<PortalPairSnapshot> snapshotPortalPairs(
+    World const& world, LayerSelection const& selection);
 
 class WorldDataGenerator {
 public:

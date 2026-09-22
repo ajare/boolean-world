@@ -13,11 +13,12 @@ using namespace std;
 
 namespace {
 constexpr char kMagic[4] = {'B', 'W', 'L', 'D'};
-constexpr uint32_t kFormatVersion = 1;
+constexpr uint32_t kOldestSupportedFormatVersion = 1;
+constexpr uint32_t kFormatVersion = 2;
 }  // namespace
 
 BinarySerializer::BinarySerializer(bool serializing, string const& source, bool sourceIsFile)
-    : mFilepath(source), mSourceIsFile(sourceIsFile), mSerializing(serializing), mReadPos(0) {
+    : mFilepath(source), mSourceIsFile(sourceIsFile), mSerializing(serializing), mReadPos(0), mFormatVersion(kFormatVersion) {
   if (mSerializing) {
     writeHeader();
   }
@@ -82,9 +83,15 @@ void BinarySerializer::readHeader() {
 
   uint32_t version;
   readRaw(&version, sizeof(version));
-  if (version != kFormatVersion) {
+  if (version < kOldestSupportedFormatVersion || version > kFormatVersion) {
     throw SerializationException(format("Unsupported binary world format version: {}", version));
   }
+  mFormatVersion = version;
+}
+
+bool BinarySerializer::hasField(string const& name) const {
+  if (name == "portalPairs") return mFormatVersion >= 2;
+  return true;
 }
 
 void BinarySerializer::writeRaw(void const* data, size_t size) {

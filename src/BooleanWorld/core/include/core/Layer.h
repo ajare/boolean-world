@@ -13,6 +13,7 @@
 #include "core/Platform.h"
 #include "core/Serializable.h"
 #include "core/BuildVariables.h"
+#include "core/Portal.h"
 #include "core/Primitive.h"
 #include "core/WorldTriggerLine.h"
 
@@ -24,10 +25,10 @@ class LayerBuildStep;
 class PrimitiveField;
 class World;
 
-// A named collection of WorldTriggerLines and of the Primitives its ordered
-// LayerBuildSteps produce. A World holds an ordered set of Layers; a
-// generation selects a set of Layers by id and folds across their combined
-// content (docs/adr/0013).
+// A named collection of Portal pairs, WorldTriggerLines, and the Primitives
+// its ordered LayerBuildSteps produce. A World holds an ordered set of Layers;
+// a generation selects a set of Layers by id and folds across their combined
+// content (docs/adr/0013, docs/adr/0047).
 //
 // A Layer's Primitives are derived, never stored: they are recomputed from
 // scratch by re-running the enabled steps in order, and the step list - not
@@ -53,6 +54,7 @@ private:
 
   uint32_t mId;
   uint32_t mNextStepId;
+  uint32_t mNextPortalPairId;
 
   std::string mName;
 
@@ -77,6 +79,10 @@ private:
   std::vector<LayerBuildStep const*> mPrimitiveSteps;
 
   std::vector<WorldTriggerLine*> mTriggerLines;
+
+  // First-class authored Portal pairs. Unlike Primitives they are not recipe
+  // output: each pair belongs to this Layer for its complete lifetime.
+  std::vector<PortalPair> mPortalPairs;
 
   PrimitiveAccelerationGrid* mPrimitiveLookupGrid;
 
@@ -335,6 +341,17 @@ public:
   [[nodiscard]] WorldTriggerLine* getTriggerLine(uint32_t index) const;
 
   [[nodiscard]] std::vector<WorldTriggerLine*> findTriggerLines(wp::BoundingBox const& bounds) const;
+
+  // --- Portal pairs ---
+  [[nodiscard]] uint32_t addPortalPair(
+      AuthoredAperture const& first, AuthoredAperture const& second);
+  void removePortalPair(uint32_t pairId);
+  void setPortalEndpointAperture(
+      uint32_t pairId, uint32_t endpointIndex,
+      AuthoredAperture const& aperture);
+  [[nodiscard]] PortalPair* getPortalPair(uint32_t pairId);
+  [[nodiscard]] PortalPair const* getPortalPair(uint32_t pairId) const;
+  [[nodiscard]] std::vector<PortalPair> const& getPortalPairs() const;
 };
 
 }  // namespace core

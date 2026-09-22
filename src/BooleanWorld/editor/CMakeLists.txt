@@ -43,6 +43,7 @@ add_executable(editor WIN32
     src/ui/MeshPanel.cpp
     src/ui/Modals.cpp
     src/ui/PrefabPanel.cpp
+    src/ui/PortalPanel.cpp
     src/ui/PrimitivePanel.cpp
     src/ui/ResourceWidgets.cpp
     src/ui/Shortcuts.cpp

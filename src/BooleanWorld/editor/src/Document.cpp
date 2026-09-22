@@ -243,9 +243,13 @@ DocumentHover Document::getHover(
                : DocumentHover{HoverableType::Primitive, std::move(primitiveIndices)};
   }
 
-  // Primitive mode exposes Primitive areas only. Generated World vertices
-  // and TriggerLines belong to neither Primitive-area selection nor Mesh
-  // sub-object selection, so they do not participate in this mode's hover.
+  // Portal endpoints are explicit authored handles and take precedence over
+  // overlapping Primitive areas in Primitive mode.
+  auto portalEndpoint = getHoveredPortalEndpoint(mouseWorldPos, settings);
+  if (!portalEndpoint.empty()) {
+    return {HoverableType::PortalEndpoint, std::move(portalEndpoint)};
+  }
+
   auto primitiveIndices = getHoveredPrimitiveIndices(mouseWorldPos, settings);
   return primitiveIndices.empty()
              ? DocumentHover{}
@@ -2320,6 +2324,28 @@ uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, 
                    mouseWorldPos, settings.triggerLineSelectionDistance,
                    settings.triggerLineHandleRadius)
              : ~0u;
+}
+
+vector<uint32_t> Document::getHoveredPortalEndpoint(
+    wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
+  if (!isActive() || settings.mode == Settings::Mode::Mesh) return {};
+  auto const* layer = mWorld->getActiveLayer();
+  auto const radiusSquared = settings.triggerLineHandleRadius *
+                             settings.triggerLineHandleRadius;
+  auto bestDistance = numeric_limits<float>::max();
+  vector<uint32_t> result;
+  for (auto const& pair : layer->getPortalPairs()) {
+    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
+      auto const distance = pair.getEndpoint(endpointIndex)
+                                .getAperture()
+                                .centre.distanceToSq(mouseWorldPos);
+      if (distance <= radiusSquared && distance < bestDistance) {
+        bestDistance = distance;
+        result = {pair.getId(), endpointIndex};
+      }
+    }
+  }
+  return result;
 }
 
 void Document::setPlayerProxyPosition(wp::Vector2 const& pos) {

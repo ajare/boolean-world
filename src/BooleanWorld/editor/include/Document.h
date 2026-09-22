@@ -406,6 +406,11 @@ public:
 
   uint32_t getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
+  // Returns {pair id, endpoint index} for the nearest endpoint centre on the
+  // active Layer, or an empty vector when no endpoint is in handle range.
+  [[nodiscard]] std::vector<uint32_t> getHoveredPortalEndpoint(
+      wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
+
   void setPlayerProxyPosition(wp::Vector2 const& pos);
 
   wp::Vector2 const& getPlayerProxyPosition() const;

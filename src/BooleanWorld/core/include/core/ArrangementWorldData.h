@@ -15,6 +15,7 @@
 #include "core/ImmutableAccelerationGrid.h"
 #include "core/LiquidType.h"
 #include "core/Platform.h"
+#include "core/Portal.h"
 #include "core/Stats.h"
 #include "core/WedgeGenerationParameters.h"
 
@@ -74,6 +75,9 @@ class BW_API ArrangementWorldData {
   std::shared_ptr<wp::wayfinder::Mesh> mWayfinderMesh;
   std::vector<CapturedAudioEmitter> mCapturedAudioEmitters;
   std::vector<FailedAudioEmitter> mFailedAudioEmitters;
+  // Resolution is derived from this snapshot's rendered ArrangementWalls.
+  // It never mutates either authored Portal data or the wall collection.
+  std::vector<ResolvedPortalPair> mPortalPairs;
 
 public:
   ArrangementWorldData(
@@ -82,7 +86,8 @@ public:
       float gridCellSize,
       ArrangementStats* stats = nullptr,
       WedgeGenerationParameters const& wedgeGenerationParameters = {},
-      bool createWayfinderMesh = false);
+      bool createWayfinderMesh = false,
+      std::vector<PortalPairSnapshot> const& portalPairs = {});
 
   // Present when navigation generation was requested and the arrangement has
   // at least one solid polygon.
@@ -106,6 +111,11 @@ public:
   // first failed limb of the capture rule for editor feedback.
   [[nodiscard]] std::vector<FailedAudioEmitter> const&
   getFailedAudioEmitters() const;
+
+  [[nodiscard]] std::vector<ResolvedPortalPair> const&
+  getPortalPairs() const;
+  [[nodiscard]] ResolvedPortalPair const* findPortalPair(
+      uint32_t layerId, uint32_t pairId) const;
 
   [[nodiscard]] WedgeGenerationParameters const&
   getWedgeGenerationParameters() const;

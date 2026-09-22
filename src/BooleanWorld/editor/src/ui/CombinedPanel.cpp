@@ -103,6 +103,10 @@ void renderCombinedPanel(ViewContext& context) {
         }
       }
 
+      if (ImGui::CollapsingHeader("Portals", nullptr, windowFlags)) {
+        renderPortalsView(context);
+      }
+
       if (ImGui::CollapsingHeader("Region under cursor", nullptr, windowFlags)) {
         renderArrangementFaceView(context);
       }

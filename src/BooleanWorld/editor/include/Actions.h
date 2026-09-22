@@ -84,6 +84,7 @@ class EditorInteraction {
   bool mRotatingSelectedPrimitives{false};
   bool mMovingSelectedTriggerLine{false};
   int mMovingSelectedTriggerLinePart{-1};
+  bool mMovingSelectedPortalEndpoint{false};
 
   bool mMovingMeshSelection{false};
   wp::Vector2 mMeshDragCumulativeDelta;
@@ -290,6 +291,28 @@ bool selectTriggerLine(Document* doc, uint32_t triggerLineIndex);
 bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex);
 
 bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::WorldTriggerLineSide side);
+
+bool createPortalPair(
+    Document* doc, bw::core::Layer* layer,
+    bw::core::AuthoredAperture const& first,
+    bw::core::AuthoredAperture const& second);
+bool deletePortalPair(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId);
+bool selectPortalEndpoint(
+    Document* doc, uint32_t layerId, uint32_t pairId,
+    uint32_t endpointIndex);
+bool setPortalEndpointPosition(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, wp::Vector2 const& position);
+bool movePortalEndpoint(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, wp::Vector2 const& delta);
+bool setPortalEndpointWidth(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, float width);
+bool setPortalEndpointVerticalBounds(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, float bottom, float top);
 
 bool selectPrimitive(Document* doc, uint32_t primitiveIndex);
 

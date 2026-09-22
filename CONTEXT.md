@@ -13,8 +13,24 @@ A structural Primitive that participates fully in the boolean fold but can never
 _Avoid_: material-less Primitive (an authored Primitive with a missing material is still property-contributing), invisible Primitive (property transparency does not affect geometry or visibility)
 
 **Layer**:
-A named, owned collection of Primitives and WorldTriggerLines within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: neither a Primitive nor a WorldTriggerLine ever moves between Layers.
+A named, owned collection of Primitives, WorldTriggerLines, and Portal pairs within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: no owned object ever moves between Layers.
 _Avoid_: Layer tag, layer id (as a primitive attribute)
+
+**Portal pair**:
+A stably identified link permanently owned by one Layer and containing exactly two stable Portal endpoints. It participates only as a complete pair when that Layer is selected; either endpoint failing resolution makes the pair inactive.
+_Avoid_: Portal link, teleporter, independent portals
+
+**Portal endpoint**:
+One of the two fixed slots in a Portal pair, owning one authored aperture but no generated wall identity. It is neither a WorldTriggerLine nor an ArrangementWall property.
+_Avoid_: Portal wall, TriggerLine, wall flag
+
+**Authored aperture**:
+A Portal endpoint's persistent requested rectangle: a World-plane centre and width plus bottom and top elevations. Generation may narrow its resolved counterpart without changing these dimensions.
+_Avoid_: Portal bounds (ambiguous between authored and resolved), wall opening
+
+**Resolved aperture**:
+The immutable generation-side Portal rectangle resolved against rendered ArrangementWall coverage in one World snapshot. It records its wall frame, normalized width, elevations, and snapshot-local coverage, none of which is serialized as authored identity.
+_Avoid_: Authored aperture, serialized wall edge
 
 **Contour**:
 A closed sequence of fixed-point vertices forming one boundary of a primitive. A primitive may contribute multiple contours whose combined interior is determined by its fill rule. The generation-side form of a Ring.

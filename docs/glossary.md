@@ -88,12 +88,31 @@ authored World content and required before that World can be deserialized and
 activated. The serialized list is the exact, sorted projection of all such
 references, including disabled LayerBuildSteps and Prefab definitions.
 
+**Portal pair** — A stably identified, permanently Layer-owned link containing
+exactly two stable Portal endpoints. It participates as one indivisible pair
+only when its owning Layer is selected; either endpoint failing resolution
+makes the pair inactive.
+
+**Portal endpoint** — One of the two fixed slots in a Portal pair, holding one
+authored aperture. It is not a WorldTriggerLine or an ArrangementWall property,
+and it never stores generated wall or edge identity.
+
+**Authored aperture** — A Portal endpoint's persistent requested rectangle: a
+World-plane centre and width plus bottom and top elevations. Generation may
+narrow its resolved counterpart but never mutates these authored dimensions.
+
 ## Geometry — after the rewrite
 
 **Arrangement** — The planar subdivision induced by *all* primitive edges at
 once. Its defining property: every **face** is wholly inside or wholly outside
 every primitive, so membership is a property of the face rather than something
 recomputed per boolean operation.
+
+**Resolved aperture** — An immutable generation-side Portal rectangle whose
+wall plane, tangent, front, normalized width, elevations, and rendered-wall
+coverage were resolved in one Arrangement snapshot. Both endpoints use the
+smaller authored width around their own centres; resolved wall indices never
+enter World serialization.
 
 **Face** — A maximal connected region of the arrangement. Has one outer
 boundary and zero or more explicit inner boundaries (**holes**). Carries a
