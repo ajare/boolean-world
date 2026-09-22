@@ -39,6 +39,13 @@ layout(location = 6) flat in float liquidSurfaceHeight;
 @@Uniform(float MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_3);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
+@@Uniform(int PORTAL_LIGHT_COUNT);
+@@Uniform(vec3 PORTAL_LIGHT_POSITION);
+@@Uniform(vec3 PORTAL_LIGHT_RADIANCE);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
@@ -2990,6 +2997,32 @@ float playerTorchAttenuation(float lightDistance)
     return physicalAttenuation * edgeAttenuation;
 }
 
+float portalLightGate(vec3 receiverPosition, vec3 lightPosition)
+{
+    vec3 centre = @Uniform(PORTAL_LIGHT_APERTURE_CENTRE);
+    vec3 front = normalize(@Uniform(PORTAL_LIGHT_APERTURE_FRONT));
+    float receiverSide = dot(receiverPosition - centre, front);
+    float lightSide = dot(lightPosition - centre, front);
+    if (receiverSide <= 0.0001 || lightSide >= -0.0001)
+        return 0.0;
+
+    float denominator = lightSide - receiverSide;
+    if (abs(denominator) <= 0.0001)
+        return 0.0;
+    float alongRay = -receiverSide / denominator;
+    if (alongRay < 0.0 || alongRay > 1.0)
+        return 0.0;
+
+    vec3 intersection = receiverPosition +
+        alongRay * (lightPosition - receiverPosition);
+    vec3 tangent = normalize(@Uniform(PORTAL_LIGHT_APERTURE_TANGENT));
+    vec3 bounds = @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS);
+    float across = abs(dot(intersection - centre, tangent));
+    return across <= bounds.x &&
+           intersection.y >= bounds.y && intersection.y <= bounds.z
+        ? 1.0 : 0.0;
+}
+
 struct PbrLighting
 {
     vec3 direct;
@@ -3013,6 +3046,22 @@ PbrLighting shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     // term. Ambient illumination below remains present in occluded regions.
     direct *= playerTorchVisibility(
         worldPosition, material.normal, lightDirection);
+
+    // Portal-transmitted Player Torches are deliberately unshadowed in this
+    // one-hop stage. The resolved destination aperture is their only gate;
+    // radiance and finite-distance falloff are identical to the real Torch.
+    if (@Uniform(PORTAL_LIGHT_COUNT) == 1)
+    {
+        vec3 virtualPosition = @Uniform(PORTAL_LIGHT_POSITION);
+        vec3 toVirtualLight = virtualPosition - worldPosition;
+        float virtualDistance = max(length(toVirtualLight), 0.0001);
+        vec3 virtualDirection = toVirtualLight / virtualDistance;
+        float gate = portalLightGate(worldPosition, virtualPosition);
+        direct += evaluatePbrLight(
+            material, viewDir, virtualDirection,
+            @Uniform(PORTAL_LIGHT_RADIANCE) *
+                playerTorchAttenuation(virtualDistance) * gate);
+    }
 
     // Keep ambient illumination orientation-independent so opposite floor and
     // ceiling normals do not introduce a different colour cast.

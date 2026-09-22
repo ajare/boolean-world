@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <iomanip>
@@ -16,6 +17,7 @@
 #include <willpower/application/resourcesystem/ImageResource.h>
 
 #include "WorldRenderer.h"
+#include "PortalLight.h"
 #include "TriplanarWallRenderData.h"
 #include "WallMaskRenderData.h"
 #include "WallNormalMapRenderData.h"
@@ -1174,6 +1176,31 @@ void WorldRenderer::renderScene(
   std::vector<mpp::ResourcePtr> renderedTextures(
       mLastPortalViewPlan.nodes.size());
 
+  // Only depth-one views receive this ticket's one-hop contribution. Deeper
+  // visual recursion remains deliberately unlit by transformed copies until
+  // bounded recursive lighting supplies its own path policy.
+  std::map<uint32_t, std::vector<PortalLightAttachment>> rootPortalLights;
+  for (auto const& edge : mLastPortalViewPlan.rootChildren) {
+    auto pair = std::ranges::find_if(
+        worldData.getPortalPairs(), [&](auto const& candidate) {
+          return candidate.layerId == edge.endpoint.layerId &&
+                 candidate.pairId == edge.endpoint.pairId;
+        });
+    if (pair == worldData.getPortalPairs().end()) continue;
+    auto sourceEndpoint = std::ranges::find_if(
+        pair->endpoints, [&](auto const& endpoint) {
+          return endpoint.endpointId == edge.endpoint.endpointId;
+        });
+    if (sourceEndpoint == pair->endpoints.end()) continue;
+    auto sourceIndex = static_cast<uint32_t>(
+        std::distance(pair->endpoints.begin(), sourceEndpoint));
+    auto light = BuildPortalLightAttachment(
+        *pair, sourceIndex, mPlayerTorchPosition, mPlayerTorchOptions);
+    if (light) {
+      rootPortalLights[edge.childNode].push_back(*light);
+    }
+  }
+
   // Reusing one scene for every node keeps pipeline topology fixed. Geometry
   // is rebound to the node's visible endpoint slots, and each slot samples
   // only a child target that completed earlier in deepest-first order.
@@ -1215,8 +1242,15 @@ void WorldRenderer::renderScene(
   for (auto nodeIndex : mLastPortalViewPlan.deepestFirst) {
     auto const& node = mLastPortalViewPlan.nodes[nodeIndex];
     configurePortalSurfaces(node.children, node.cameraPosition);
+    auto auxiliary = node.auxiliary;
+    if (auto lights = rootPortalLights.find(nodeIndex);
+        lights != rootPortalLights.end()) {
+      // Overflow is an intentional no-spill result. The pass still renders,
+      // but receives no partial or unbounded virtual-light list.
+      (void)AttachPortalLightsToPass(auxiliary, lights->second);
+    }
     auto outputs = mRenderSystem->renderAuxiliaryScene(
-        mScene, camera, pipeline->getName(), node.auxiliary);
+        mScene, camera, pipeline->getName(), auxiliary);
     auto renderTexture =
         std::dynamic_pointer_cast<mpp::RenderTexture>(outputs.colour);
     if (!renderTexture) {
@@ -1264,6 +1298,9 @@ void WorldRenderer::update(
     bool highlightedCeiling,
     int32_t highlightedWall) {
   BW_UNUSED(world);
+
+  mPlayerTorchPosition = lightPosition;
+  mPlayerTorchOptions = playerTorch;
 
   auto const horizontalHighlightChanged =
       highlightedTriangle != mHighlightedTriangle ||

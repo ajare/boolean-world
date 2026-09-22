@@ -15,6 +15,13 @@ layout(location = 6) flat in float liquidSurfaceHeight;
 @@Uniform(int MPP_VIRTUAL_CAMERA);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
+@@Uniform(int PORTAL_LIGHT_COUNT);
+@@Uniform(vec3 PORTAL_LIGHT_POSITION);
+@@Uniform(vec3 PORTAL_LIGHT_RADIANCE);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
@@ -1318,6 +1325,32 @@ float playerTorchAttenuation(float lightDistance)
     return physicalAttenuation * edgeAttenuation;
 }
 
+float portalLightGate(vec3 receiverPosition, vec3 lightPosition)
+{
+    vec3 centre = @Uniform(PORTAL_LIGHT_APERTURE_CENTRE);
+    vec3 front = normalize(@Uniform(PORTAL_LIGHT_APERTURE_FRONT));
+    float receiverSide = dot(receiverPosition - centre, front);
+    float lightSide = dot(lightPosition - centre, front);
+    if (receiverSide <= 0.0001 || lightSide >= -0.0001)
+        return 0.0;
+
+    float denominator = lightSide - receiverSide;
+    if (abs(denominator) <= 0.0001)
+        return 0.0;
+    float alongRay = -receiverSide / denominator;
+    if (alongRay < 0.0 || alongRay > 1.0)
+        return 0.0;
+
+    vec3 intersection = receiverPosition +
+        alongRay * (lightPosition - receiverPosition);
+    vec3 tangent = normalize(@Uniform(PORTAL_LIGHT_APERTURE_TANGENT));
+    vec3 bounds = @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS);
+    float across = abs(dot(intersection - centre, tangent));
+    return across <= bounds.x &&
+           intersection.y >= bounds.y && intersection.y <= bounds.z
+        ? 1.0 : 0.0;
+}
+
 struct PbrLighting
 {
     vec3 direct;
@@ -1332,6 +1365,18 @@ PbrLighting shadePbr(Material m, vec3 viewDir, vec3 worldPos, vec3 lightPos)
     float attenuation = playerTorchAttenuation(distance);
     vec3 direct = evaluatePbrLight(m, viewDir, lightDirection, vec3(14.0) * attenuation);
     direct *= playerTorchVisibility(worldPos, m.normal, lightDirection);
+    if (@Uniform(PORTAL_LIGHT_COUNT) == 1)
+    {
+        vec3 virtualPosition = @Uniform(PORTAL_LIGHT_POSITION);
+        vec3 toVirtualLight = virtualPosition - worldPos;
+        float virtualDistance = max(length(toVirtualLight), 0.0001);
+        vec3 virtualDirection = toVirtualLight / virtualDistance;
+        float gate = portalLightGate(worldPos, virtualPosition);
+        direct += evaluatePbrLight(
+            m, viewDir, virtualDirection,
+            @Uniform(PORTAL_LIGHT_RADIANCE) *
+                playerTorchAttenuation(virtualDistance) * gate);
+    }
     vec3 ambient = vec3(0.12);
     vec3 f0 = mix(vec3(0.04), m.albedo, m.metallic);
     vec3 fresnel = fresnelSchlick(max(dot(m.normal, viewDir), 0.0), f0);

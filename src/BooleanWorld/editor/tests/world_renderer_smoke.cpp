@@ -455,6 +455,132 @@ void portalRendersThroughPublicSceneAndNamedFinalOutput(
           "the GPU Portal loop changed its deterministic selected endpoint or pass count");
 }
 
+void portalLightIsClippedToTheRenderedApertureProjection(
+    editor::EditorRenderSystem& renderSystem) {
+  // Compile and exercise the production Portal-capable world programs first.
+  // The focused two-sample draw below then isolates the aperture predicate
+  // from procedural material variation and recursive Portal imagery.
+  (void)render(renderSystem, {.portal = true});
+
+  constexpr char const* vertexSource = R"(
+#version 130
+void main()
+{
+    vec2 vertices[3] = vec2[3](
+        vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+    gl_Position = vec4(vertices[gl_VertexID], 0.0, 1.0);
+}
+)";
+  constexpr char const* fragmentSource = R"(
+#version 130
+out vec4 colour;
+uniform vec3 lightPosition;
+uniform vec3 apertureCentre;
+uniform vec3 apertureTangent;
+uniform vec3 apertureFront;
+uniform vec3 apertureBounds;
+
+float apertureGate(vec3 receiverPosition)
+{
+    vec3 front = normalize(apertureFront);
+    float receiverSide = dot(receiverPosition - apertureCentre, front);
+    float lightSide = dot(lightPosition - apertureCentre, front);
+    if (receiverSide <= 0.0001 || lightSide >= -0.0001) return 0.0;
+    float denominator = lightSide - receiverSide;
+    if (abs(denominator) <= 0.0001) return 0.0;
+    float alongRay = -receiverSide / denominator;
+    if (alongRay < 0.0 || alongRay > 1.0) return 0.0;
+    vec3 intersection = receiverPosition +
+        alongRay * (lightPosition - receiverPosition);
+    float across = abs(dot(
+        intersection - apertureCentre, normalize(apertureTangent)));
+    return across <= apertureBounds.x &&
+           intersection.y >= apertureBounds.y &&
+           intersection.y <= apertureBounds.z ? 1.0 : 0.0;
+}
+
+void main()
+{
+    // Pixel zero maps through the resolved rectangle. Pixel one is the
+    // immediately adjacent receiver whose plane hit lies just past its side.
+    vec3 receiver = gl_FragCoord.x < 1.0
+        ? vec3(8.0, 2.0, 0.0)
+        : vec3(8.0, 2.0, -2.1);
+    colour = vec4(apertureGate(receiver), 0.0, 0.0, 1.0);
+}
+)";
+
+  auto compile = [](GLenum type, char const* source) {
+    auto shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, nullptr);
+    glCompileShader(shader);
+    GLint compiled{};
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (!compiled) {
+      glDeleteShader(shader);
+      throw std::runtime_error("Portal light rendered-test shader failed");
+    }
+    return shader;
+  };
+
+  auto vertex = compile(GL_VERTEX_SHADER, vertexSource);
+  auto fragment = compile(GL_FRAGMENT_SHADER, fragmentSource);
+  auto program = glCreateProgram();
+  glAttachShader(program, vertex);
+  glAttachShader(program, fragment);
+  glLinkProgram(program);
+  GLint linked{};
+  glGetProgramiv(program, GL_LINK_STATUS, &linked);
+  glDeleteShader(vertex);
+  glDeleteShader(fragment);
+  if (!linked) {
+    glDeleteProgram(program);
+    throw std::runtime_error("Portal light rendered-test program failed");
+  }
+
+  GLint previousFramebuffer{}, previousProgram{}, previousViewport[4]{};
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+  glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+  glGetIntegerv(GL_VIEWPORT, previousViewport);
+  GLuint texture{}, framebuffer{}, vertexArray{};
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexImage2D(
+      GL_TEXTURE_2D, 0, GL_RGBA32F, 2, 1, 0, GL_RGBA, GL_FLOAT, nullptr);
+  glGenFramebuffers(1, &framebuffer);
+  glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+  glFramebufferTexture2D(
+      GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+  glGenVertexArrays(1, &vertexArray);
+  glBindVertexArray(vertexArray);
+  glViewport(0, 0, 2, 1);
+  glUseProgram(program);
+  glUniform3f(glGetUniformLocation(program, "lightPosition"), 12.0f, 2.0f, 0.0f);
+  glUniform3f(glGetUniformLocation(program, "apertureCentre"), 10.0f, 0.0f, 0.0f);
+  glUniform3f(glGetUniformLocation(program, "apertureTangent"), 0.0f, 0.0f, -1.0f);
+  glUniform3f(glGetUniformLocation(program, "apertureFront"), -1.0f, 0.0f, 0.0f);
+  glUniform3f(glGetUniformLocation(program, "apertureBounds"), 1.0f, 0.0f, 4.0f);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  std::array<float, 8> pixels{};
+  glReadPixels(0, 0, 2, 1, GL_RGBA, GL_FLOAT, pixels.data());
+
+  glBindVertexArray(0);
+  glDeleteVertexArrays(1, &vertexArray);
+  glDeleteFramebuffers(1, &framebuffer);
+  glDeleteTextures(1, &texture);
+  glDeleteProgram(program);
+  glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+  glUseProgram(previousProgram);
+  glViewport(
+      previousViewport[0], previousViewport[1],
+      previousViewport[2], previousViewport[3]);
+
+  require(pixels[0] > 0.99f,
+          "rendered receiver inside the aperture projection was unlit");
+  require(pixels[4] < 0.01f,
+          "rendered receiver immediately outside the aperture projection was lit");
+}
+
 void triplanarMaterialsRenderThroughTheRealWorldPrograms(
     editor::EditorRenderSystem& renderSystem) {
   auto proceduralFloor = render(
@@ -634,6 +760,8 @@ int main(int argc, char** argv) {
         triplanarWallContinuityRendersThroughTheRealWorldProgram(renderSystem);
       } else if (scenario == "portal") {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
+      } else if (scenario == "portal-light") {
+        portalLightIsClippedToTheRenderedApertureProjection(renderSystem);
       } else {
         std::array<uint32_t, 3> drySurfaceTriangles;
       auto unset = render(renderSystem, {}, &drySurfaceTriangles);

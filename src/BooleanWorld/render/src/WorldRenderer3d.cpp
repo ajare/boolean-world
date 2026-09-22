@@ -20,6 +20,8 @@
 
 #include "WorldRenderer3d.h"
 
+#include "PortalLight.h"
+
 using namespace std;
 using namespace wp::application::resourcesystem;
 
@@ -511,6 +513,13 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("LIQUID_REFLECTION_ENABLED", int32_t{0});
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
+    uniforms.setUniform("PORTAL_LIGHT_COUNT", int32_t{0});
+    uniforms.setUniform("PORTAL_LIGHT_POSITION", glm::vec3{});
+    uniforms.setUniform("PORTAL_LIGHT_RADIANCE", glm::vec3{});
+    uniforms.setUniform("PORTAL_LIGHT_APERTURE_CENTRE", glm::vec3{});
+    uniforms.setUniform("PORTAL_LIGHT_APERTURE_TANGENT", glm::vec3{});
+    uniforms.setUniform("PORTAL_LIGHT_APERTURE_FRONT", glm::vec3{});
+    uniforms.setUniform("PORTAL_LIGHT_APERTURE_BOUNDS", glm::vec3{});
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});

@@ -94,6 +94,10 @@ private:
   PortalViewPlan mLastPortalViewPlan;
   std::map<PortalEndpointKey, uint32_t> mPortalSurfaceSlots;
   std::optional<PortalEndpointKey> mSelectedPortal;
+  // The real Player Torch is persistent frame state. Transmitted copies are
+  // derived from it only into individual auxiliary-pass overrides.
+  glm::vec3 mPlayerTorchPosition{};
+  bw::app::PlayerTorchOptions mPlayerTorchOptions{};
 
 private:
   // Floor/ceiling triangle geometry - unaffected by player position, so
