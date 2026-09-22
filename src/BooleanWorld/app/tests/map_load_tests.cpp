@@ -33,6 +33,7 @@
 
 #include "Map.h"
 #include "PlayerPortalTraversal.h"
+#include "PlayerTorchPlacement.h"
 #include <common/GameDefines.h>
 
 namespace {
@@ -216,6 +217,13 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
                 BW_PLAYER_HEIGHT, motion, state) ==
                 bw::app::PlayerPortalCrossingResult::Traversed,
             "mines example Portal pair cannot be traversed in both directions");
+    auto torch = bw::app::placePlayerTorch(
+        *portalData, aperture.centre + aperture.front * 2.0f,
+        aperture.bottom + 12.0f, -aperture.front, 4.0f);
+    auto const& exit = portalPair->endpoints[1 - endpointIndex].aperture;
+    require((torch.position - (exit.centre + exit.front * 2.0f)).length() < 0.01f &&
+                std::abs(torch.elevation - (exit.bottom + 12.0f)) < 0.01f,
+            "mines Torch did not teleport through both actual example apertures");
   }
 
   auto* layer = map.getWorld()->getActiveLayer();

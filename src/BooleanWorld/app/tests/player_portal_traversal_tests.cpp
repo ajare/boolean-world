@@ -13,6 +13,7 @@
 #include <willpower/collide/ColliderCircle.h>
 
 #include "PlayerPortalTraversal.h"
+#include "PlayerTorchPlacement.h"
 #include "WorldCollisionSim.h"
 
 namespace {
@@ -25,7 +26,8 @@ struct Fixture {
   bw::core::ArrangementWorldDataPtr data;
   bw::core::ResolvedPortalPair const* pair{};
 
-  Fixture() {
+  Fixture(bw::core::AuthoredAperture second =
+              {{50.0f, 0.0f}, 20.0f, 0.0f, 24.0f}) {
     auto* room = new bw::core::RectanglePolygon(
         bw::core::Primitive::Operation::Union,
         bw::core::Primitive::FillRule::NonZero, 1.0f);
@@ -33,8 +35,7 @@ struct Fixture {
     world.addPrimitive(room);
     auto* layer = world.getActiveLayer();
     auto pairId = layer->addPortalPair(
-        {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f},
-        {{50.0f, 0.0f}, 20.0f, 0.0f, 24.0f});
+        {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f}, second);
     data = world.getWorldData();
     pair = data->findPortalPair(layer->getId(), pairId);
     require(pair && pair->active, "player Portal fixture did not resolve");
@@ -44,6 +45,53 @@ struct Fixture {
 bw::app::PlayerPortalMotion crossingMotion() {
   return {
       {-40.0f, 0.0f}, 0.0f, 270.0f, -17.0f, {-100.0f, 0.0f}, -23.0f, {-30.0f, 0.0f}};
+}
+
+void extendedTorchTraversesPortal() {
+  Fixture fixture;
+  auto torch = bw::app::placePlayerTorch(
+      *fixture.data, {-40.0f, 0.0f}, 12.0f, {-1.0f, 0.0f}, 30.0f);
+  require(std::abs(torch.position.x - 30.0f) < 0.01f &&
+              std::abs(torch.position.y) < 0.01f && torch.elevation == 12.0f,
+          "extended Torch did not emerge from the opposite Portal with its remaining reach");
+}
+
+void torchReachRespectsPortalFramesAndWalls() {
+  Fixture fixture;
+  auto place = [&](wp::Vector2 position, wp::Vector2 direction, float distance) {
+    return bw::app::placePlayerTorch(*fixture.data, position, 12.0f, direction, distance);
+  };
+  for (float reach : {0.0f, 5.0f, 9.99f, 10.0f, 10.01f, 30.0f, 5.0f}) {
+    auto expected = reach < 10.0f ? -40.0f - reach : 60.0f - reach;
+    require(std::abs(place({-40, 0}, {-1, 0}, reach).position.x - expected) < 0.01f,
+            "extending/retracting the Torch did not cross at the aperture plane");
+  }
+  auto lip = bw::app::placePlayerTorch(*fixture.data, {-40, 0}, 24, {-1, 0}, 30);
+  require(std::abs(lip.position.x - (-50 + BW_PLAYER_TORCH_WALL_CLEARANCE)) < 0.01f,
+          "Torch teleported through the aperture's upper frame");
+  require(std::abs(place({40, 0}, {1, 0}, 30).position.x + 30) < 0.01f,
+          "Torch cannot traverse the reverse endpoint");
+  require(std::abs(place({-40, 0}, {-1, 0}, 230).position.x - 30) < 0.01f,
+          "Torch lost remaining distance over repeated Portal crossings");
+  require(std::abs(place({-40, 15}, {-1, 0}, 30).position.x -
+                   (-50 + BW_PLAYER_TORCH_WALL_CLEARANCE)) < 0.01f,
+          "Torch passed through the solid aperture frame");
+  require(std::abs(place({-70, 0}, {1, 0}, 150).position.x -
+                   (-50 - BW_PLAYER_TORCH_WALL_CLEARANCE)) < 0.01f,
+          "Torch crossed a back face/nearer wall to reach a farther Portal");
+  auto capped = place({-40, 0}, {-1, 0}, 1.0e8f);
+  require(std::isfinite(capped.position.x) && std::abs(capped.position.x) < 50,
+          "cyclic Torch path did not stop safely at its traversal budget");
+
+  Fixture turned({{0.0f, 50.0f}, 20.0f, 4.0f, 28.0f});
+  auto torch = bw::app::placePlayerTorch(
+      *turned.data, {-40, 0}, 12, {-1, 0}, 30);
+  require(std::abs(torch.position.x) < 0.01f &&
+              std::abs(torch.position.y - 30) < 0.01f && torch.elevation == 16,
+          "Torch did not transform its direction and elevation at the exit");
+  torch = bw::app::placePlayerTorch(*turned.data, {-40, 0}, 12, {-1, 0}, 150);
+  require(std::abs(torch.position.y - (-50 + BW_PLAYER_TORCH_WALL_CLEARANCE)) < 0.01f,
+          "Torch did not stop at the first wall beyond the exit");
 }
 
 void highSpeedCrossingTransformsCompleteMotionState() {
@@ -252,6 +300,8 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
 
 int main() {
   try {
+    extendedTorchTraversesPortal();
+    torchReachRespectsPortalFramesAndWalls();
     bw::core::LayerBuildStep::registerCoreTypes();
     highSpeedCrossingTransformsCompleteMotionState();
     frameAndVerticalMissesRemainBlocked();

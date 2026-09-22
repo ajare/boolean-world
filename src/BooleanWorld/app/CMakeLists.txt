@@ -16,6 +16,7 @@ add_library(BooleanWorld SHARED
     src/PeriodicSnapshotWorker.cpp
     src/PlayerLocation.cpp
     src/PlayerPortalTraversal.cpp
+    src/PlayerTorchPlacement.cpp
     src/ProtoEntity.cpp
     src/ProtoEntityDefinitionFactory.cpp
     src/ReactiveCamera.cpp
@@ -335,6 +336,7 @@ if(BUILD_TESTING)
     add_executable(boolean_world_player_portal_traversal_tests
         tests/player_portal_traversal_tests.cpp
         src/PlayerPortalTraversal.cpp
+        src/PlayerTorchPlacement.cpp
         src/WorldCollisionSim.cpp)
     target_include_directories(boolean_world_player_portal_traversal_tests
         PRIVATE include)
@@ -402,7 +404,8 @@ if(BUILD_TESTING)
     add_executable(boolean_world_map_load_tests
         tests/map_load_tests.cpp
         src/Map.cpp
-        src/PlayerPortalTraversal.cpp)
+        src/PlayerPortalTraversal.cpp
+        src/PlayerTorchPlacement.cpp)
     target_include_directories(boolean_world_map_load_tests PRIVATE include)
     target_link_libraries(boolean_world_map_load_tests PRIVATE
         core core-lua AppLib BooleanWorldRender Willpower.Application Willpower.Common)

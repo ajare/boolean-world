@@ -58,6 +58,7 @@
 #include "PlayerWallDepenetration.h"
 #include "PlayerWorldReconciliation.h"
 #include "PlayerTorchShadows.h"
+#include "PlayerTorchPlacement.h"
 #include "BooleanWorldModel.h"
 #include "EntityHandlerBooleanWorld.h"
 #include "EntityType.h"
@@ -1508,32 +1509,21 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // Move the light horizontally from the player's eye along the current yaw;
   // pitch does not affect it.
   //
-  // The configured distance is the maximum. Carrying the Torch on through a
-  // wall would light the far side of it and shadow everything the player can
-  // actually see, so the reach is cut to the near side of the first surface
-  // the offset crosses. The test runs at the Torch's own height, which is
-  // what lets it pass over a low floor step and under a high ceiling step
-  // instead of stopping at every change in floor or ceiling level.
+  // Trace the maximum reach through active front-facing Portal apertures,
+  // transforming the remaining direction and elevation at each exit. Solid
+  // walls still stop the Torch at its own height, including beyond an exit.
+  // The real light, its shadow origin, and its marker share this one placement.
   auto lightDirection = Vector2::fromAngle(
       bw::app::worldViewAngle(physicalStats.angle), Clockwise);
-  auto lightDistance = mDebugDisplay.lightDistance;
-  if (lightDistance > 0.0f && mWorldData) {
-    lightDistance = bw::app::playerTorchDistance(
-        lightDistance,
-        mWorldData->distanceToFirstWallCrossing(
-            physicalStats.position,
-            physicalStats.position + lightDirection * lightDistance,
-            playerViewHeight));
-  }
-  auto lightOffset = lightDirection * lightDistance;
+  auto torch = bw::app::placePlayerTorch(
+      *mWorldData, physicalStats.position, playerViewHeight,
+      lightDirection, mDebugDisplay.lightDistance);
   glm::vec3 playerPosition{
       physicalStats.position.x,
       playerViewHeight,
       -physicalStats.position.y};
-  glm::vec3 lightPosition{
-      playerPosition.x + lightOffset.x,
-      playerPosition.y,
-      playerPosition.z - lightOffset.y};
+  auto lightPosition = bw::app::worldToRendererAudioPosition(
+      torch.position, torch.elevation);
   updatePlayerTorchMarker(lightPosition);
   auto const domainName = std::string(bw::app::playerTorchShadowDomain);
   auto const& sessionShadows = mDebugDisplay.playerTorchShadows;
@@ -3172,8 +3162,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
         0.0f, 256.0f, "%.1f");
     ImGui::TextDisabled(
         "Maximum offset from the player's eye along the current facing "
-        "direction. The Torch stops short of the first wall in the way, "
-        "passing over low floor steps and under high ceiling steps.");
+        "direction, continuing through Portals. The Torch stops short of "
+        "the first solid wall along that path, passing over low floor steps "
+        "and under high ceiling steps.");
     ImGui::SliderFloat(
         "Attenuation radius##PlayerTorch",
         &mDebugDisplay.playerTorch.attenuationRadius,
