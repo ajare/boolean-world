@@ -43,17 +43,17 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
   auto startDistance = (motion.position - source.centre).dot(source.front);
   auto endPosition = motion.position + motion.unconsumedMovement;
   auto endDistance = (endPosition - source.centre).dot(source.front);
-  if (startDistance <= PlaneTolerance || endDistance >= -PlaneTolerance) {
+  if (startDistance < -PlaneTolerance) {
     return PlayerPortalCrossingResult::NotCrossing;
   }
   auto denominator = startDistance - endDistance;
   if (denominator <= PlaneTolerance) {
     return PlayerPortalCrossingResult::NotCrossing;
   }
-  auto fraction = startDistance / denominator;
-  if (fraction < 0.0f || fraction > 1.0f) {
-    return PlayerPortalCrossingResult::NotCrossing;
-  }
+  auto fraction = std::max(0.0f, startDistance) / denominator;
+  auto const approaching = fraction > 1.0f;
+  // Validate the projected centre crossing even when this frame only reaches
+  // collider contact. Stopping there would prevent all low-speed traversal.
 
   auto crossing =
       motion.position + motion.unconsumedMovement * fraction;
@@ -112,6 +112,10 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
       liquidDepth > destinationClearance + BoundsTolerance ||
       destinationClearance + BoundsTolerance < playerHeight) {
     return PlayerPortalCrossingResult::Blocked;
+  }
+
+  if (approaching) {
+    return PlayerPortalCrossingResult::Approaching;
   }
 
   motion.position = destinationPosition;

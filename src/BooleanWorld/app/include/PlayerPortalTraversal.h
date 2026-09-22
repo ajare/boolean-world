@@ -60,6 +60,9 @@ struct PlayerPortalUpdateState {
 
 enum class PlayerPortalCrossingResult : uint8_t {
   NotCrossing,
+  // A valid front-side approach whose centre has not reached the plane yet.
+  // The collision sweep must ignore the aperture, not stop at collider contact.
+  Approaching,
   Blocked,
   Traversed
 };

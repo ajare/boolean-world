@@ -18,6 +18,11 @@ void WorldCollisionSim::addSlidingCollider(
                         float t,
                         void*) {
         if (line.getUserData() <= -2 && mPortalHitCallback) {
+          // Willpower also calls this callback with an empty movement for its
+          // post-sweep overlap check. An aperture may legitimately overlap the
+          // collider during approach/emergence; only a swept crossing decides
+          // whether it blocks. Do not mutate traversal state during that query.
+          if (result->movementDesired.lengthSq() == 0.0f) return false;
           auto portalLineIndex = uint32_t(-2 - line.getUserData());
           auto response = mPortalHitCallback(result, portalLineIndex);
           if (response == PortalLineResponse::Ignore) return false;
@@ -51,6 +56,22 @@ void WorldCollisionSim::addSlidingCollider(
         return true;
       });
   addCollider(move(collider));
+}
+
+bool WorldCollisionSim::sweepAgainstStaticLine(
+    wp::collide::Collider const* collider,
+    wp::Vector2 const& desiredPosition,
+    wp::collide::StaticLine const& line, float* time) const {
+  // Shape sweeps only report initial contact. Once an allowed approach has
+  // overlapped the aperture, keep reporting it until the centre crosses so
+  // that small frame movements cannot walk straight through without transport.
+  if (line.getUserData() <= -2 &&
+      collider->intersectsLine(line.getVertex(0), line.getVertex(1))) {
+    *time = 0.0f;
+    return true;
+  }
+  return Simulation::sweepAgainstStaticLine(
+      collider, desiredPosition, line, time);
 }
 
 void WorldCollisionSim::getLineIndices(

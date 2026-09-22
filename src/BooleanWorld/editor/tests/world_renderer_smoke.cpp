@@ -9,6 +9,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -22,7 +23,9 @@
 #include <core/ArrangementWorldDataGenerator.h>
 #include <core/Defines.h>
 #include <core/MeshPrimitive.h>
+#include <core/LayerBuildStep.h>
 #include <core/World.h>
+#include <core/YamlSerializer.h>
 #include <mpp/ResourceManager.h>
 
 #include <PortalView.h>
@@ -455,6 +458,72 @@ void portalRendersThroughPublicSceneAndNamedFinalOutput(
           "the GPU Portal loop changed its deterministic selected endpoint or pass count");
 }
 
+void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
+  bw::core::LayerBuildStep::registerCoreTypes();
+  std::string error;
+  if (!renderSystem.loadWorldDependencies({"MinesLayer"}, "World", &error))
+    throw std::runtime_error(error);
+  auto path = std::filesystem::path(BW_EDITOR_PROC_MATERIAL_MANIFEST).parent_path() /
+              "world-mines-3.world.yaml";
+  auto reader = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::fromFile(path.string()));
+  reader->deserialize();
+  bw::core::World world(1.0f, -1.0f);
+  bw::core::SerializationWorkData workData{512.0f};
+  if (!world.deserialize(reader, workData)) {
+    for (auto const& message : world.getDeserializationErrors())
+      std::cerr << message << '\n';
+    throw std::runtime_error("mines world could not load");
+  }
+  auto data = world.getWorldData();
+  require(data->findPortalPair(0, 0) && data->findPortalPair(0, 0)->active,
+          "mines Portal pair inactive");
+  editor::PreviewRenderScene scene(
+      renderSystem, &world, kWidth, kHeight,
+      bw::app::HorizontalMaterials::TwoDimensional);
+  // Look straight into each aperture from 20 units away. The centre region
+  // lies inside it, so surrounding lit walls cannot hide a black Portal image.
+  for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
+    auto camera = std::make_shared<ReactiveCamera>(
+        endpoint == 0
+            ? glm::vec3{-40.0f, -2.0f + BW_PLAYER_EYE_HEIGHT, 0.0f}
+            : glm::vec3{-8.0f, -2.0f + BW_PLAYER_EYE_HEIGHT, 8.0f},
+        bw::app::cameraYaw(endpoint == 0 ? 270.0f : 180.0f),
+        0.0f, BW_PLAYER_FOV, kWidth / float(kHeight));
+    camera->setClipDistances(0.1f, 1000000.0f);
+    // Use the same three-frame warm-up as the other real scene tests.
+    for (int frame = 0; frame < 3; ++frame) {
+      auto texture = scene.render(&world, *data, camera, camera->getPosition(),
+                                  1.0f / 60.0f, {}, -1, -1);
+      require(scene.renderedPortalView(), "mines Portal has no rendered view");
+      auto image = readColour(texture);
+      auto energy = centreRegionEnergy(image);
+      if (frame == 2) {
+        // A softly lit opaque back face is non-black but has no destination
+        // material detail. Measure inside the aperture, away from its border.
+        double detail = 0.0;
+        size_t samples = 0;
+        for (int y = 3 * kHeight / 8; y < 5 * kHeight / 8; ++y) {
+          for (int x = 3 * kWidth / 8; x < 5 * kWidth / 8; ++x) {
+            auto offset = (size_t(y) * kWidth + x) * 4;
+            detail += std::abs(image[offset] - image[offset + 4]);
+            ++samples;
+          }
+        }
+        detail /= double(samples);
+        if (detail < 0.002)
+          throw std::runtime_error("mines Portal lacks destination detail: endpoint " +
+              std::to_string(endpoint) + ", adjacent-pixel difference " +
+              std::to_string(detail));
+      }
+      if (frame == 2 && energy <= 0.02)
+        throw std::runtime_error("mines Portal aperture is black: endpoint " +
+            std::to_string(endpoint) + ", frame " + std::to_string(frame) +
+            ", energy " + std::to_string(energy));
+    }
+  }
+}
+
 void portalLightIsClippedToTheRenderedApertureProjection(
     editor::EditorRenderSystem& renderSystem) {
   // Compile and exercise the production Portal-capable world programs first.
@@ -760,6 +829,8 @@ int main(int argc, char** argv) {
         triplanarWallContinuityRendersThroughTheRealWorldProgram(renderSystem);
       } else if (scenario == "portal") {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
+      } else if (scenario == "mines-portal") {
+        minesPortalRenders(renderSystem);
       } else if (scenario == "portal-light") {
         portalLightIsClippedToTheRenderedApertureProjection(renderSystem);
       } else {

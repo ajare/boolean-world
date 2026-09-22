@@ -283,9 +283,12 @@ BuiltPortalView BuildPortalView(
       destination.centre, destination.bottom);
   auto clipPlane = glm::vec4{
       destinationNormal,
-      -glm::dot(destinationNormal, destinationCentre)};
+      -glm::dot(destinationNormal, destinationCentre) -
+          mpp::AuxiliaryViewClipSeamBias};
+  // Clip inside the destination's front side. Expanding behind the plane
+  // admits the opaque back face of the aperture itself into the virtual view.
   auto clipped = mpp::buildObliquelyClippedVirtualCamera(
-      destinationView, observingProjection, clipPlane);
+      destinationView, observingProjection, clipPlane, 0.0f);
 
   BuiltPortalView result;
   result.sourceToDestination = sourceToDestination;
@@ -299,7 +302,7 @@ BuiltPortalView BuildPortalView(
   result.auxiliary.height = height;
   result.auxiliary.nearDistance = nearDistance;
   result.auxiliary.farDistance = farDistance;
-  result.auxiliary.seamBias = mpp::AuxiliaryViewClipSeamBias;
+  result.auxiliary.seamBias = 0.0f;
   result.auxiliary.reverseWinding = false;
   return result;
 }

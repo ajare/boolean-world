@@ -17,6 +17,11 @@ private:
   PortalHitCallback mPortalHitCallback;
   uint32_t mPortalLineCount{0};
 
+  bool sweepAgainstStaticLine(
+      wp::collide::Collider const* collider,
+      wp::Vector2 const& desiredPosition,
+      wp::collide::StaticLine const& line, float* time) const override;
+
   void getLineIndices(
       wp::BoundingBox const& bounds,
       std::vector<uint32_t>& indices) const override;

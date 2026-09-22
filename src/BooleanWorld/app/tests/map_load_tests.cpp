@@ -32,6 +32,8 @@
 #include <core-lua/RunScript.h>
 
 #include "Map.h"
+#include "PlayerPortalTraversal.h"
+#include <common/GameDefines.h>
 
 namespace {
 void require(bool condition, std::string const& message) {
@@ -197,6 +199,24 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   Map map("map", "", "", {}, nullptr, &logger, &runtime);
   map.loadWorldFromYaml(
       makeWorldResource(readFixture("world-mines-3.world.yaml")));
+
+  auto portalData = map.getWorld()->getWorldData();
+  auto const* portalPair = portalData->findPortalPair(0, 0);
+  require(portalPair && portalPair->active,
+          "mines example Portal pair is not active in the game");
+  for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
+    auto const& aperture = portalPair->endpoints[endpointIndex].aperture;
+    bw::app::PlayerPortalMotion motion;
+    motion.position = aperture.centre + aperture.front * 10.0f;
+    motion.feetElevation = aperture.bottom;
+    motion.unconsumedMovement = -aperture.front * 20.0f;
+    bw::app::PlayerPortalUpdateState state;
+    require(bw::app::tryPlayerPortalCrossing(
+                *portalData, *portalPair, endpointIndex, BW_PLAYER_RADIUS,
+                BW_PLAYER_HEIGHT, motion, state) ==
+                bw::app::PlayerPortalCrossingResult::Traversed,
+            "mines example Portal pair cannot be traversed in both directions");
+  }
 
   auto* layer = map.getWorld()->getActiveLayer();
   uint32_t scriptStepIndex = ~0u;

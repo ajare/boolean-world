@@ -97,7 +97,28 @@ void frameAndVerticalMissesRemainBlocked() {
       "crossing outside the aperture's vertical bounds was accepted");
 }
 
-void collisionSweepContinuesItsTransformedRemainder() {
+void validApproachesDoNotTeleportBeforeTheCentreReachesThePlane() {
+  Fixture fixture;
+  auto motion = crossingMotion();
+  motion.unconsumedMovement = {-1.0f, 0.0f};
+  auto initialPosition = motion.position;
+  bw::app::PlayerPortalUpdateState state;
+  require(bw::app::tryPlayerPortalCrossing(
+              *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+              BW_PLAYER_HEIGHT, motion, state) ==
+              bw::app::PlayerPortalCrossingResult::Approaching &&
+              motion.position == initialPosition && state.crossings == 0 &&
+              state.visited.empty() && !state.exitSide.active,
+          "a valid approach must allow collider overlap without teleporting");
+  motion.feetElevation = 30.0f;
+  require(bw::app::tryPlayerPortalCrossing(
+              *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+              BW_PLAYER_HEIGHT, motion, state) ==
+              bw::app::PlayerPortalCrossingResult::Blocked,
+          "an approach outside the vertical aperture must still block");
+}
+
+void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   Fixture fixture;
   WorldCollisionSim simulation;
   auto collider = std::make_unique<wp::collide::ColliderCircle>(
@@ -128,6 +149,9 @@ void collisionSweepContinuesItsTransformedRemainder() {
             *fixture.data, *endpoints[lineIndex].pair,
             endpoints[lineIndex].endpoint, BW_PLAYER_RADIUS,
             BW_PLAYER_HEIGHT, motion, state);
+        if (result == bw::app::PlayerPortalCrossingResult::Approaching) {
+          return WorldCollisionSim::PortalLineResponse::Ignore;
+        }
         if (result == bw::app::PlayerPortalCrossingResult::NotCrossing) {
           return state.exitSide.active
                      ? WorldCollisionSim::PortalLineResponse::Ignore
@@ -146,12 +170,18 @@ void collisionSweepContinuesItsTransformedRemainder() {
         return WorldCollisionSim::PortalLineResponse::Traverse;
       });
   player->setMovement({-100.0f, 0.0f});
-  simulation.update(0.3f);
+  if (smallSteps) {
+    for (int frame = 0; frame < 30 && state.crossings == 0; ++frame) {
+      simulation.update(0.01f);
+    }
+  } else {
+    simulation.update(0.3f);
+  }
 
   auto const& destination = fixture.pair->endpoints[1].aperture;
   require(state.crossings == 1 &&
               (player->getCentre() - destination.centre)
-                      .dot(destination.front) > 19.9f,
+                      .dot(destination.front) > (smallSteps ? 0.0f : 19.9f),
           "collision sweep did not consume transformed movement after the Portal crossing");
 }
 
@@ -225,7 +255,9 @@ int main() {
     bw::core::LayerBuildStep::registerCoreTypes();
     highSpeedCrossingTransformsCompleteMotionState();
     frameAndVerticalMissesRemainBlocked();
+    validApproachesDoNotTeleportBeforeTheCentreReachesThePlane();
     collisionSweepContinuesItsTransformedRemainder();
+    collisionSweepContinuesItsTransformedRemainder(true);
     exitSideAndSameUpdateGuardsAreGeometricAndFinite();
     std::cout << "Player Portal traversal passed\n";
     return 0;

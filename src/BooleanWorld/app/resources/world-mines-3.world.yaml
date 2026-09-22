@@ -2902,3 +2902,17 @@ world:
                       []
       triggerLines:
         []
+      nextPortalPairId: 1
+      portalPairs:
+        - id: 0
+          endpoints:
+            - id: 0
+              centre: [-60, 0]
+              width: 16
+              bottom: -2
+              top: 24
+            - id: 1
+              centre: [-8, -28]
+              width: 16
+              bottom: -2
+              top: 24

@@ -401,7 +401,8 @@ if(BUILD_TESTING)
 
     add_executable(boolean_world_map_load_tests
         tests/map_load_tests.cpp
-        src/Map.cpp)
+        src/Map.cpp
+        src/PlayerPortalTraversal.cpp)
     target_include_directories(boolean_world_map_load_tests PRIVATE include)
     target_link_libraries(boolean_world_map_load_tests PRIVATE
         core core-lua AppLib BooleanWorldRender Willpower.Application Willpower.Common)

@@ -36,12 +36,15 @@ bw::core::ResolvedPortalPair pair(
   return result;
 }
 
-bw::core::ResolvedPortalPair identityLoopPair(
+bw::core::ResolvedPortalPair translatedLoopPair(
     uint32_t layerId, uint32_t pairId, float centreX = 0.0f) {
   auto result = pair(
       layerId, pairId, {centreX, 4.0f}, {0.0f, -1.0f}, 1.5f);
+  // Separate planes: the source remains visible beyond the destination clip
+  // plane. Coincident endpoints merely test whether the exit surface leaks
+  // through clipping, not a physically visible recursive Portal loop.
   result.endpoints[1].aperture = {
-      {centreX, 4.0f}, {-1.0f, 0.0f}, {0.0f, 1.0f}, 1.5f, -1.0f, 1.0f, {1}};
+      {centreX, 0.0f}, {-1.0f, 0.0f}, {0.0f, 1.0f}, 1.5f, -1.0f, 1.0f, {1}};
   return result;
 }
 
@@ -84,8 +87,8 @@ void plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork() {
       glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
   std::vector pairs{
-      identityLoopPair(0, 10, -0.75f),
-      identityLoopPair(0, 11, 0.75f)};
+      translatedLoopPair(0, 10, -0.75f),
+      translatedLoopPair(0, 11, 0.75f)};
   PortalViewLimits limits;
   limits.maxRecursionDepth = 1;
   PortalViewPlanner planner(limits);
@@ -107,7 +110,7 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
   auto view = glm::lookAt(
       glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
-  std::vector pairs{identityLoopPair(0, 20)};
+  std::vector pairs{translatedLoopPair(0, 20)};
 
   PortalViewLimits limits;
   limits.maxRecursionDepth = 3;
@@ -234,11 +237,22 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
   require(near(
               glm::dot(destinationFront, destinationCentre) +
                   built.auxiliary.worldClipPlane.w,
-              0.0f) &&
+              -mpp::AuxiliaryViewClipSeamBias) &&
               glm::dot(
                   glm::vec3(built.auxiliary.worldClipPlane),
                   destinationFront) > 0.99f,
           "Portal oblique clip plane does not retain the destination front half-space");
+
+  auto clipped = mpp::buildObliquelyClippedVirtualCamera(
+      built.auxiliary.view, built.auxiliary.projection,
+      built.auxiliary.worldClipPlane, built.auxiliary.seamBias);
+  auto aperturePoint = destinationCentre;
+  aperturePoint.y = (destination.bottom + destination.top) * 0.5f;
+  auto onPlane = clipped.projection * clipped.view * glm::vec4(aperturePoint, 1.0f);
+  auto inside = clipped.projection * clipped.view *
+                glm::vec4(aperturePoint + destinationFront, 1.0f);
+  require(onPlane.z + onPlane.w < 0.0f && inside.z + inside.w > 0.0f,
+          "destination aperture back face occludes the Portal's virtual view");
 }
 }  // namespace
 

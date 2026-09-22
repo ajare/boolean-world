@@ -688,6 +688,9 @@ StatePlayBooleanWorld::handlePlayerPortalLine(
   auto response = bw::app::tryPlayerPortalCrossing(
       *mWorldData, *source.pair, source.endpoint, BW_PLAYER_RADIUS,
       BW_PLAYER_HEIGHT, mPlayerPortalMotion, mPlayerPortalUpdateState);
+  if (response == bw::app::PlayerPortalCrossingResult::Approaching) {
+    return WorldCollisionSim::PortalLineResponse::Ignore;
+  }
   if (response == bw::app::PlayerPortalCrossingResult::Blocked) {
     return source.sourceWallBlocks
                ? WorldCollisionSim::PortalLineResponse::Block
