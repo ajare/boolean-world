@@ -1117,7 +1117,7 @@ void WorldRenderer::renderScene(
 
   // Every pass shares the published buffers. Only endpoint texture bindings
   // change; a child target must have completed earlier in deepest-first order.
-  auto configurePortalSurfaces = [&](std::vector<PortalViewPlanEdge> const& edges) {
+  auto configurePortalSurfaces = [&](std::vector<PortalViewPlanEdge> const& edges, bool clampNearPlane) {
     walls->setPortalFallback();
     for (auto const& edge : edges) {
       auto const& texture = renderedTextures[edge.childNode];
@@ -1126,13 +1126,13 @@ void WorldRenderer::renderScene(
             "Portal view dependency was not rendered deepest-first");
       }
       walls->setPortalView(
-          mPortalEndpointBuckets.at(edge.endpoint), texture, edge.sourceProjectiveTransform);
+          mPortalEndpointBuckets.at(edge.endpoint), texture, edge.sourceProjectiveTransform, clampNearPlane);
     }
   };
 
   for (auto nodeIndex : mLastPortalViewPlan.deepestFirst) {
     auto const& node = mLastPortalViewPlan.nodes[nodeIndex];
-    configurePortalSurfaces(node.children);
+    configurePortalSurfaces(node.children, false);
     auto auxiliary = node.auxiliary;
     if (!AttachPortalLightsToPass(auxiliary, portalLights)) {
       reportShadowFailure(
@@ -1149,7 +1149,7 @@ void WorldRenderer::renderScene(
         std::static_pointer_cast<mpp::Resource>(renderTexture);
   }
 
-  configurePortalSurfaces(mLastPortalViewPlan.rootChildren);
+  configurePortalSurfaces(mLastPortalViewPlan.rootChildren, true);
   mpp::ScenePassOverrides primaryPass;
   if (!AttachPortalLightsToPass(primaryPass, portalLights)) {
     reportShadowFailure(

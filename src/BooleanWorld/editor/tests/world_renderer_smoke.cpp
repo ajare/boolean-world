@@ -498,21 +498,30 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
       renderSystem, &world, kWidth, kHeight,
       bw::app::HorizontalMaterials::TwoDimensional);
   std::optional<std::array<uint64_t, 2>> publishedCounters;
-  // Look straight into each aperture from 20 units away. The centre region
-  // lies inside it, so surrounding lit walls cannot hide a black Portal image.
-  for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
+  std::array<std::vector<float>, 6> approachingImages;
+  // Check both the approach and the exact crossing plane.
+  for (uint32_t sample = 0; sample < 30; ++sample) {
+    auto endpoint = sample % 2;
+    auto angleOffset = std::array{0.0f, -30.0f, 30.0f}[(sample % 6) / 2];
+    auto distance = std::array{20.0f, 0.2f, 0.05f, 0.001f, 0.0f}[sample / 6];
     auto camera = std::make_shared<ReactiveCamera>(
         endpoint == 0
-            ? glm::vec3{-40.0f, -2.0f + BW_PLAYER_EYE_HEIGHT, 0.0f}
-            : glm::vec3{-8.0f, -2.0f + BW_PLAYER_EYE_HEIGHT, 8.0f},
-        bw::app::cameraYaw(endpoint == 0 ? 270.0f : 180.0f),
+            ? glm::vec3{-60.0f + distance, -2.0f + BW_PLAYER_EYE_HEIGHT, 0.0f}
+            : glm::vec3{-8.0f, -2.0f + BW_PLAYER_EYE_HEIGHT, 28.0f - distance},
+        bw::app::cameraYaw((endpoint == 0 ? 270.0f : 180.0f) + angleOffset),
         0.0f, BW_PLAYER_FOV, kWidth / float(kHeight));
     camera->setClipDistances(0.1f, 1000000.0f);
     // Use the same three-frame warm-up as the other real scene tests.
     for (int frame = 0; frame < 3; ++frame) {
-      auto texture = scene.render(&world, *data, camera, camera->getPosition(),
+      // Keep lighting fixed while checking camera continuity; a Torch on the
+      // aperture itself changes which light paths are eligible.
+      auto torch = endpoint == 0 ? glm::vec3{-40.0f, BW_PLAYER_EYE_HEIGHT - 2.0f, 0.0f}
+                                 : glm::vec3{-8.0f, BW_PLAYER_EYE_HEIGHT - 2.0f, 8.0f};
+      auto texture = scene.render(&world, *data, camera, torch,
                                   1.0f / 60.0f, {}, -1, -1);
-      require(scene.renderedPortalView(), "mines Portal has no rendered view");
+      if (!scene.renderedPortalView())
+        throw std::runtime_error("mines Portal has no rendered view: endpoint " +
+            std::to_string(endpoint) + ", distance " + std::to_string(distance));
       if (!publishedCounters) publishedCounters = scene.wallGeometryCounters();
       require(scene.wallGeometryCounters() == *publishedCounters,
               "moving between Portal views rebuilt or uploaded snapshot walls");
@@ -521,19 +530,28 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
       if (frame == 2) {
         // A softly lit opaque back face is non-black but has no destination
         // material detail. Measure inside the aperture, away from its border.
+        if (distance == 0.001f) approachingImages[sample % 6] = image;
+        double discontinuity = 0.0;
         double detail = 0.0;
         size_t samples = 0;
         for (int y = 3 * kHeight / 8; y < 5 * kHeight / 8; ++y) {
           for (int x = 3 * kWidth / 8; x < 5 * kWidth / 8; ++x) {
             auto offset = (size_t(y) * kWidth + x) * 4;
             detail += std::abs(image[offset] - image[offset + 4]);
+            if (distance == 0.0f)
+              discontinuity += std::abs(image[offset] - approachingImages[sample % 6][offset]);
             ++samples;
           }
         }
         detail /= double(samples);
+        if (discontinuity / double(samples) >= 0.02)
+          throw std::runtime_error("Portal image jumps at the crossing plane: endpoint " +
+              std::to_string(endpoint) + ", difference " +
+              std::to_string(discontinuity / double(samples)));
         if (detail < 0.002)
           throw std::runtime_error("mines Portal lacks destination detail: endpoint " +
-              std::to_string(endpoint) + ", adjacent-pixel difference " +
+              std::to_string(endpoint) + ", distance " + std::to_string(distance) +
+              ", adjacent-pixel difference " +
               std::to_string(detail));
       }
       if (frame == 2 && energy <= 0.02)

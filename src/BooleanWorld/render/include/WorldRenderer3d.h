@@ -123,7 +123,7 @@ public:
   void setPortalView(
       uint32_t endpointBucket,
       mpp::ResourcePtr const& texture,
-      glm::mat4 const& sourceProjectiveTransform);
+      glm::mat4 const& sourceProjectiveTransform, bool clampNearPlane = false);
 
   void setHighlightedWall(int32_t wall);
   [[nodiscard]] uint64_t geometryUploadCount() const;

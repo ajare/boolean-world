@@ -858,6 +858,7 @@ void WorldRenderer3d::setPortalFallback() {
   auto params = mSceneModel->getParams();
   for (auto const& binding : mPortalMeshBindings) {
     binding.uniforms->updateUniform("PORTAL_VIEW_ENABLED", int32_t{0});
+    params->setMeshDepthPrepass(binding.meshName, std::nullopt);
     binding.uniforms->updateUniform(
         "PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
     params->setMeshTexture(
@@ -868,12 +869,18 @@ void WorldRenderer3d::setPortalFallback() {
 void WorldRenderer3d::setPortalView(
     uint32_t endpointBucket,
     mpp::ResourcePtr const& texture,
-    glm::mat4 const& sourceProjectiveTransform) {
+    glm::mat4 const& sourceProjectiveTransform, bool clampNearPlane) {
   if (!mSceneModel || !texture) return;
   auto params = mSceneModel->getParams();
   for (auto const& binding : mPortalMeshBindings) {
     if (binding.endpointBucket != endpointBucket) continue;
-    binding.uniforms->updateUniform("PORTAL_VIEW_ENABLED", int32_t{1});
+    // The ordinary depth-only shader does not clamp Portal apertures.
+    params->setMeshDepthPrepass(binding.meshName,
+        clampNearPlane ? std::optional<bool>{false} : std::nullopt);
+    // 0: fallback, 1: auxiliary view (retain its oblique clip plane),
+    // 2: primary view (depth-clamp the aperture until traversal).
+    binding.uniforms->updateUniform(
+        "PORTAL_VIEW_ENABLED", int32_t{clampNearPlane ? 2 : 1});
     binding.uniforms->updateUniform(
         "PORTAL_PROJECTIVE_MATRIX", sourceProjectiveTransform);
     params->setMeshTexture(binding.meshName, binding.textureUnit, texture);

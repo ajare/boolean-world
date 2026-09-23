@@ -3,6 +3,10 @@
 // Native varying paired with world.vert; Pool elevation is constant per triangle.
 layout(location = 6) flat in float liquidSurfaceHeight;
 layout(location = 7) flat in vec2 wallData;
+layout(location = 8) in vec2 portalClipDepth;
+// Ordinary surfaces retain raster depth; Portal surfaces only increase it
+// from the near plane. Preserve conservative early-depth rejection.
+layout(depth_greater) out float gl_FragDepth;
 @@Uniform(int HIGHLIGHTED_WALL);
 @@Uniform(int PORTAL_VIEW_ENABLED);
 @@Uniform(mat4 PORTAL_PROJECTIVE_MATRIX);
@@ -3517,6 +3521,7 @@ vec3 applyLiquidAbsorption(
 
 void main()
 {
+    gl_FragDepth = gl_FragCoord.z;
     // Keep reserved values distinct before dispatch. Clamping the Triplanar
     // sentinel (42) to the Liquid index (41) routes image-backed walls through
     // the Liquid interface path, whose unlit reflection output is black there.
@@ -3524,12 +3529,16 @@ void main()
 
     // Endpoint buckets are immutable. TEX3 is either the Triplanar albedo or,
     // exclusively for a Portal bucket, this pass's completed child image.
-    // Back faces and unselected endpoints use the ordinary lit white fallback.
-    if (@Uniform(PORTAL_VIEW_ENABLED) != 0 &&
-        dot(@In(FRAGNORMAL), @ViewPos - @In(FRAGPOSITION)) > 0.0)
+    // Selection already rejects back-facing endpoints. Repeating the sidedness
+    // test per fragment is unstable when the eye lies exactly on the plane.
+    // Unselected endpoints use the ordinary lit white fallback.
+    if (@Uniform(PORTAL_VIEW_ENABLED) != 0)
     {
-        vec4 projected = @Uniform(PORTAL_PROJECTIVE_MATRIX) * vec4(@In(FRAGPOSITION), 1.0);
-        vec2 uv = projected.xy / max(projected.w, 0.00001) * 0.5 + 0.5;
+        if (@Uniform(PORTAL_VIEW_ENABLED) == 2)
+            gl_FragDepth = clamp(0.5 * portalClipDepth.x / portalClipDepth.y + 0.5, 0.0, 1.0);
+        // The child uses the same screen projection. Screen coordinates also
+        // remain well-defined when the aperture passes through the eye.
+        vec2 uv = gl_FragCoord.xy / vec2(textureSize(@Texture(TEX3), 0));
         @Out(vec4 COLOUR) = vec4(texture(@Texture(TEX3), clamp(uv, vec2(0.0), vec2(1.0))).rgb, 1.0);
         @Out(vec4 BLOOM_MASK) = vec4(0.0);
         @Out(vec2 SHADING_NORMAL) = vec2(0.0);

@@ -80,6 +80,26 @@ void selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering() {
           "stable Portal identity did not break exact coverage/distance ties");
 }
 
+void crossingPlaneRetainsThePortalWithoutAdmittingItsBackSide() {
+  auto projection = glm::perspective(glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
+  std::vector pairs{pair(0, 0, {0.0f, 0.0f}, {0.0f, -1.0f})};
+  for (float distance : {0.2f, 0.05f, 0.001f, 0.0f}) {
+    glm::vec3 eye{0.0f, 0.0f, distance};
+    auto view = glm::lookAt(eye, eye + glm::vec3{0, 0, -1}, glm::vec3{0, 1, 0});
+    auto selected = SelectPortalView(pairs, projection * view, eye);
+    require(selected && selected->sourceEndpoint == 0 && selected->projectedCoverage > 3.9f,
+            "near-plane clipping removed the crossing aperture");
+  }
+  for (glm::vec3 eye : {glm::vec3{0, 0, -0.01f}, glm::vec3{2, 0, 0}}) {
+    auto view = glm::lookAt(eye, eye + glm::vec3{0, 0, -1}, glm::vec3{0, 1, 0});
+    require(!SelectPortalView(pairs, projection * view, eye),
+            "crossing tolerance admitted a back-side or outside-aperture camera");
+  }
+  auto away = glm::lookAt(glm::vec3{0}, glm::vec3{0, 0, 1}, glm::vec3{0, 1, 0});
+  require(!SelectPortalView(pairs, projection * away, glm::vec3{0}),
+          "coplanar camera looking away selected the aperture");
+}
+
 void plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork() {
   auto projection = glm::perspective(
       glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
@@ -259,6 +279,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
 int main() {
   try {
     selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering();
+    crossingPlaneRetainsThePortalWithoutAdmittingItsBackSide();
     plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork();
     loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots();
     invisibleAndSubThresholdBranchesConsumeNoSlots();

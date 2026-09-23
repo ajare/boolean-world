@@ -1,5 +1,7 @@
 @@Version
 
+@@Uniform(int PORTAL_VIEW_ENABLED);
+
 // Pool elevation identifies a Planar reflection group using exact bounds.
 // Keep it per-primitive: smooth interpolation can perturb even equal vertex
 // values and make individual fragments fall back instead of reflecting.
@@ -9,6 +11,7 @@
 // Both world fragment shaders must use the same reserved location.
 layout(location = 6) flat out float liquidSurfaceHeight;
 layout(location = 7) flat out vec2 wallData;
+layout(location = 8) out vec2 portalClipDepth;
 
 void main()
 {
@@ -30,4 +33,17 @@ void main()
     liquidSurfaceHeight = surfaceData.w;
 
     gl_Position = @MCPMatrix * @Vec4(@In(POSITION));
+    portalClipDepth = gl_Position.zw;
+    if (@Uniform(PORTAL_VIEW_ENABLED) == 2)
+    {
+        // Keep the aperture covering the view as the eye reaches its plane.
+        // Ordinary near clipping removes it before traversal has occurred.
+        if (abs(dot(@Out(FRAGNORMAL), @ViewPos - @Out(FRAGPOSITION))) < 0.00001)
+            gl_Position = @MCPMatrix * vec4(@In(POSITION) - @In(NORMAL) * 0.0001, 1.0);
+        // Clip XY/W normally, but defer near-depth clamping to fragments.
+        // Clamping each vertex separately breaks apertures crossing the eye
+        // plane at an oblique angle.
+        portalClipDepth = gl_Position.zw;
+        gl_Position.z = -gl_Position.w;
+    }
 }

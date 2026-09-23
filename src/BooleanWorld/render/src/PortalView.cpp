@@ -30,13 +30,18 @@ float planeDistance(glm::vec4 const& point, int plane) {
       return point.w - point.y;
     case 4:
       return point.z + point.w;
-    default:
+    case 5:
       return point.w - point.z;
+    default:
+      return point.w - 1e-6f;
   }
 }
 
-ClipPolygon clipToFrustum(ClipPolygon polygon) {
-  for (int plane = 0; plane < 6 && !polygon.empty(); ++plane) {
+ClipPolygon clipToFrustum(ClipPolygon polygon, bool clampNearPlane) {
+  // Clip the eye plane first. Near-clamped apertures can straddle it when
+  // approached obliquely; perspective division must never see w == 0.
+  for (int plane = 6; plane >= 0 && !polygon.empty(); --plane) {
+    if (clampNearPlane && plane == 4) continue;
     ClipPolygon clipped;
     clipped.reserve(polygon.size() + 1);
     auto previous = polygon.back();
@@ -73,7 +78,7 @@ struct ProjectedAperture {
 
 ProjectedAperture projectAperture(
     bw::core::ResolvedAperture const& aperture,
-    glm::mat4 const& viewProjection) {
+    glm::mat4 const& viewProjection, bool clampNearPlane, bool coplanar) {
   auto half = aperture.tangent * (aperture.width * 0.5f);
   auto left = aperture.centre - half;
   auto right = aperture.centre + half;
@@ -86,9 +91,14 @@ ProjectedAperture projectAperture(
   ClipPolygon polygon;
   polygon.reserve(corners.size());
   for (auto const& corner : corners) {
-    polygon.push_back(viewProjection * glm::vec4(corner, 1.0f));
+    auto projected = viewProjection * glm::vec4(
+        corner - glm::vec3{aperture.front.x, 0.0f, -aperture.front.y} *
+            (clampNearPlane && coplanar ? 0.0001f : 0.0f), 1.0f);
+    // Portal surfaces must survive the near plane until the eye crosses.
+    // Match the depth-clamped aperture rasterization in world.vert.
+    polygon.push_back(projected);
   }
-  polygon = clipToFrustum(std::move(polygon));
+  polygon = clipToFrustum(std::move(polygon), clampNearPlane);
   if (polygon.size() < 3) return {};
 
   float twiceArea = 0.0f;
@@ -155,13 +165,31 @@ std::vector<CandidateEvaluation> evaluateCandidates(
       }
 
       auto const& aperture = endpoint.aperture;
-      if (aperture.front.dot(cameraWorldPlane - aperture.centre) <= 0.0f) {
+      auto side = aperture.front.dot(cameraWorldPlane - aperture.centre);
+      if (side < -1e-5f) {
         diagnostic.cutoff = PortalViewCutoffReason::VisibilityBackFacing;
         result.push_back({std::nullopt, diagnostic});
         continue;
       }
 
-      auto projected = projectAperture(aperture, viewProjection);
+      // A camera exactly on the aperture belongs to its front view only
+      // while inside the rectangle and looking through it, not away from it.
+      if (side <= 1e-5f) {
+        auto offset = cameraWorldPlane - aperture.centre;
+        auto intoPortal = viewProjection * glm::vec4{
+            -aperture.front.x, 0.0f, aperture.front.y, 0.0f};
+        if (std::abs(offset.dot(aperture.tangent)) >= aperture.width * 0.5f ||
+            position.y <= aperture.bottom || position.y >= aperture.top ||
+            intoPortal.w <= 0.0f) {
+          diagnostic.cutoff = PortalViewCutoffReason::VisibilityBackFacing;
+          result.push_back({std::nullopt, diagnostic});
+          continue;
+        }
+      }
+      // Auxiliary near planes are destination clipping planes: never relax
+      // them or the exit wall can reappear inside the virtual view.
+      auto projected = projectAperture(
+          aperture, viewProjection, recursionDepth == 1, side <= 1e-5f);
       if (!projected.inFrustum) {
         diagnostic.cutoff = PortalViewCutoffReason::VisibilityOutOfFrustum;
         result.push_back({std::nullopt, diagnostic});
