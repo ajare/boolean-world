@@ -289,6 +289,14 @@ void renderMeshView(ViewContext& context) {
         transact(doc, CommandId::SetMeshEdgeCollisionOverride, [&] { setMeshEdgeCollisionOverride(doc, edgeIndex, value); });
       }
     }
+    if (auto zone = doc->getActiveMeshEdgeOtherZone(edgeIndex)) {
+      int option = *zone == bw::core::ZoneId::Euclidean ? 0 : 1;
+      if (ImGui::Combo("Other Zone##SelectedMeshEdge", &option,
+                       "Euclidean\0Negative Space\0")) {
+        auto value = option == 0 ? bw::core::ZoneId::Euclidean : bw::core::ZoneId::NegativeSpace;
+        transact(doc, CommandId::SetMeshEdgeOtherZone, [&] { setMeshEdgeOtherZone(doc, edgeIndex, value); });
+      }
+    }
     if (doc->isActiveMeshEdgeVisibilityEditable(edgeIndex)) {
       auto visible = doc->getActiveMeshEdgeVisible(edgeIndex);
       if (ImGui::Checkbox("Visible##SelectedMeshEdge", &visible)) {

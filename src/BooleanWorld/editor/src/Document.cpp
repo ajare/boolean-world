@@ -414,6 +414,17 @@ bool Document::setActiveMeshEdgeCollisionOverride(
   return true;
 }
 
+optional<bw::core::ZoneId> Document::getActiveMeshEdgeOtherZone(uint32_t edgeIndex) const {
+  return mActiveMesh ? mActiveMesh->getEdgeOtherZone(edgeIndex) : nullopt;
+}
+
+bool Document::setActiveMeshEdgeOtherZone(uint32_t edgeIndex, bw::core::ZoneId zone) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u ||
+      !mActiveMesh->setEdgeOtherZone(edgeIndex, zone)) return false;
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
 bool Document::getActiveMeshEdgeVisible(uint32_t edgeIndex) const {
   return mActiveMesh && mActiveMesh->getEdgeVisible(edgeIndex);
 }

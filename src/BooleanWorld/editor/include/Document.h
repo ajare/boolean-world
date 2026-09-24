@@ -211,6 +211,8 @@ public:
   [[nodiscard]] bool getActiveMeshEdgeVisible(uint32_t edgeIndex) const;
   [[nodiscard]] bool isActiveMeshEdgeVisibilityEditable(uint32_t edgeIndex) const;
   bool setActiveMeshEdgeVisible(uint32_t edgeIndex, bool visible);
+  [[nodiscard]] std::optional<bw::core::ZoneId> getActiveMeshEdgeOtherZone(uint32_t edgeIndex) const;
+  bool setActiveMeshEdgeOtherZone(uint32_t edgeIndex, bw::core::ZoneId zone);
 
   [[nodiscard]] bw::core::WallNormalMapOverride
   getActiveMeshEdgeNormalMapOverride(uint32_t edgeIndex) const;

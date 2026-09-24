@@ -373,6 +373,7 @@ bool setMeshEdgeCollisionOverride(
 // Sets the active mesh edge's wall-render override (Document::
 // setActiveMeshEdgeVisible). Same External-only gating as above.
 bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible);
+bool setMeshEdgeOtherZone(Document* doc, uint32_t edgeIndex, bw::core::ZoneId zone);
 
 // Commits the complete Wall normal-map value in one undoable editor action.
 bool setMeshEdgeNormalMapOverride(

@@ -71,6 +71,7 @@ namespace editor {
   X(SetMeshEdgeMetadata, "Set Prefab edge metadata", setMeshEdgeMetadata) \
   X(SetMeshEdgeCollisionOverride, "Set Mesh edge collision override", setMeshEdgeCollisionOverride) \
   X(SetMeshEdgeVisible, "Set Mesh edge visibility", setMeshEdgeVisible) \
+  X(SetMeshEdgeOtherZone, "Set Mesh edge Other Zone", setMeshEdgeOtherZone) \
   X(SetMeshEdgeNormalMapOverride, "Set Mesh edge normal map", setMeshEdgeNormalMapOverride) \
   X(SetMeshEdgeWallMaskOverride, "Set Mesh edge wall mask", setMeshEdgeWallMaskOverride) \
   X(RecentreActiveMesh, "Recentre Mesh", recentreActiveMesh) \

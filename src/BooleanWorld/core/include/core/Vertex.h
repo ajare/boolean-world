@@ -10,6 +10,7 @@
 
 #include "Platform.h"
 #include "core/Defines.h"
+#include "core/ZoneId.h"
 #include "core/WallMaskOverride.h"
 #include "core/WallNormalMapOverride.h"
 
@@ -34,6 +35,7 @@ struct Vertex {
   uint32_t edgeFlags{0};
   WallNormalMapOverride edgeNormalMap{};
   WallMaskOverride edgeWallMask{};
+  ZoneId edgeOtherZone{ZoneId::NegativeSpace};
 
   Vertex() = default;
   Vertex(wp::Vector2 const& position)

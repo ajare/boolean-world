@@ -2617,6 +2617,40 @@ void meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly() {
           "undo did not restore the edge's default visible = true");
 }
 
+void meshEdgeOtherZoneTransactionUndoesAndRedoes() {
+  using bw::core::ZoneId;
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0, 0});
+  document.activateMesh(meshIndex);
+  auto edge = document.getActiveMesh()->getFirstEdgeIndex();
+  require(document.getActiveMeshEdgeOtherZone(edge) == ZoneId::NegativeSpace,
+          "editor Other Zone default incorrect");
+  document.setActiveMeshEdgeVisible(edge, false);
+  document.setActiveMeshEdgeCollisionOverride(edge, true);
+  document.setModified(false);
+  auto before = editor::getUndoLevels();
+  editor::transactUndoableAction(
+      &document, "Set Mesh edge Other Zone",
+      std::bind(editor::setMeshEdgeOtherZone, std::placeholders::_1, edge, ZoneId::Euclidean));
+  require(document.isModified() && editor::getUndoLevels() == before + 1,
+          "Other Zone did not produce one dirty transaction");
+  auto verify = [&](ZoneId expected) {
+    auto* primitive = static_cast<bw::core::MeshPrimitive*>(document.getWorld()->getPrimitive(meshIndex));
+    auto proxy = primitive->createEditingProxy();
+    auto first = proxy->getFirstEdgeIndex();
+    require(proxy->getEdgeOtherZone(first) == expected, "Other Zone transaction lost value");
+    require(!proxy->getEdgeVisible(first) && proxy->getEdgeCollisionOverride(first) == true,
+            "Other Zone transaction altered independent overrides");
+  };
+  verify(ZoneId::Euclidean);
+  editor::undo(&document);
+  require(editor::getUndoLevels() == before, "Other Zone undo count incorrect");
+  verify(ZoneId::NegativeSpace);
+  editor::redo(&document);
+  verify(ZoneId::Euclidean);
+}
+
 void drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep() {
   editor::Document document;
   auto settings = meshDrawSettings();
@@ -4490,6 +4524,7 @@ int main() {
     invalidMeshEdgeWallMaskImageIsAtomic();
     meshEdgeVisibleTogglesAndCommitsToThePrimitive();
     meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
+    meshEdgeOtherZoneTransactionUndoesAndRedoes();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();
     prefabDrawCanStartAtAnExistingGridVertexDespiteOverlappingStepGeometry();
     gridSnappedDrawPointTakesPrecedenceOverNearbyPrefabVertex();

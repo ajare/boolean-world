@@ -649,6 +649,10 @@ bool setMeshEdgeCollisionOverride(
   return doc->setActiveMeshEdgeCollisionOverride(edgeIndex, collides);
 }
 
+bool setMeshEdgeOtherZone(Document* doc, uint32_t edgeIndex, bw::core::ZoneId zone) {
+  return doc->setActiveMeshEdgeOtherZone(edgeIndex, zone);
+}
+
 bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible) {
   return doc->setActiveMeshEdgeVisible(edgeIndex, visible);
 }
