@@ -88,18 +88,24 @@ authored World content and required before that World can be deserialized and
 activated. The serialized list is the exact, sorted projection of all such
 references, including disabled LayerBuildSteps and Prefab definitions.
 
-**Portal pair** — A stably identified, permanently Layer-owned link containing
-exactly two stable Portal endpoints. It participates as one indivisible pair
-only when its owning Layer is selected; either endpoint failing resolution
-makes the pair inactive.
+**Portal loop** — A stably identified, ordered cycle permanently owned by one
+Layer and containing at least two stable Portal endpoints. Entering endpoint
+`i` exits endpoint `(i + 1) mod N`; the complete loop participates only when
+its owning Layer is selected and every endpoint resolves. A two-endpoint Portal
+loop preserves the former Portal pair's traversal mapping.
 
-**Portal endpoint** — One of the two fixed slots in a Portal pair, holding one
-authored aperture. It is not a WorldTriggerLine or an ArrangementWall property,
-and it never stores generated wall or edge identity.
+**Portal endpoint** — One stable member of a Portal loop, holding one authored
+aperture and occupying one mutable position in the loop's traversal order. Its
+id is stable and never reused within the loop, independently of insertion,
+removal, or reordering. It accepts traversal only from its resolved front side
+and sends it to the next endpoint. It is not a WorldTriggerLine or an
+ArrangementWall property, and it never stores generated wall or edge identity.
 
 **Authored aperture** — A Portal endpoint's persistent requested rectangle: a
-World-plane centre and width plus bottom and top elevations. Generation may
-narrow its resolved counterpart but never mutates these authored dimensions.
+World-plane centre and width plus bottom and top elevations. Every endpoint in
+one Portal loop must have the same height; generation narrows resolved
+apertures to the loop's smallest authored width but never mutates authored
+dimensions.
 
 ## Geometry — after the rewrite
 
@@ -110,9 +116,9 @@ recomputed per boolean operation.
 
 **Resolved aperture** — An immutable generation-side Portal rectangle whose
 wall plane, tangent, front, normalized width, elevations, and rendered-wall
-coverage were resolved in one Arrangement snapshot. Both endpoints use the
-smaller authored width around their own centres; resolved wall indices never
-enter World serialization.
+coverage were resolved in one Arrangement snapshot. Every endpoint uses the
+loop's smallest authored width around its own centre; resolved wall indices
+never enter World serialization.
 
 **Face** — A maximal connected region of the arrangement. Has one outer
 boundary and zero or more explicit inner boundaries (**holes**). Carries a
@@ -157,13 +163,15 @@ including an artificial triangulation edge within one Arrangement face, or an
 explicitly open edge from a cell to the exterior drain. A link exists only over
 positive-clearance portions of the edge and becomes reachable at its Sill.
 
-**Portal liquid-adjacency** — The generated bidirectional relation between
-Hydraulic cells touching the two resolved apertures of an active Portal pair,
-separate from ordinary shared-edge Liquid-adjacency and wall collision. The
-resolved lower edges are its Sills, surface elevations map relative to them,
-and a pair that closes a contradictory elevation-offset cycle is diagnosed and
-omitted. Resolved width decides whether connectivity exists but does not weight
-instantaneous equilibrium.
+**Portal liquid-adjacency** — The generated directed relation from each
+resolved Portal endpoint's Hydraulic cell to the next endpoint's cell in an
+active Portal loop, separate from ordinary shared-edge Liquid-adjacency and
+wall collision. Liquid settles at generation time to a deterministic fixed
+point, spilling only in traversal order after reaching each source Sill and
+mapping its surface by the same height above the source and destination lower
+edges. Loops are accepted atomically in stable Layer-id/loop-id order; a
+contradictory accumulated elevation offset omits that loop from Liquid without
+deactivating its other Portal behaviour.
 
 **Pool** — One set of Hydraulic cells holding Liquid at a single shared
 horizontal surface elevation, or at endpoint-relative elevations when joined
