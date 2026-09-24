@@ -127,11 +127,21 @@ PreviewScenePick pickPreviewSceneSurface(
 
   auto const& arrangement = worldData.getArrangement();
   auto const& triangles = worldData.getTriangles();
+  auto const& detail = worldData.getDetail();
+  using bw::core::arr::DetailSurfaceKind;
+  bool omitBack = bw::core::wallBackFaceTreatment(zone) ==
+      bw::core::WallBackFaceTreatment::Omitted;
   for (size_t index = 0; index < triangles.size(); ++index) {
     auto const& triangle = triangles[index];
     for (auto const [surface, elevations] : {
              std::pair{PreviewSurface::Floor, &triangle.floor.elevation},
              std::pair{PreviewSurface::Ceiling, &triangle.ceiling.elevation}}) {
+      auto kind = surface == PreviewSurface::Floor
+          ? DetailSurfaceKind::FloorOfFace : DetailSurfaceKind::CeilingOfFace;
+      auto const& normal = surface == PreviewSurface::Floor
+          ? triangle.floor.normal : triangle.ceiling.normal;
+      if (detail.isSuppressed(kind, triangle.face) ||
+          (omitBack && dot(normal, direction) > 0.0f)) continue;
       std::array<Vector3, 3> vertices{
           horizontalVertex(arrangement, triangle.v[0], (*elevations)[0]),
           horizontalVertex(arrangement, triangle.v[1], (*elevations)[1]),
@@ -150,7 +160,7 @@ PreviewScenePick pickPreviewSceneSurface(
   auto const& walls = worldData.getWalls();
   for (size_t index = 0; index < walls.size(); ++index) {
     auto const& wall = walls[index];
-    if (!wall.visible) {
+    if (!wall.visible || detail.isSuppressed(DetailSurfaceKind::Wall, index)) {
       continue;
     }
     auto orientation = bw::core::arr::OrientArrangementWall(arrangement, wall);
@@ -180,6 +190,30 @@ PreviewScenePick pickPreviewSceneSurface(
     }
   }
 
+  for (auto const& facet : detail.getTriangles()) {
+    auto const& source = facet.source;
+    bool isWall = source.kind == DetailSurfaceKind::Wall;
+    if (isWall && (source.index >= walls.size() || !walls[source.index].visible)) continue;
+    if (omitBack && dot(facet.v[0].normal, direction) > 0.0f) continue;
+    std::array<Vector3, 3> vertices{
+        facet.v[0].position, facet.v[1].position, facet.v[2].position};
+    float distance{};
+    if (!rayHitsTriangle(rayOrigin, direction, vertices, distance) ||
+        (nearest.hit() && distance >= nearest.surfaceHit.distance)) continue;
+    if (isWall) {
+      nearest.surfaceHit.surface = PreviewSurface::Wall;
+      nearest.surfaceHit.wallIndex = source.index;
+    } else {
+      // Preserve the existing face-owner/material lookup contract.
+      size_t index = 0;
+      while (index < triangles.size() && triangles[index].face != source.index) ++index;
+      if (index == triangles.size()) continue;
+      nearest.primitiveIndex = index;
+      nearest.surfaceHit.surface = source.kind == DetailSurfaceKind::FloorOfFace
+          ? PreviewSurface::Floor : PreviewSurface::Ceiling;
+    }
+    nearest.surfaceHit.distance = distance;
+  }
   return nearest;
 }
 

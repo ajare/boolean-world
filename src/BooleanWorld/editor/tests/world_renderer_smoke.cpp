@@ -76,6 +76,10 @@ struct RenderFixture {
   bool bundledNormal{};
   bool wallsVisible{true};
   bool wallCollides{true};
+  // 1 floor back, 2 ceiling back, 3 submerged Liquid back.
+  int horizontalBack{};
+  int detailBack{-1};
+  bool detailFront{};
 };
 
 struct ResourceCounts {
@@ -258,9 +262,10 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
 
   bw::core::ArrangementWorldDataGenerator generator;
   if (fixture.chips) {
-    generator.setChipParametersResolver([](std::string const&) {
+    generator.setChipParametersResolver([&](std::string const&) {
       return bw::core::ChipGenerationParameters{
-          2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 256.0f, 1.0f};
+          2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 256.0f, 1.0f,
+          1.0f, 1.0f, fixture.detailBack >= 0 ? 1.0f : 0.0f};
     });
   }
   generator.generate(primitives);
@@ -421,9 +426,28 @@ std::vector<float> render(
       fixture.lookAtCeiling ? -45.0f : (fixture.lookAtFloor ? 45.0f : 0.0f),
       BW_PLAYER_FOV,
       kWidth / float(kHeight));
-  camera->setClipDistances(0.1f, 1000000.0f);
+  if (fixture.horizontalBack) {
+    camera->setPosition({0, fixture.horizontalBack == 2 ? 52.0f :
+                               fixture.horizontalBack == 3 ? 1.0f : -4.0f, 0});
+    camera->setPitch(fixture.horizontalBack == 2 ? 90.0f : -90.0f);
+  }
+  if (fixture.detailBack >= 0) {
+    auto const& facets = worldData->getDetail().getTriangles();
+    auto facet = std::ranges::find_if(facets, [&](auto const& item) {
+      return int(item.kind) == fixture.detailBack;
+    });
+    if (facet == facets.end()) throw std::runtime_error("missing detail render fixture facet");
+    glm::vec3 centre{};
+    for (auto const& vertex : facet->v)
+      centre += glm::vec3(vertex.position[0], vertex.position[2], -vertex.position[1]) / 3.0f;
+    auto const& n = facet->v[0].normal;
+    glm::vec3 normal{n[0], n[2], -n[1]};
+    camera->setLookAt(centre + normal * (fixture.detailFront ? 0.05f : -0.05f), centre,
+        std::abs(normal.y) > 0.9f ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0});
+  }
+  camera->setClipDistances(fixture.detailBack >= 0 ? 0.001f : 0.1f, 1000000.0f);
   uint32_t texture{};
-  std::array<uint64_t, 2> wallCounters{};
+  std::array<std::array<uint64_t, 2>, 3> surfaceCounters{};
   for (int frame = 0; frame < 3; ++frame) {
     texture = scene.render(
         &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f, {},
@@ -433,9 +457,12 @@ std::vector<float> render(
                           : bw::core::ZoneId::Euclidean)
                    : fixture.zone);
     if (frame == 1 && switchedZoneImage) *switchedZoneImage = readColour(texture);
-    if (frame == 0) wallCounters = scene.wallGeometryCounters();
-    else if (scene.wallGeometryCounters() != wallCounters)
-      throw std::runtime_error("unchanged snapshot rebuilt or uploaded wall geometry");
+    for (auto set : {WorldSurfaceSet::Horizontal, WorldSurfaceSet::Liquid, WorldSurfaceSet::Walls}) {
+      auto& counters = surfaceCounters[static_cast<size_t>(set)];
+      if (frame == 0) counters = scene.surfaceGeometryCounters(set);
+      else if (scene.surfaceGeometryCounters(set) != counters)
+        throw std::runtime_error("Zone switch rebuilt or uploaded surface geometry");
+    }
   }
   if (texture == 0)
     throw std::runtime_error("WorldRenderer produced no render texture");
@@ -458,6 +485,81 @@ std::vector<float> render(
 
 void require(bool condition, char const* message) {
   if (!condition) throw std::runtime_error(message);
+}
+
+void detailZonesRender(editor::EditorRenderSystem& renderSystem) {
+  using bw::core::ZoneId;
+  using bw::core::arr::DetailTriangleKind;
+  for (auto horizontal : {bw::app::HorizontalMaterials::ThreeDimensional,
+                          bw::app::HorizontalMaterials::TwoDimensional})
+  for (auto kind : {DetailTriangleKind::SurfaceRemainder,
+                    DetailTriangleKind::HorizontalChipFacet,
+                    DetailTriangleKind::VerticalChipFacet,
+                    DetailTriangleKind::CornerChipFacet,
+                    DetailTriangleKind::WedgeFacet}) {
+    RenderFixture fixture;
+    fixture.chips = fixture.wedges = true;
+    fixture.horizontal = horizontal;
+    fixture.detailBack = int(kind);
+    fixture.zone = ZoneId::NegativeSpace;
+    std::vector<float> switched;
+    auto white = render(renderSystem, fixture, nullptr, nullptr, nullptr, &switched);
+    fixture.zone = ZoneId::Euclidean;
+    auto omitted = render(renderSystem, fixture);
+    require(regionDifference(white, omitted) > 0.001,
+            "detail facet back did not follow Zone");
+    require(regionDifference(switched, omitted) < 0.0005,
+            "detail Zone change missed next frame");
+    fixture.detailFront = true;
+    auto front = render(renderSystem, fixture);
+    fixture.zone = ZoneId::NegativeSpace;
+    auto negativeFront = render(renderSystem, fixture);
+    require(regionDifference(front, negativeFront) < 0.0005,
+            "Zone changed authored detail front");
+    fixture.detailFront = false;
+    fixture.emboss = true;
+    auto embossedBack = render(renderSystem, fixture);
+    require(regionDifference(white, embossedBack) < 0.0005,
+            "detail matte back inherited Embossing");
+  }
+}
+
+void horizontalZonesRender(editor::EditorRenderSystem& renderSystem) {
+  using bw::core::ZoneId;
+  for (auto horizontal : {bw::app::HorizontalMaterials::ThreeDimensional,
+                          bw::app::HorizontalMaterials::TwoDimensional}) {
+    for (int surface : {1, 2, 3}) {
+      RenderFixture fixture;
+      fixture.horizontal = horizontal;
+      fixture.wet = surface == 3;
+      fixture.horizontalBack = surface;
+      fixture.zone = ZoneId::NegativeSpace;
+      std::vector<float> switched;
+      auto white = render(renderSystem, fixture, nullptr, nullptr, nullptr, &switched);
+      fixture.zone = ZoneId::Euclidean;
+      auto omitted = render(renderSystem, fixture);
+      require(regionDifference(white, omitted) > 0.001,
+              "horizontal/Liquid Zone back-face treatment unchanged");
+      require(regionDifference(switched, omitted) < 0.0005,
+              "horizontal/Liquid Zone change missed next frame");
+      if (surface != 3) {
+        auto frontFixture = fixture;
+        frontFixture.horizontalBack = 0;
+        frontFixture.lookAtFloor = surface == 1;
+        frontFixture.lookAtCeiling = surface == 2;
+        auto front = render(renderSystem, frontFixture);
+        frontFixture.zone = ZoneId::NegativeSpace;
+        require(regionDifference(front, render(renderSystem, frontFixture)) < 0.0005,
+                "Zone changed authored horizontal front");
+        fixture.zone = ZoneId::NegativeSpace;
+        fixture.emboss = true;
+        fixture.triplanar = true;
+        auto decorated = render(renderSystem, fixture);
+        require(regionDifference(white, decorated) < 0.0005,
+                "horizontal matte back inherited authored treatment");
+      }
+    }
+  }
 }
 
 void portalRendersThroughPublicSceneAndNamedFinalOutput(
@@ -983,6 +1085,10 @@ int main(int argc, char** argv) {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
       } else if (scenario == "mines-portal") {
         minesPortalRenders(renderSystem);
+      } else if (scenario == "detail-zones") {
+        detailZonesRender(renderSystem);
+      } else if (scenario == "horizontal-zones") {
+        horizontalZonesRender(renderSystem);
       } else if (scenario == "immutable-walls") {
         immutableWallsRenderBothSides(renderSystem);
       } else if (scenario == "portal-light") {

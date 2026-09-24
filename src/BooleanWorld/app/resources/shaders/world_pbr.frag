@@ -3547,8 +3547,15 @@ void main()
         return;
     }
 
-    if (bucketMaterialIndex < 0 &&
-        !(wallData.x > 0.0 && dot(@In(FRAGNORMAL), @ViewPos - @In(FRAGPOSITION)) < 0.0))
+    // FRAGNORMAL is the authored geometric normal, including each detail
+    // facet (not its parent wall or horizontal surface).
+    bool geometricBackFace = dot(@In(FRAGNORMAL), @ViewPos - @In(FRAGPOSITION)) < 0.0;
+    bool liquidInterface = bucketMaterialIndex == 41;
+    bool omittedBack = @Uniform(WALL_BACK_FACE_TREATMENT) == 0;
+    if (geometricBackFace && omittedBack && !liquidInterface) discard;
+    bool surfaceBackFace = geometricBackFace && !omittedBack;
+
+    if (bucketMaterialIndex < 0 && !surfaceBackFace)
     {
         @Out(COLOUR) = vec4(1.0, 0.0, 1.0, 1.0);
         @Out(BLOOM_MASK) = vec4(0.0);
@@ -3560,7 +3567,9 @@ void main()
     // Liquid is an interface, not another lit volume. The water pass has no
     // depth attachment, so reject interfaces hidden by the sampled opaque
     // depth before marching that same point-sampled buffer.
-    if (bucketMaterialIndex == 41)
+    if (liquidInterface && @Uniform(LIQUID_WATER_PASS_ENABLED) != 0 &&
+        gl_FragCoord.z > liquidSceneDepth(gl_FragCoord.xy * VIEWPORT_SIZE.zw)) discard;
+    if (liquidInterface && !surfaceBackFace)
     {
         vec2 screenUv = gl_FragCoord.xy * VIEWPORT_SIZE.zw;
         bool hasWaterPass = @Uniform(LIQUID_WATER_PASS_ENABLED) != 0;
@@ -3568,9 +3577,6 @@ void main()
             @Uniform(LIQUID_REFLECTION_ENABLED) != 0;
         bool planarReflection =
             @Uniform(MPP_WATER_REFLECTION_TECHNIQUE) != 0;
-        if (hasWaterPass && gl_FragCoord.z > liquidSceneDepth(screenUv))
-            discard;
-
         vec3 worldPos = @In(FRAGPOSITION);
         vec3 viewDir = normalize(@ViewPos - worldPos);
         vec3 interfaceNormal = normalize(@In(FRAGNORMAL));
@@ -3716,23 +3722,21 @@ void main()
 
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
-    // Classify before any normal-map, material, or Emboss perturbation,
-    // using this pass's camera (also correct for secondary views).
-    bool wallBackFace = wallData.x > 0.0 && dot(shadingNormal, viewDir) < 0.0;
-    if (wallBackFace && @Uniform(WALL_BACK_FACE_TREATMENT) == 0) discard;
+    // Receiver absorption still uses the source-side Liquid elevations;
+    // this is independent of the surface's Zone treatment.
     bool liquidBackSide = wallData.x != 0.0 &&
         dot(wallData.x > 0.0 ? shadingNormal : normalize(@In(SURFACE_UP)), viewDir) < 0.0;
     float receiverLiquidHeight = liquidBackSide ? wallData.y : liquidSurfaceHeight;
-    if (wallBackFace) shadingNormal = -shadingNormal;
-    vec3 normalDir = wallBackFace ? shadingNormal : applyWallNormalMap(shadingNormal);
+    if (surfaceBackFace) shadingNormal = -shadingNormal;
+    vec3 normalDir = surfaceBackFace ? shadingNormal : applyWallNormalMap(shadingNormal);
     vec3 texturePosition = snapToGrid(
         @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
     int materialIndex = floorMaterialIndex(
         @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 40));
-    materialIndex = wallBackFace ? 40 : clamp(materialIndex, 0, 40);
+    materialIndex = surfaceBackFace ? 40 : clamp(materialIndex, 0, 40);
     blendMaterialParams();
-    bool usesTriplanar = !wallBackFace && @Uniform(TRIPLANAR_ENABLED) != 0;
+    bool usesTriplanar = !surfaceBackFace && @Uniform(TRIPLANAR_ENABLED) != 0;
     Material material;
     if (usesTriplanar)
     {
@@ -3752,13 +3756,13 @@ void main()
     // lighting; the per-vertex tint (white unless the editor is marking a
     // surface out) is applied on top and leaves the material untouched when
     // white.
-    material.albedo *= (wallBackFace ? vec3(1.0) : blendedMaterialColour) * @In(COLOUR).rgb;
+    material.albedo *= (surfaceBackFace ? vec3(1.0) : blendedMaterialColour) * @In(COLOUR).rgb;
     if (wallData.x != 0.0 && int(abs(wallData.x)) - 1 == @Uniform(HIGHLIGHTED_WALL))
         material.albedo *= vec3(1.0, 1.0, 89.0 / 255.0);
 
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
-    if (!wallBackFace && @Uniform(EMBOSS_PATTERN) != 0)
+    if (!surfaceBackFace && @Uniform(EMBOSS_PATTERN) != 0)
     {
         material.normal = embossSurface(
             material.normal, @In(FRAGPOSITION),

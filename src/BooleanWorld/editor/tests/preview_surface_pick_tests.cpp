@@ -194,7 +194,7 @@ void picksTheNearestOfSeveralCandidates() {
       "the nearer floor lost to a wall further along the ray");
 }
 
-void wedgesRemainAbsentFromSurfacePicking() {
+void raysAwayFromWedgesStillPickTheWall() {
   auto room = makeRoom();
   auto settings = bw::core::WedgeGenerationParameters{
       true, 4.0f, 4.0f, 2.0f, 2.0f, 2.0f, 2.0f};
@@ -209,6 +209,64 @@ void wedgesRemainAbsentFromSurfacePicking() {
               before.surfaceHit.wallIndex == after.surfaceHit.wallIndex &&
               near(before.surfaceHit.distance, after.surfaceHit.distance),
           "Wedge collision participation changed editor surface picking");
+}
+
+void horizontalAndDetailPickingFollowsZone() {
+  using bw::core::ZoneId;
+  auto room = makeRoom();
+  auto data = buildData({room.get()});
+  for (bool ceiling : {false, true}) {
+    Vector3 origin{0, 0, ceiling ? 25.0f : -5.0f};
+    Vector3 direction{0, 0, ceiling ? -1.0f : 1.0f};
+    auto front = editor::pickPreviewSceneSurface(*data, {0, 0, 10}, direction);
+    require(front.hit(), "horizontal front omitted");
+    auto back = editor::pickPreviewSceneSurface(*data, origin, direction, ZoneId::NegativeSpace);
+    auto omitted = editor::pickPreviewSceneSurface(*data, origin, direction, ZoneId::Euclidean);
+    require(back.hit() && near(back.surfaceHit.distance, 5), "horizontal back not pickable in Negative Space");
+    require(omitted.hit() && near(omitted.surfaceHit.distance, 25), "Euclidean picked horizontal back");
+  }
+
+  bw::core::ArrangementWorldDataGenerator generator;
+  generator.setChipParametersResolver([](std::string const&) {
+    return bw::core::ChipGenerationParameters{1, 1, 1, 1, 1, 256, 1, 1, 1, 1};
+  });
+  auto outer = makeRoomSpanning(-20, -20, 20, 20, 0, 40, 1, 0);
+  auto platform = makeRoomSpanning(-8, -8, 8, 8, 8, 32, 2, 1);
+  for (auto* primitive : {outer.get(), platform.get()}) {
+    auto properties = primitive->getProperties();
+    properties.floorMaterial = properties.ceilingMaterial = properties.wallMaterial =
+        bw::core::SurfaceMaterialReference::subMaterial("fixture");
+    primitive->setProperties(properties);
+  }
+  generator.generate({outer.get(), platform.get()});
+  bw::core::ArrangementWorldData detailed(generator.getWorldData(),
+      wp::BoundingBox{{-200, -200}, {400, 400}}, 16, nullptr,
+      bw::core::WedgeGenerationParameters{true, 4, 4, 2, 2, 2, 2});
+  std::array<bool, 5> tested{};
+  for (auto const& facet : detailed.getDetail().getTriangles()) {
+    Vector3 centre{}, normal = facet.v[0].normal;
+    for (auto const& vertex : facet.v)
+      for (int axis = 0; axis < 3; ++axis) centre[axis] += vertex.position[axis] / 3;
+    for (float side : {-1.0f, 1.0f}) {
+      Vector3 origin{}, direction{};
+      for (int axis = 0; axis < 3; ++axis) {
+        origin[axis] = centre[axis] + side * 0.001f * normal[axis];
+        direction[axis] = -side * normal[axis];
+      }
+      auto negative = editor::pickPreviewSceneSurface(detailed, origin, direction, ZoneId::NegativeSpace);
+      require(negative.hit() && negative.surfaceHit.distance < 0.002f,
+              "detail facet missing in Negative Space (or suppressed parent picked)");
+      auto euclidean = editor::pickPreviewSceneSurface(detailed, origin, direction, ZoneId::Euclidean);
+      require(side > 0 ? euclidean.hit() && euclidean.surfaceHit.distance < 0.002f
+                       : !euclidean.hit() || euclidean.surfaceHit.distance > 0.002f,
+              "detail picking did not use facet geometric normal");
+    }
+    if (size_t(facet.kind) < tested.size()) tested[size_t(facet.kind)] = true;
+  }
+  require(std::ranges::all_of(tested, [](bool seen) { return seen; }) &&
+              detailed.getDetail().getWedgeCount() > 0 &&
+              detailed.getDetail().getChipCount() > 0,
+          "detail picking fixture has no facets");
 }
 
 void reportsNoHitWhenAimedAway() {
@@ -642,7 +700,8 @@ int main() {
     looksAtTheCeilingWhenAimedUp();
     looksAtTheWallAheadRatherThanTheOneBehind();
     picksTheNearestOfSeveralCandidates();
-    wedgesRemainAbsentFromSurfacePicking();
+    raysAwayFromWedgesStillPickTheWall();
+    horizontalAndDetailPickingFollowsZone();
     reportsNoHitWhenAimedAway();
     reportsDistanceIndependentlyOfDirectionScale();
     ignoresDegenerateDirections();

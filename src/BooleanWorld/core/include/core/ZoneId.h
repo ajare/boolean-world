@@ -12,7 +12,9 @@ enum class ZoneId : uint32_t {
   NegativeSpace = 2,
 };
 
-// Runtime wall-face strategy; geometry and shadow participation are unchanged.
+// Runtime generated-surface strategy (historical wall API name). Geometry and
+// shadow participation are unchanged. Euclidean Liquid is the deliberate
+// two-sided interface exception to Omitted.
 enum class WallBackFaceTreatment : int32_t { Omitted = 0, MatteWhite = 1 };
 
 constexpr WallBackFaceTreatment wallBackFaceTreatment(ZoneId id) {

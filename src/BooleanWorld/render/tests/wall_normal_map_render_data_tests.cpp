@@ -165,20 +165,20 @@ void shadersShareCompositionContract() {
               shader2d.find("if (type == 39)") != std::string::npos &&
               shader3d.find("case 40: // BW_WALL_BACK_FACE_MATERIAL_INDEX") !=
                   std::string::npos &&
-              shader3d.find("if (bucketMaterialIndex == 41)") !=
+              shader3d.find("if (liquidInterface && !surfaceBackFace)") !=
                   std::string::npos &&
               shader2d.find("if (type == 41)") != std::string::npos,
           "Granite or the following reserved materials are not dispatched by both procedural PBR programs");
 
   auto sample = shader3d.find(
-      "wallBackFace ? shadingNormal : applyWallNormalMap(shadingNormal)");
+      "surfaceBackFace ? shadingNormal : applyWallNormalMap(shadingNormal)");
   auto evaluate = shader3d.find("material = evaluateMaterial");
   auto emboss = shader3d.find("material.normal = embossSurface", evaluate);
   require(sample != std::string::npos && sample < evaluate && evaluate < emboss,
           "3D shader must skip Image on wall backs and compose front Image before Technique and Embossing");
 
   auto horizontalApply = shader2d.find(
-      "vec3 normal = applyWallNormalMap(shadingNormal)");
+      "vec3 normal = matteBack ? shadingNormal : applyWallNormalMap(shadingNormal)");
   auto horizontalEvaluate = shader2d.find("material = material2d");
   require(horizontalApply != std::string::npos &&
               horizontalApply < horizontalEvaluate,

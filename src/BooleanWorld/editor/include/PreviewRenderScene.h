@@ -102,6 +102,7 @@ public:
       WorldSurfaceSet surfaceSet) const;
   // CPU payload revision and completed GPU upload count, respectively.
   [[nodiscard]] std::array<std::uint64_t, 2> wallGeometryCounters() const;
+  [[nodiscard]] std::array<std::uint64_t, 2> surfaceGeometryCounters(WorldSurfaceSet set) const;
   [[nodiscard]] bool renderedPortalView() const;
   [[nodiscard]] std::uint32_t portalRenderedPassCount() const;
   [[nodiscard]] std::uint32_t portalSelectedEndpointCount() const;

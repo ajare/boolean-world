@@ -45,7 +45,8 @@ struct PreviewScenePick {
 // composited geometry WorldRenderer draws; no Primitive ordering or
 // draw-order tie breaking is involved. Coordinates are (x, y ground-plane,
 // z height), and the function is deliberately free of the graphics API.
-// Wall facing follows the runtime Zone; global visibility always wins.
+// Solid surface/facet facing follows the preview Zone; global wall visibility
+// always wins. Suppressed parents are replaced by their generated detail facets.
 [[nodiscard]] PreviewScenePick pickPreviewSceneSurface(
     bw::core::ArrangementWorldData const& worldData,
     std::array<float, 3> const& rayOrigin,

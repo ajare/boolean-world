@@ -228,6 +228,7 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     return;
   }
 
+  bool changed = false;
   for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
     auto& mesh = mMeshData[meshIndex];
     auto& authored = mAuthoredIndices[meshIndex];
@@ -242,8 +243,11 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
       continue;
     }
 
-    std::copy(authored.begin(), authored.end(), mesh.indexData);
     if (order == TriangleOrder::Authored || mesh.numTriangles < 2) {
+      if (!std::equal(authored.begin(), authored.end(), mesh.indexData)) {
+        std::copy(authored.begin(), authored.end(), mesh.indexData);
+        changed = true;
+      }
       continue;
     }
 
@@ -278,11 +282,15 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     auto* destination = mesh.indexData;
     for (auto const& triangle : triangleOrder) {
       auto source = triangle.triangle * 3;
-      *destination++ = authored[source];
-      *destination++ = authored[source + 1];
-      *destination++ = authored[source + 2];
+      for (uint32_t corner = 0; corner < 3; ++corner) {
+        auto index = authored[source + corner];
+        changed |= *destination != index;
+        *destination++ = index;
+      }
     }
   }
   mTriangleOrder = order;
-  ++mRevision;
+  // A Zone-only frame (and an empty Liquid set) must not trigger GPU uploads
+  // merely because the view-ordering pass ran again.
+  if (changed) ++mRevision;
 }

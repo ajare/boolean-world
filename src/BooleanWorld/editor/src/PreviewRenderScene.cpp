@@ -201,6 +201,11 @@ std::array<std::uint64_t, 2> PreviewRenderScene::wallGeometryCounters() const {
   return {counters.revision, counters.uploads};
 }
 
+std::array<std::uint64_t, 2> PreviewRenderScene::surfaceGeometryCounters(WorldSurfaceSet set) const {
+  auto counters = mRenderer->surfaceGeometryDiagnostics(set);
+  return {counters.revision, counters.uploads};
+}
+
 void PreviewRenderScene::worldGeometryChanged() {
   mRenderer->setWorldChanged();
   // WorldRenderer rebuilds model resources lazily. Mark the domain as well so

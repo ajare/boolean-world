@@ -165,9 +165,12 @@ public:
     uint64_t uploads{};
     bool operator==(WallGeometryDiagnostics const&) const = default;
   };
+  [[nodiscard]] WallGeometryDiagnostics surfaceGeometryDiagnostics(WorldSurfaceSet set) const {
+    auto const& surface = mMaterialRenderers[static_cast<size_t>(set)];
+    return {surface.dataProvider->revision(), surface.renderer->geometryUploadCount()};
+  }
   [[nodiscard]] WallGeometryDiagnostics wallGeometryDiagnostics() const {
-    auto const& walls = mMaterialRenderers[2];
-    return {walls.dataProvider->revision(), walls.renderer->geometryUploadCount()};
+    return surfaceGeometryDiagnostics(WorldSurfaceSet::Walls);
   }
 
   // The current geometry count for one independently submitted surface set.

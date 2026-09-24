@@ -13,6 +13,7 @@ layout(location = 6) flat in float liquidSurfaceHeight;
 @@Uniform(vec3 LIQUID_EXTINCTION);
 @@Uniform(vec3 LIQUID_TINT);
 @@Uniform(int MPP_VIRTUAL_CAMERA);
+@@Uniform(int WALL_BACK_FACE_TREATMENT);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
 @@Uniform(int PORTAL_LIGHT_COUNT);
@@ -688,6 +689,14 @@ Material material2d(
             surfacePosition, normal, surfaceUp, axisU, axisV);
     if (type == 41)
         return waterMaterial2d(normal);
+    if (type == 40) {
+        Material matte;
+        matte.albedo = vec3(1.0);
+        matte.metallic = 0.0;
+        matte.roughness = 0.85;
+        matte.normal = normal;
+        return matte;
+    }
 
     // Plain grey occupies material index 0. Procedural Techniques are shifted
     // up by one externally, then mapped back to their compact table indices.
@@ -1766,18 +1775,17 @@ void main()
     materialIndex = clamp(materialIndex, 0, 41);
     vec3 viewDir = normalize(@ViewPos - worldPos);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
-    // Every horizontal surface here is single-sided geometry rendered without
-    // backface culling (liquid surfaces are seen from below when a player is
-    // submerged). Without this, dot(normal, viewDir) goes negative and clamps
-    // to 0 in shadePbr's Fresnel term, which fresnelSchlick reads as grazing
-    // incidence (cosTheta = 0) and returns ~1 - drowning the albedo term in
-    // flat grey ambient regardless of the material's actual colour.
+    bool backFace = dot(shadingNormal, viewDir) < 0.0;
+    bool omittedBack = @Uniform(WALL_BACK_FACE_TREATMENT) == 0;
+    if (backFace && omittedBack && @Uniform(MATERIAL_INDEX) != 41) discard;
+    bool matteBack = backFace && !omittedBack;
+    if (matteBack) materialIndex = 40;
     if (dot(shadingNormal, viewDir) < 0.0) {
         shadingNormal = -shadingNormal;
     }
-    vec3 normal = applyWallNormalMap(shadingNormal);
+    vec3 normal = matteBack ? shadingNormal : applyWallNormalMap(shadingNormal);
     blendMaterialParams();
-    bool usesTriplanar = @Uniform(TRIPLANAR_ENABLED) != 0;
+    bool usesTriplanar = !matteBack && @Uniform(TRIPLANAR_ENABLED) != 0;
     Material material;
     if (usesTriplanar)
     {
@@ -1794,10 +1802,10 @@ void main()
             viewDir, materialIndex);
     }
     // The blended base colour tints the surface's own colour before lighting.
-    material.albedo *= blendedMaterialColour;
+    material.albedo *= matteBack ? vec3(1.0) : blendedMaterialColour;
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
-    if (@Uniform(EMBOSS_PATTERN) != 0)
+    if (!matteBack && @Uniform(EMBOSS_PATTERN) != 0)
         material.normal = embossSurface(
             material.normal, surfacePosition, surfaceAxisU, surfaceAxisV,
             @Uniform(EMBOSS_RADIUS), @Uniform(EMBOSS_DEPTH),
