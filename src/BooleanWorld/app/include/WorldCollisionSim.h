@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include <willpower/common/BoundingBox.h>
 
@@ -13,9 +14,33 @@ public:
   using PortalHitCallback = std::function<PortalLineResponse(
       wp::collide::SweepResult*, uint32_t portalLineIndex)>;
 
+  enum class PlayerMovementSegmentType { Swept, PortalRelocation };
+
+  struct PlayerMovementSegment {
+    wp::Vector2 from;
+    wp::Vector2 to;
+    PlayerMovementSegmentType type{PlayerMovementSegmentType::Swept};
+  };
+
 private:
+  struct MovementCandidate {
+    wp::Vector2 oldPosition;
+    wp::Vector2 newPosition;
+    wp::Vector2 portalSourcePosition;
+    bool portalRelocation{false};
+  };
+
   PortalHitCallback mPortalHitCallback;
   uint32_t mPortalLineCount{0};
+  wp::collide::Collider* mPlayerCollider{nullptr};
+  bool mTracingUpdate{false};
+  wp::Vector2 mUpdateStart;
+  std::vector<MovementCandidate> mMovementCandidates;
+  std::vector<PlayerMovementSegment> mPlayerMovementTrace;
+
+  void recordMovementCandidate(
+      wp::collide::SweepResult const& result, bool portalRelocation);
+  void finishMovementTrace();
 
   bool sweepAgainstStaticLine(
       wp::collide::Collider const* collider,
@@ -32,6 +57,13 @@ public:
   void addSlidingCollider(
       std::unique_ptr<wp::collide::Collider> collider,
       std::function<void()> const& onWallHit = {});
+
+  // Resolves the player's requested movement and replaces the previous trace.
+  // Swept segments contain only movement actually travelled by the player
+  // centre; Portal jumps are separate relocation segments.
+  void update(float frameTime);
+
+  std::vector<PlayerMovementSegment> const& getPlayerMovementTrace() const;
 
   std::vector<wp::collide::StaticLine> const& getLines() const;
 

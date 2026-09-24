@@ -79,7 +79,11 @@ bool EntityHandlerBooleanWorld::updateImpl(Entity* entity, bool inputControlled,
       peekInput(*entity, &curPosition, &newPosition, &curAngle, &newAngle, &curPitch, &newPitch, &velocity, &verticalEffort, frameTime);
 
       mwPlayerCollider->setMovement(velocity);
-      mwSimulation->update(frameTime);
+      if (mCollisionUpdate) {
+        mCollisionUpdate(frameTime);
+      } else {
+        mwSimulation->update(frameTime);
+      }
 
       auto& physicalStats = getEntityComponent<PhysicalStats>(*entity);
 

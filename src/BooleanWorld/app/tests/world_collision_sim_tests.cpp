@@ -159,6 +159,25 @@ void callerCulledWorldLinesDoNotCreateASecondSpatialGrid() {
               "Caller-culled wall outside the old grid extents was ignored");
 }
 
+void directMovementProducesOneResolvedSegment() {
+  WorldCollisionSim simulation;
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(
+      wp::Vector2{-2.0f, 1.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
+
+  player->setMovement({3.0f, 2.0f});
+  simulation.update(1.0f);
+
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 1 &&
+              trace.front().type ==
+                  WorldCollisionSim::PlayerMovementSegmentType::Swept &&
+              trace.front().from.distanceTo({-2.0f, 1.0f}) < 0.0001f &&
+              trace.front().to.distanceTo({1.0f, 3.0f}) < 0.0001f,
+          "direct movement did not expose one resolved segment");
+}
+
 void diagonalMovementSlidesAlongWall() {
   WorldCollisionSim simulation;
   auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-2.0f, 0.0f}, 0.5f);
@@ -173,6 +192,20 @@ void diagonalMovementSlidesAlongWall() {
               "Player did not stop at the wall");
   requireNear(player->getCentre().y, 2.0f, 0.002f,
               "Player did not preserve upward movement along the wall");
+
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 2 &&
+              trace[0].type ==
+                  WorldCollisionSim::PlayerMovementSegmentType::Swept &&
+              trace[1].type ==
+                  WorldCollisionSim::PlayerMovementSegmentType::Swept,
+          "Diagonal slide did not expose both ordered swept segments");
+  require(trace[0].from.distanceTo({-2.0f, 0.0f}) < 0.002f &&
+              trace[0].to.distanceTo(trace[1].from) < 0.0001f &&
+              trace[1].to.distanceTo(player->getCentre()) < 0.0001f,
+          "Diagonal slide trace is not a continuous resolved path");
+  requireNear(trace[0].to.y, 1.0f, 0.002f,
+              "Diagonal slide trace collapsed to its start-to-end chord");
 }
 
 void perpendicularMovementStopsAtWall() {
@@ -189,6 +222,11 @@ void perpendicularMovementStopsAtWall() {
               "Player did not stop at the wall");
   requireNear(player->getCentre().y, 1.0f, 0.002f,
               "Perpendicular impact introduced tangential movement");
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 1 &&
+              trace.front().from.distanceTo({-2.0f, 1.0f}) < 0.0001f &&
+              trace.front().to.distanceTo(player->getCentre()) < 0.0001f,
+          "Perpendicular collision did not expose its resolved movement");
 }
 
 void smallMovementStillSlidesAlongWall() {
@@ -205,6 +243,11 @@ void smallMovementStillSlidesAlongWall() {
               "Player did not stop at the wall");
   requireNear(player->getCentre().y, 0.05f, 0.002f,
               "Small tangential movement was discarded");
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 2 &&
+              trace.front().from.distanceTo({-0.55f, 0.0f}) < 0.0001f &&
+              trace.back().to.distanceTo(player->getCentre()) < 0.0001f,
+          "Small collision step did not retain its ordered slide trace");
 }
 
 void straightWallSlidingIsRotationInvariant() {
@@ -467,6 +510,7 @@ int main() {
     playerLocationUsesResolvedPosition();
     generatedWallsSlideFromThePlayableSide();
     callerCulledWorldLinesDoNotCreateASecondSpatialGrid();
+    directMovementProducesOneResolvedSegment();
     diagonalMovementSlidesAlongWall();
     perpendicularMovementStopsAtWall();
     smallMovementStillSlidesAlongWall();

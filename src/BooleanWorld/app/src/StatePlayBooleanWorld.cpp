@@ -550,7 +550,9 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
       });
   mPlayerCollider = playerColliderObserver;
 
-  applib::ModelInstance::entityHandler()->setupCollisions(mWorldCollisionSim, mPlayerCollider);
+  applib::ModelInstance::entityHandler()->setupCollisions(
+      mWorldCollisionSim, mPlayerCollider,
+      [this](float frameTime) { mWorldCollisionSim->update(frameTime); });
 }
 
 bool StatePlayBooleanWorld::playerInWorld() const {

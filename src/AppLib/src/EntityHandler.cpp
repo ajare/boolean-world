@@ -47,9 +47,12 @@ vector<string> const& EntityHandler::getActiveInputStates() const {
   return mActiveInputStates;
 }
 
-void EntityHandler::setupCollisions(wp::collide::Simulation* simulation, wp::collide::Collider* collider) {
+void EntityHandler::setupCollisions(
+    wp::collide::Simulation* simulation, wp::collide::Collider* collider,
+    std::function<void(float)> update) {
   mwSimulation = simulation;
   mwPlayerCollider = collider;
+  mCollisionUpdate = std::move(update);
 }
 
 void EntityHandler::setup(Entity* entity, int type, wp::Vector2 const& position, float angle) {

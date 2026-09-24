@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -231,6 +233,31 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
               (player->getCentre() - destination.centre)
                       .dot(destination.front) > (smallSteps ? 0.0f : 19.9f),
           "collision sweep did not consume transformed movement after the Portal crossing");
+
+  auto const& trace = simulation.getPlayerMovementTrace();
+  auto relocation = std::find_if(
+      trace.begin(), trace.end(), [](auto const& segment) {
+        return segment.type ==
+               WorldCollisionSim::PlayerMovementSegmentType::PortalRelocation;
+      });
+  require(relocation != trace.end(),
+          "Portal jump was not explicit in the resolved movement trace");
+  require(relocation != trace.begin() &&
+              std::prev(relocation)->type ==
+                  WorldCollisionSim::PlayerMovementSegmentType::Swept &&
+              std::prev(relocation)->to.distanceTo(relocation->from) < 0.001f,
+          "Portal trace did not preserve ordinary movement before relocation");
+  if (smallSteps) {
+    require(relocation->to.distanceTo(player->getCentre()) < 0.001f,
+            "small-step Portal trace did not end at its relocation");
+  } else {
+    require(std::next(relocation) != trace.end() &&
+                std::next(relocation)->type ==
+                    WorldCollisionSim::PlayerMovementSegmentType::Swept &&
+                relocation->to.distanceTo(std::next(relocation)->from) <
+                    0.001f,
+            "Portal trace did not retain ordinary movement after relocation");
+  }
 }
 
 void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
