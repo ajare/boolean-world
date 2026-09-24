@@ -13,6 +13,8 @@
 #include <core/RegularPolygon.h>
 #include <core/World.h>
 
+#include <core/MeshPrimitive.h>
+#include "PlayerZone.h"
 #include "PlayerLocation.h"
 #include "WorldCollisionSim.h"
 
@@ -80,6 +82,68 @@ void requireNear(float actual, float expected, float tolerance, std::string cons
     throw std::runtime_error(
         message + ": expected " + std::to_string(expected) +
         ", got " + std::to_string(actual));
+  }
+}
+
+void generatedBorderZonesFollowResolvedMovement() {
+  using namespace bw::core;
+  for (auto other : {ZoneId::Euclidean, ZoneId::NegativeSpace}) {
+    for (bool collides : {false, true}) {
+      for (bool visible : {false, true}) {
+        auto mesh = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+            Primitive::Operation::Union,
+            {{{{{-10, -10}}, {{10, -10}}, {{10, 10}}, {{-10, 10}}}, {}}}));
+        auto proxy = mesh->createEditingProxy();
+        for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+             edge = proxy->getNextEdgeIndex(edge)) {
+          proxy->setEdgeOtherZone(edge, other);
+          proxy->setEdgeCollisionOverride(edge, collides);
+          proxy->setEdgeVisible(edge, visible);
+        }
+        proxy->commitTo(*mesh);
+        auto build = [&] {
+          return ArrangementWorldData(arr::BuildArrangement(SnapshotPrimitives({mesh.get()})),
+              wp::BoundingBox({-30, -30}, {30, 30}), 4.0f);
+        };
+        auto data = build();
+        for (auto initial : {ZoneId::Euclidean, ZoneId::NegativeSpace}) {
+          for (bool outward : {false, true}) {
+            WorldCollisionSim sim;
+            for (auto i : data.getWallsNearForTraversal({10, 0}, 30, {outward ? 5.0f : 15.0f, 0}, false))
+              for (auto const& segment : data.getWallCollisionSegments(i))
+                sim.addLine(segment.v0, segment.v1, i);
+            wp::Vector2 start{outward ? 5.0f : 15.0f, 0};
+            auto owner = std::make_unique<wp::collide::ColliderCircle>(start, 0.5f);
+            auto player = owner.get();
+            sim.addSlidingCollider(std::move(owner));
+            bw::app::PlayerZone zone;
+            require(zone.current() == ZoneId::Euclidean, "new player must start Euclidean");
+            zone.set(initial);
+            player->setMovement({outward ? 10.0f : -10.0f, 0});
+            zone.resolveMovement(sim, 1.0f);
+            zone.applyResolvedMovement(data, sim.getPlayerMovementTrace());
+            require(zone.current() == (collides ? initial : outward ? other : ZoneId::Euclidean),
+                    "generated Border assigned wrong resolved Zone");
+            require(collides ? std::abs(player->getCentre().x - 10) >= 0.499f
+                             : std::abs(player->getCentre().x - (outward ? 15 : 5)) < 0.001f,
+                    "Zone changed two-sided collision behavior");
+            auto rebuilt = build();
+            auto before = zone.current();
+            zone.applyResolvedMovement(rebuilt, {{{0, 0}, {20, 0},
+                WorldCollisionSim::PlayerMovementSegmentType::PortalRelocation}});
+            require(zone.current() == before, "snapshot/relocation changed Zone");
+            zone.initialize();
+            require(zone.current() == ZoneId::Euclidean, "respawn/map entry must reset Zone");
+          }
+        }
+        require(bw::app::queryPlayerZoneCrossings(data, {5, 0}, {10, 0}).empty(),
+                "touching Border changed Zone");
+        require(bw::app::queryPlayerZoneCrossings(data, {10, -5}, {10, 5}).empty(),
+                "travelling along Border changed Zone");
+        require(bw::app::queryPlayerZoneCrossings(data, {5, 5}, {15, 15}).empty(),
+                "endpoint-only contact changed Zone");
+      }
+    }
   }
 }
 
@@ -507,6 +571,7 @@ void nearZeroContactUsesWallNormal() {
 
 int main() {
   try {
+    generatedBorderZonesFollowResolvedMovement();
     playerLocationUsesResolvedPosition();
     generatedWallsSlideFromThePlayableSide();
     callerCulledWorldLinesDoNotCreateASecondSpatialGrid();

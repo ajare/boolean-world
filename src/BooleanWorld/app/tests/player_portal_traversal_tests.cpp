@@ -17,6 +17,7 @@
 #include "PlayerPortalTraversal.h"
 #include "PlayerTorchPlacement.h"
 #include "WorldCollisionSim.h"
+#include "PlayerZone.h"
 
 namespace {
 void require(bool condition, std::string const& message) {
@@ -235,6 +236,12 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
           "collision sweep did not consume transformed movement after the Portal crossing");
 
   auto const& trace = simulation.getPlayerMovementTrace();
+  for (auto initial : {bw::core::ZoneId::Euclidean, bw::core::ZoneId::NegativeSpace}) {
+    bw::app::PlayerZone zone;
+    zone.set(initial);
+    zone.applyResolvedMovement(*fixture.data, trace);
+    require(zone.current() == initial, "resolved Portal traversal changed player Zone");
+  }
   auto relocation = std::find_if(
       trace.begin(), trace.end(), [](auto const& segment) {
         return segment.type ==

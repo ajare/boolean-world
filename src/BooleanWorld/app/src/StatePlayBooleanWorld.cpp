@@ -534,6 +534,7 @@ void StatePlayBooleanWorld::registerInput() {
 }
 
 void StatePlayBooleanWorld::setupPlayerCollision() {
+  initializePlayerZone();
   mWorldCollisionSim = new WorldCollisionSim(this);
 
   auto const& physicalStats = getPlayerPhysicalStats();
@@ -552,7 +553,13 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
 
   applib::ModelInstance::entityHandler()->setupCollisions(
       mWorldCollisionSim, mPlayerCollider,
-      [this](float frameTime) { mWorldCollisionSim->update(frameTime); });
+      [this](float frameTime) {
+        mPlayerZone.resolveMovement(*mWorldCollisionSim, frameTime);
+        if (mWorldData) {
+          mPlayerZone.applyResolvedMovement(
+              *mWorldData, mWorldCollisionSim->getPlayerMovementTrace());
+        }
+      });
 }
 
 bool StatePlayBooleanWorld::playerInWorld() const {

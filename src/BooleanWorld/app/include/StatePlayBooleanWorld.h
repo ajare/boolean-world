@@ -34,6 +34,7 @@
 
 #include "Platform.h"
 #include "WorldCollisionSim.h"
+#include "PlayerZone.h"
 #include "WorldRenderer.h"
 #include "Map.h"
 #include "DisplayMessage.h"
@@ -127,6 +128,7 @@ private:
 
   bw::core::WorldDataPtr mWorldData;
 
+  bw::app::PlayerZone mPlayerZone;
   WorldCollisionSim* mWorldCollisionSim;
 
   wp::collide::Collider* mPlayerCollider;
@@ -430,6 +432,10 @@ protected:
   void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
 public:
+  bw::core::ZoneId getPlayerZone() const { return mPlayerZone.current(); }
+  void setPlayerZone(bw::core::ZoneId zone) { mPlayerZone.set(zone); }
+  void initializePlayerZone() { mPlayerZone.initialize(); }
+
   StatePlayBooleanWorld();
 
   ~StatePlayBooleanWorld();
