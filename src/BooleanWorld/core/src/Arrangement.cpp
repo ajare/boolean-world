@@ -102,6 +102,7 @@ struct Segment {
   std::optional<WallNormalMapOverride> normalMapOverride;
   std::optional<WallMaskOverride> wallMaskOverride;
   bool contributesProperties;
+  std::optional<ZoneId> otherZone;
 };
 
 struct RationalPoint {
@@ -226,7 +227,8 @@ vector<Segment> ExtractSegments(vector<ContourInput> const& contours) {
                 ? input.edgeWallMaskOverrides[i]
                 : std::nullopt;
         result.push_back(
-            {{a, b}, input.primitiveIndex, collidesOverride, visibleOverride, normalMapOverride, wallMaskOverride, input.contributesProperties});
+            {{a, b}, input.primitiveIndex, collidesOverride, visibleOverride, normalMapOverride, wallMaskOverride, input.contributesProperties,
+             i < input.edgeOtherZones.size() ? input.edgeOtherZones[i] : std::nullopt});
       }
     }
   }
@@ -817,6 +819,9 @@ PSLG BuildPSLG(
         if (segments[i].visibleOverride.has_value() && !edge.visibleOverride.has_value()) {
           edge.visibleOverride = segments[i].visibleOverride;
         }
+        if (segments[i].contributesProperties && segments[i].otherZone) {
+          edge.otherZone = segments[i].otherZone;
+        }
         // Inputs are in fold order, so every explicit later property-
         // contributing Primitive has higher precedence. An Unset value is not
         // a choice: it must leave a lower Image or Disabled value intact.
@@ -1033,7 +1038,10 @@ ArrangementResultPtr BuildArrangement(
           {primitive.contours[contourIndex], primitiveIndex,
            std::move(edgeOverrides), std::move(edgeVisibleOverrides),
            std::move(edgeNormalMapOverrides), std::move(edgeWallMaskOverrides),
-           primitive.contributesProperties});
+           primitive.contributesProperties,
+           contourIndex < primitive.contourEdgeOtherZones.size()
+               ? primitive.contourEdgeOtherZones[contourIndex]
+               : std::vector<std::optional<ZoneId>>{}});
     }
   }
 
@@ -1341,7 +1349,7 @@ ArrangementResultPtr BuildArrangement(
                              edge.collidesOverride,
                              edge.visibleOverride,
                              edge.normalMapOverride,
-                             edge.wallMaskOverride});
+                             edge.wallMaskOverride, edge.otherZone});
   }
 
   // A floor-minus-ceiling difference is affine, so its maximum over a
@@ -1768,6 +1776,12 @@ vector<ArrangementWall> BuildArrangementWalls(
            sourceEdgeParameter,
            frontFace,
            ownerFace});
+      if (kind == ArrangementWallKind::Border &&
+          edge.collidesOverride == false && edge.otherZone) {
+        walls.back().sideZones = face0.solid
+            ? array{ZoneId::Euclidean, *edge.otherZone}
+            : array{*edge.otherZone, ZoneId::Euclidean};
+      }
     };
 
     if (face0.solid != face1.solid) {

@@ -31,6 +31,7 @@ struct PrimitiveContours {
       edgeNormalMapOverrides;
   std::vector<std::vector<std::optional<WallMaskOverride>>>
       edgeWallMaskOverrides;
+  std::vector<std::vector<std::optional<ZoneId>>> edgeOtherZones;
 };
 
 // Samples one authored local Elevation plane after applying the Primitive's

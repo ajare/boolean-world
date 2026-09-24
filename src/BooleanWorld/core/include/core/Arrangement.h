@@ -15,6 +15,7 @@
 #include "core/Primitive.h"
 #include "core/Portal.h"
 #include "core/Stats.h"
+#include "core/ZoneId.h"
 #include "core/WallMaskOverride.h"
 #include "core/WallNormalMapOverride.h"
 
@@ -69,6 +70,10 @@ struct Edge {
   std::optional<WallNormalMapOverride> normalMapOverride;
   std::optional<WallMaskOverride> wallMaskOverride;
 
+  // Highest-precedence property-contributing External Mesh edge's value.
+  // Dormant unless this edge generates a non-colliding Border.
+  std::optional<ZoneId> otherZone;
+
   bool doubleSided() const {
     return fi[0] >= 0 && fi[1] >= 0;
   }
@@ -113,8 +118,9 @@ struct ContourInput {
   std::vector<std::optional<WallNormalMapOverride>> edgeNormalMapOverrides{};
   std::vector<std::optional<WallMaskOverride>> edgeWallMaskOverrides{};
   // Structural primitives participate in the fold but cannot select a wall
-  // normal-map or wall-mask value.
+  // normal-map, wall-mask, or Other Zone value.
   bool contributesProperties{true};
+  std::vector<std::optional<ZoneId>> edgeOtherZones{};
 };
 
 struct PSLG {
@@ -224,7 +230,7 @@ struct ArrangementWall {
   // Minimum vertical headroom available along this derived segment: the
   // overlap of the two adjacent solid faces' evaluated floor/ceiling ranges. For a
   // zero-gradient World this is the previous face-wide value. Meaningless for
-  // Border, which always blocks regardless.
+  // Border, whose collision is controlled by its source edge override.
   float clearance;
   // Whether this wall renders. Resolved directly from the source edge's
   // visibleOverride (defaulting true) - unlike collision, visibility needs
@@ -248,6 +254,10 @@ struct ArrangementWall {
   // an empty ownerFace while facing its adjacent solid face.
   uint32_t frontFace{~0u};
   uint32_t ownerFace{~0u};
+  // Present only for non-colliding Mesh-sourced Borders. Entries correspond
+  // to ArrangementEdge::face[0/1] (left/right of v[0] -> v[1]), not material
+  // ownership. Explicit Euclidean/Euclidean is meaningful, not absence.
+  std::optional<std::array<ZoneId, 2>> sideZones{};
 };
 
 struct ArrangementAudioEmitter {
@@ -292,6 +302,7 @@ struct ArrangementPrimitive {
   // Authored emitters already resolved into world-plane positions while the
   // live Primitive is snapshotted. Capture later decides survival and height.
   std::vector<ArrangementAudioEmitter> audioEmitters{};
+  std::vector<std::vector<std::optional<ZoneId>>> contourEdgeOtherZones{};
 };
 
 struct ArrangementEdge {
@@ -304,6 +315,7 @@ struct ArrangementEdge {
   std::optional<bool> visibleOverride;
   std::optional<WallNormalMapOverride> normalMapOverride;
   std::optional<WallMaskOverride> wallMaskOverride;
+  std::optional<ZoneId> otherZone;
 };
 
 struct ArrangementFace {
