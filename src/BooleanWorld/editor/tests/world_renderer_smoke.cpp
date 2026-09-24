@@ -27,7 +27,10 @@
 #include <core/World.h>
 #include <core/YamlSerializer.h>
 #include <mpp/ResourceManager.h>
+#include <mpp/RenderSystem.h>
+#include <mpp/RenderTexture.h>
 
+#include <PlayerTorchShadows.h>
 #include <PortalView.h>
 #include <WorldBatch.h>
 
@@ -82,7 +85,30 @@ struct RenderFixture {
   int horizontalBack{};
   int detailBack{-1};
   bool detailFront{};
+  bool planar{};
 };
+
+struct ViewTrace {
+  std::array<std::vector<float>, 3> reflection;
+  std::array<std::vector<float>, 3> shadow;
+  std::array<mpp::ShadowDomainDiagnostics, 3> shadowDiagnostics;
+};
+
+std::vector<float> readTorchDepth(mpp::RenderSystem* system) {
+  auto target = system->getShadowDomainDepthTarget(
+      std::string(bw::app::playerTorchShadowDomain));
+  auto* texture = dynamic_cast<mpp::RenderTexture*>(target.get());
+  if (!texture || !texture->getDepthTextureId())
+    throw std::runtime_error("missing Player Torch shadow cubemap");
+  size_t faceSize = texture->getWidth() * texture->getHeight();
+  std::vector<float> result(faceSize * 6);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, texture->getDepthTextureId());
+  for (unsigned face = 0; face < 6; ++face)
+    glGetTexImage(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0,
+                 GL_DEPTH_COMPONENT, GL_FLOAT, result.data() + face * faceSize);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+  return result;
+}
 
 struct ResourceCounts {
   uint32_t resources{}, declared{}, created{}, loaded{};
@@ -410,7 +436,8 @@ std::vector<float> render(
     std::array<uint32_t, 3>* surfaceTriangles = nullptr,
     uint32_t* portalPasses = nullptr,
     uint32_t* selectedPortalEndpoints = nullptr,
-    std::vector<float>* switchedZoneImage = nullptr) {
+    std::vector<float>* switchedZoneImage = nullptr,
+    ViewTrace* trace = nullptr) {
   std::string dependencyError;
   auto triplanarDependency = fixture.continuityJunction
                                  ? "World/TriplanarWallContinuityDiagnostic"
@@ -439,8 +466,23 @@ std::vector<float> render(
 
   bw::core::World world(1.0f, -1.0f);
   auto worldData = buildWorldData(world, fixture);
+  mpp::WaterReflectionOptions reflections;
+  if (fixture.planar) {
+    reflections.technique = mpp::WaterReflectionTechnique::Planar;
+    reflections.planarResolution = mpp::PlanarReflectionResolution::Full;
+    // Floor fixture: primary eye sees its authored front, mirrored eye sees
+    // its back above the clip plane. Wall fixtures retain the upper wall.
+    reflections.planarPlanes.push_back({fixture.lookAtFloor ? -8.0f : 20.0f,
+                                       mpp::ReflectionPlaneSide::Above});
+  }
+  bw::app::ShadowOptions shadows;
+  // All six faces are read on every Zone transition. A small real cubemap
+  // keeps unattended regression runs bounded without changing caster policy.
+  if (trace) shadows.faceResolution = 128;
   editor::PreviewRenderScene scene(
-      renderSystem, &world, kWidth, kHeight, fixture.horizontal);
+      renderSystem, &world, kWidth, kHeight, fixture.horizontal, shadows,
+      "Preview3D", true, reflections);
+  auto pipeline = renderSystem.renderSystem()->getRenderPipeline("Editor.Preview3D.World");
   auto camera = std::make_shared<ReactiveCamera>(
       glm::vec3{
           0.0f,
@@ -479,6 +521,7 @@ std::vector<float> render(
   std::array<std::array<uint64_t, 2>, 3> surfaceCounters{};
   PortalViewPlan initialPortalPlan;
   for (int frame = 0; frame < 3; ++frame) {
+    if (trace) pipeline->requestGraphImageCapture();
     texture = scene.render(
         &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f, {},
         -1, fixture.debugWallTechnique,
@@ -487,6 +530,21 @@ std::vector<float> render(
                           : bw::core::ZoneId::Euclidean)
                    : fixture.zone);
     if (frame == 1 && switchedZoneImage) *switchedZoneImage = readColour(texture);
+    if (trace) {
+      auto captures = pipeline->takeGraphImageCaptures();
+      auto name = fixture.planar ? "PlanarReflection0" : "SceneColourCopy";
+      auto image = std::ranges::find_if(captures, [&](auto const& capture) {
+        return capture.passName == name && !capture.depth;
+      });
+      if (image == captures.end() || image->pixels.empty() ||
+          pipeline->planarReflectionRuntimeFailed())
+        throw std::runtime_error("missing production reflection source");
+      for (auto value : image->pixels)
+        trace->reflection[frame].push_back(value / 255.0f);
+      trace->shadow[frame] = readTorchDepth(renderSystem.renderSystem());
+      trace->shadowDiagnostics[frame] = renderSystem.renderSystem()->getShadowDomainDiagnostics(
+          std::string(bw::app::playerTorchShadowDomain));
+    }
     if (fixture.portal) {
       auto const& plan = scene.portalViewDiagnostics();
       if (frame == 0) initialPortalPlan = plan;
@@ -551,6 +609,79 @@ std::vector<float> render(
 
 void require(bool condition, char const* message) {
   if (!condition) throw std::runtime_error(message);
+}
+
+void reflectionShadowZonesRender(editor::EditorRenderSystem& renderSystem) {
+  auto capture = [&](RenderFixture fixture) {
+    ViewTrace trace;
+    (void)render(renderSystem, fixture, nullptr, nullptr, nullptr, nullptr, &trace);
+    require(trace.shadow[0] == trace.shadow[1] && trace.shadow[0] == trace.shadow[2],
+            "Zone treatment leaked into shadow depth");
+    require(trace.shadowDiagnostics[0].cacheComplete &&
+                trace.shadowDiagnostics[2].regenerationCount ==
+                    trace.shadowDiagnostics[0].regenerationCount,
+            "Zone switch regenerated shadow geometry/map");
+    require(regionDifference(trace.reflection[0], trace.reflection[2]) < 0.0001,
+            "returning to a Zone changed reflection rendering");
+    return trace;
+  };
+  for (bool planar : {false, true}) {
+    RenderFixture fixture;
+    fixture.planar = planar;
+    fixture.lookAtWallBack = true;
+    auto visible = capture(fixture);
+    fixture.zone = bw::core::ZoneId::NegativeSpace;
+    auto negativeFirst = capture(fixture);
+    require(visible.shadow[0] == negativeFirst.shadow[0],
+            "fresh Negative Space shadow pass used camera-facing Zone treatment");
+    require(regionDifference(visible.reflection[1], negativeFirst.reflection[0]) < 0.001,
+            "reflection Zone depended on the initial scene Zone");
+    fixture.zone = bw::core::ZoneId::Euclidean;
+    require(regionDifference(visible.reflection[0], visible.reflection[1]) > 0.01,
+            "reflection source ignored Zone back-face treatment");
+    fixture.wallsVisible = false;
+    auto hidden = capture(fixture);
+    // Removing every wall also removes the far wall's authored front, which
+    // can be seen through the omitted near back in Euclidean.
+    require(regionDifference(hidden.reflection[0], hidden.reflection[1]) < 0.001,
+            "hidden walls changed reflection colour across Zones");
+    require(regionDifference(visible.reflection[1], hidden.reflection[1]) > 0.01,
+            "globally hidden wall appeared in Negative Space reflection");
+    require(visible.shadow[0] != hidden.shadow[0],
+            "omitted Euclidean backs did not remain shadow casters");
+
+    fixture = {};
+    fixture.planar = planar;
+    auto front = capture(fixture);
+    require(regionDifference(front.reflection[0], front.reflection[1]) < 0.001,
+            "Zone changed authored wall fronts in reflection");
+    fixture.triplanarWallOnly = true;
+    auto authoredFront = capture(fixture);
+    require(regionDifference(front.reflection[0], authoredFront.reflection[0]) > 0.01,
+            "reflection discarded authored wall front material");
+
+    for (auto horizontal : {bw::app::HorizontalMaterials::TwoDimensional,
+                            bw::app::HorizontalMaterials::ThreeDimensional}) {
+      fixture = {};
+      fixture.horizontal = horizontal;
+      fixture.planar = planar;
+      fixture.lookAtFloor = true;
+      auto floor = capture(fixture);
+      auto difference = regionDifference(floor.reflection[0], floor.reflection[1]);
+      require(planar ? difference > 0.01 : difference < 0.001,
+              "reflection did not classify floor facing from its own eye");
+      fixture.triplanar = true;
+      fixture.emboss = true;
+      auto decorated = capture(fixture);
+      if (planar) {
+        require(regionDifference(floor.reflection[1], decorated.reflection[1]) < 0.001,
+                "reflected matte-white back inherited authored surface decoration");
+      } else {
+        require(regionDifference(floor.reflection[0], decorated.reflection[0]) > 0.01,
+                "Screen-space reflection lost authored front material");
+      }
+    }
+  }
 }
 
 void portalZonesRender(editor::EditorRenderSystem& renderSystem) {
@@ -1182,6 +1313,8 @@ int main(int argc, char** argv) {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
       } else if (scenario == "mines-portal") {
         minesPortalRenders(renderSystem);
+      } else if (scenario == "reflection-shadow-zones") {
+        reflectionShadowZonesRender(renderSystem);
       } else if (scenario == "portal-zones") {
         portalZonesRender(renderSystem);
       } else if (scenario == "detail-zones") {

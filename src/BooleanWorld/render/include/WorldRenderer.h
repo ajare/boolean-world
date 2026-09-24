@@ -156,6 +156,10 @@ public:
   // recursive Portal pass. A virtual camera must never choose its own Zone.
   // Only facing is camera-local, via CameraFrame and geometric shader normals.
   // Never invalidates prepared data, endpoint buckets, or geometry buffers.
+  // A shading input shared by ordinary, Screen-space source, and Planar
+  // passes. Facing is evaluated against each pass's camera in the shader;
+  // never filter these buckets by the primary eye (or shadow casters vanish).
+  // Zone changes must not invalidate prepared geometry or shadow state.
   void setZone(bw::core::ZoneId zone) {
     for (auto const& material : mMaterialRenderers)
       material.renderer->setZone(zone);

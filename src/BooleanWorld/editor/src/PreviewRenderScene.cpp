@@ -27,7 +27,8 @@ constexpr SecondaryMaterialOptions secondaryMaterial{};
 // per-render-scale and anti-aliasing variants the preview has no settings
 // for: one named offscreen output with ambient occlusion on, so bloom,
 // tonemapping and AO all reach the preview exactly as they reach Launcher.
-mpp::RenderPipelineOptions pipelineOptions() {
+mpp::RenderPipelineOptions pipelineOptions(
+    mpp::WaterReflectionOptions const& waterReflections) {
   mpp::RenderPipelineOptions options;
   options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
 
@@ -41,10 +42,9 @@ mpp::RenderPipelineOptions pipelineOptions() {
   output.antiAliasing.fxaa = false;
   options.outputs.push_back(output);
   options.generatedWater = true;
-  // The editor has no Launcher video configuration and deliberately keeps the
-  // established Screen-space reflection source explicit.
-  options.waterReflections.technique =
-      mpp::WaterReflectionTechnique::ScreenSpace;
+  // Default previews use Screen-space; explicit Planar views share the same
+  // scene buckets and Zone uniforms, never a separately prepared World.
+  options.waterReflections = waterReflections;
 
   options.ambientOcclusion.method = mpp::AmbientOcclusionMethod::Gtao;
   options.ambientOcclusion.gtao.normalSource = mpp::GTAONormalSource::Depth;
@@ -64,7 +64,8 @@ PreviewRenderScene::PreviewRenderScene(
     bw::app::HorizontalMaterials horizontalMaterials,
     bw::app::ShadowOptions shadowOptions,
     std::string instanceName,
-    bool loadWorldDependencies)
+    bool loadWorldDependencies,
+    mpp::WaterReflectionOptions waterReflections)
     : mwRenderSystem(renderSystem.renderSystem()),
       mShadowOptions(shadowOptions),
       mPipelineName("Editor." + instanceName + ".World"),
@@ -81,7 +82,8 @@ PreviewRenderScene::PreviewRenderScene(
       bw::app::playerTorchMppShadowOptions(mShadowOptions, glm::vec3{}));
 
   mPipeline =
-      mwRenderSystem->getOrCreateRenderPipeline(mPipelineName, pipelineOptions());
+      mwRenderSystem->getOrCreateRenderPipeline(
+          mPipelineName, pipelineOptions(waterReflections));
   mPipeline->resize(mWidth, mHeight);
 
   if (loadWorldDependencies) {

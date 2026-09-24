@@ -62,7 +62,9 @@ public:
   // uniform collection per material mesh bucket, and seeding buckets for
   // out-of-scope Primitives is harmless. Internal synthetic scenes set
   // `loadWorldDependencies` false so they cannot replace the dependencies
-  // retained for the editor's active World.
+  // retained for the editor's active World. `waterReflections` defaults to
+  // Screen-space; callers supplying Planar descriptors use the production
+  // mirrored-camera passes over the same World, not replacement geometry.
   PreviewRenderScene(
       EditorRenderSystem& renderSystem,
       bw::core::World* world,
@@ -72,7 +74,8 @@ public:
           bw::app::HorizontalMaterials::TwoDimensional,
       bw::app::ShadowOptions shadowOptions = {},
       std::string instanceName = "Preview3D",
-      bool loadWorldDependencies = true);
+      bool loadWorldDependencies = true,
+      mpp::WaterReflectionOptions waterReflections = {});
   ~PreviewRenderScene();
 
   PreviewRenderScene(PreviewRenderScene const&) = delete;
