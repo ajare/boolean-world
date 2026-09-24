@@ -62,7 +62,9 @@ void everyWorldPathUsesThePostWaterWorld() {
                   std::string::npos &&
               preview.find("options.generatedWater = true") !=
                   std::string::npos &&
-              preview.find("WaterReflectionTechnique::ScreenSpace") !=
+              // Preview supports both reflection techniques; verify forwarding
+              // rather than requiring an obsolete hard-coded default.
+              preview.find("options.waterReflections = waterReflections") !=
                   std::string::npos &&
               preview.find("getOutputRenderTarget(\"World\")") !=
                   std::string::npos &&

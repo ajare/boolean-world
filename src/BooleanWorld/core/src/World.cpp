@@ -560,6 +560,23 @@ bool World::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
     return false;
   }
 
+  // Phantom validity depends on the effective Border after the boolean fold,
+  // not on dormant authored flags. Validate each selectable Layer before the
+  // transactional load commits. Ordinary files need no extra arrangement.
+  try {
+    for (auto* layer : candidate.mLayers) {
+      auto inputs = SnapshotPrimitives(layer->getPrimitives());
+      bool phantom = false;
+      for (auto const& input : inputs)
+        for (auto const& contour : input.contourEdgeOtherZones)
+          for (auto zone : contour) phantom |= zone == ZoneId::Phantom;
+      if (phantom) arr::BuildArrangementWalls(*arr::BuildArrangement(inputs));
+    }
+  } catch (std::exception const& error) {
+    addDeserializationError(error.what());
+    return false;
+  }
+
   // Commit the already-built candidate. Rebinding updates World back-links
   // without executing any Layer recipe again.
   mName = move(candidate.mName);
@@ -1287,26 +1304,8 @@ void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 con
 
   uint32_t globalEvents{0};
 
-  if (mPrevPlayerPosition.x < 999998.0f) {
-    auto sweptPlayerBounds = wp::BoundingBox(
-        mPrevPlayerPosition, data.entityPosition - mPrevPlayerPosition);
-    sweptPlayerBounds.inflate(data.entityRadius);
-
-    // This is local trigger-query acceleration, not primitive generation culling
-    // (ADR-0007): every primitive remains in every selected generation.
-    //
-    // A WorldTriggerLine belongs to the Layer that owns it, so the same
-    // Layer-id selection that scopes generation scopes trigger collision -
-    // each selected Layer answers from its own trigger grid.
-    for (auto* layer : mLayers) {
-      if (!IsLayerSelected(data.layerSelection, layer->getId())) {
-        continue;
-      }
-
-      for (auto triggerLine : layer->findTriggerLines(sweptPlayerBounds)) {
-        triggerLine->checkCollide(mPrevPlayerPosition, data.entityPosition, data.entityRadius);
-      }
-    }
+  if (data.entityTriggersEnabled && mPrevPlayerPosition.x < 999998.0f) {
+    checkPlayerTriggers(mPrevPlayerPosition, data.entityPosition, data.entityRadius, data.layerSelection);
   }
 
   for (auto primitive : activeLayer->getPrimitives()) {
@@ -1328,6 +1327,17 @@ void World::update(float frameTime, WorldUpdateData const& data, wp::Vector2 con
   handleEvents(globalEvents);
 
   mPrevPlayerPosition = data.entityPosition;
+}
+
+void World::checkPlayerTriggers(wp::Vector2 const& from, wp::Vector2 const& to,
+    float radius, LayerSelection const& layers) {
+  if (from == to) return;
+  auto bounds = wp::BoundingBox(from, to - from);
+  bounds.inflate(radius);
+  for (auto* layer : mLayers) {
+    if (!IsLayerSelected(layers, layer->getId())) continue;
+    for (auto* line : layer->findTriggerLines(bounds)) line->checkCollide(from, to, radius);
+  }
 }
 
 void World::generateClipping(bool regetPrimitives) {

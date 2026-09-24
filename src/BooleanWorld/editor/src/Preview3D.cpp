@@ -1540,10 +1540,9 @@ void renderPreview3D() {
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
                      ImGuiWindowFlags_NoSavedSettings)) {
       ImGui::SetNextItemWidth(160.0f);
-      int zone = session.zone == bw::core::ZoneId::NegativeSpace ? 1 : 0;
-      if (ImGui::Combo("Preview Zone", &zone, "Euclidean\0Negative Space\0")) {
-        session.zone = zone == 0 ? bw::core::ZoneId::Euclidean
-                                : bw::core::ZoneId::NegativeSpace;
+      int zone = static_cast<int>(session.zone) - 1;
+      if (ImGui::Combo("Preview Zone", &zone, "Euclidean\0Negative Space\0Phantom\0")) {
+        session.zone = static_cast<bw::core::ZoneId>(zone + 1);
         session.lookedAt = {};
         session.selection = {};
         session.materialEditor = {};

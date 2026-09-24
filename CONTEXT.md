@@ -169,8 +169,8 @@ A per-edge tri-state on a MeshPrimitive's Ring: Unset, Collides, or Doesn't coll
 _Avoid_: wall property, collision flag (ambiguous with the runtime collision system), border flag (border here is local mesh-topology "one polygon", not the Arrangement's cross-primitive Border edge — the two usually but not always coincide)
 
 **Wall visibility override**:
-The same per-edge, External-only mechanism as Wall collision override, for a second independent flag: whether that edge's ArrangementWall renders. Also defaults on. Unlike collision, resolving it needs no world-level parameter (there is no threshold to fall back to), so it is settled directly when ArrangementWalls are built rather than deferred to ArrangementWorldData; like collision, it never creates a wall where the fold produces none — it can only hide a wall that already exists.
-_Avoid_: render flag, hidden flag
+The per-External-edge choice of whether a generated wall has a visible surface, independent of its collision override. Hidden walls have no surface in Euclidean or Negative Space; a hidden Phantom-linked Border instead bounds a one-sided Phantom aperture.
+_Avoid_: render flag, hidden flag, Zone visibility
 
 **Wall normal-map override**:
 A per-External-edge choice that is Unset, Disabled, or an ImageResource normal map, inherited by the uncut ArrangementWall surface that edge contributes to; Chip facets expose new surfaces and do not inherit it. Higher-precedence explicit choices dominate lower contributors; it varies wall-surface detail independently of the wall's Surface material reference and never changes geometry or collision.
@@ -187,6 +187,34 @@ _Avoid_: asset path, normal-map dependency
 **Player proxy**:
 A position and facing angle stored on the Document, representing where the in-game player currently would be. Independent of any Primitive or Layer; used to render the editor's player-view overlay and to seed a flythrough's starting pose.
 _Avoid_: player start, spawn point
+
+**Zone**:
+The player's current interaction mode for World rendering and collision; a player occupies exactly one World-owned Zone at a time, regardless of which Arrangement face contains their position.
+_Avoid_: area, region, Layer, face, containment state
+
+**Euclidean Zone**:
+The built-in default Zone: front-facing solid World surfaces use their authored treatment, back-facing solid surfaces are not rendered, and Liquid remains two-sided. It normally describes play inside bounded geometry but is an explicit player mode, not a containment test.
+_Avoid_: World (the World owns every Zone), normal Zone
+
+**Negative Space Zone**:
+The built-in Zone normally entered through a Zone-bearing Border whose non-solid side names it, into either the unbounded exterior or a bounded Hole. Front-facing World surfaces retain their authored treatment and back-facing surfaces render matte white; all non-solid spaces share this one mode.
+_Avoid_: exterior face, void, outside Zone
+
+**Phantom Zone**:
+The Zone in which the World is physically absent and visible only through Phantom apertures against black. Walking preserves entry feet elevation, and only a valid inward crossing through a Phantom aperture returns the player to Euclidean.
+_Avoid_: ghost mode, noclip, portal dimension
+
+**Phantom aperture**:
+The unchipped outline of a hidden, non-colliding Border linking Phantom and Euclidean, visible only from its non-solid side as a window into Euclidean space. It is not a Portal endpoint and has no relocation transform.
+_Avoid_: Phantom Portal, visible hidden wall
+
+**Zone-bearing Border wall**:
+A generated non-colliding Border wall whose solid side is always the Euclidean Zone and whose non-solid side is the other Zone selected on its contributing authored External edge; the other side may also be Euclidean. The other-Zone value persists while the edge is colliding or does not currently generate a Border.
+_Avoid_: Zone portal, Zone edge, exterior wall
+
+**Zone crossing**:
+Assignment of the destination side's Zone when the centre of the player crosses a Zone-bearing Border wall during ordinary swept movement; equal side Zones leave the player unchanged. Crossings are applied in travel order, while containment, Portals, teleports, rebuild recovery, and other relocation never infer one.
+_Avoid_: Zone detection, exterior detection, face transition
 
 **Player feet elevation**:
 The simulated elevation of the player's feet. It equals the sampled floor elevation while grounded, but differs while the player steps, falls, floats, or swims.

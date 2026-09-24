@@ -274,6 +274,15 @@ void renderMeshView(ViewContext& context) {
     if (activeMeshBelongsToPrefab(doc)) {
       renderPrefabTopologyMetadata(doc, edgeIndex, true);
     }
+    static string zoneError;
+    auto editZoneEdge = [&](CommandId command, auto&& apply) {
+      try {
+        transactUndoableActionAtomically(doc, command, [&](Document*) { return apply(); });
+        zoneError.clear();
+      } catch (exception const& error) {
+        zoneError = error.what();
+      }
+    };
     if (doc->isActiveMeshEdgeCollisionEditable(edgeIndex)) {
       auto collisionOverride =
           doc->getActiveMeshEdgeCollisionOverride(edgeIndex);
@@ -286,22 +295,29 @@ void renderMeshView(ViewContext& context) {
         optional<bool> value = collisionOption == 0
                                    ? nullopt
                                    : optional<bool>{collisionOption == 1};
-        transact(doc, CommandId::SetMeshEdgeCollisionOverride, [&] { setMeshEdgeCollisionOverride(doc, edgeIndex, value); });
+        editZoneEdge(CommandId::SetMeshEdgeCollisionOverride, [&] { return setMeshEdgeCollisionOverride(doc, edgeIndex, value); });
       }
     }
     if (auto zone = doc->getActiveMeshEdgeOtherZone(edgeIndex)) {
-      int option = *zone == bw::core::ZoneId::Euclidean ? 0 : 1;
+      int option = static_cast<int>(*zone) - 1;
       if (ImGui::Combo("Other Zone##SelectedMeshEdge", &option,
-                       "Euclidean\0Negative Space\0")) {
-        auto value = option == 0 ? bw::core::ZoneId::Euclidean : bw::core::ZoneId::NegativeSpace;
-        transact(doc, CommandId::SetMeshEdgeOtherZone, [&] { setMeshEdgeOtherZone(doc, edgeIndex, value); });
+                       "Euclidean\0Negative Space\0Phantom\0")) {
+        auto value = static_cast<bw::core::ZoneId>(option + 1);
+        editZoneEdge(CommandId::SetMeshEdgeOtherZone, [&] { return setMeshEdgeOtherZone(doc, edgeIndex, value); });
       }
     }
     if (doc->isActiveMeshEdgeVisibilityEditable(edgeIndex)) {
       auto visible = doc->getActiveMeshEdgeVisible(edgeIndex);
       if (ImGui::Checkbox("Visible##SelectedMeshEdge", &visible)) {
-        transact(doc, CommandId::SetMeshEdgeVisible, [&] { setMeshEdgeVisible(doc, edgeIndex, visible); });
+        editZoneEdge(CommandId::SetMeshEdgeVisible, [&] { return setMeshEdgeVisible(doc, edgeIndex, visible); });
       }
+    }
+
+    if (!zoneError.empty()) ImGui::TextWrapped("%s", zoneError.c_str());
+    if (doc->getActiveMeshEdgeOtherZone(edgeIndex) == bw::core::ZoneId::Phantom &&
+        doc->getActiveMeshEdgeCollisionOverride(edgeIndex) == false &&
+        doc->getActiveMeshEdgeVisible(edgeIndex)) {
+      ImGui::TextWrapped("Invalid Phantom Border: disable Visible. Phantom openings must be hidden and non-colliding.");
     }
 
     static uint32_t normalMapDraftEdge = ~0u;

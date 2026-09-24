@@ -1,6 +1,7 @@
 #include "WorldCollisionSim.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 using namespace std;
 using namespace wp;
@@ -20,6 +21,21 @@ void WorldCollisionSim::addSlidingCollider(
                         wp::collide::StaticLine const& line,
                         float t,
                         void*) {
+        if (line.getUserData() <= ZoneLineBase) {
+          if (result->movementDesired.lengthSq() == 0.0f || !mZoneCrossed) return false;
+          auto index = uint32_t(ZoneLineBase - line.getUserData());
+          mRemainingFrameFraction *= 1.0f - t;
+          mZoneCrossed(result->oldPosition,
+              result->oldPosition + result->movementDesired, index);
+          result->newPosition = result->oldPosition + result->movementDesired * t;
+          result->movementDone = result->newPosition - result->oldPosition;
+          result->distanceMoved = result->movementDone.length();
+          result->movementLeft = result->movementDesired * (1.0f - t);
+          recordMovementCandidate(*result, false);
+          return true;
+        }
+        if (line.getUserData() == -1 && mBoundaryApplies && !mBoundaryApplies()) return false;
+        if (line.getUserData() != -1 && mIgnoreWorldGeometry && mIgnoreWorldGeometry()) return false;
         if (line.getUserData() <= -2 && mPortalHitCallback) {
           // Willpower also calls this callback with an empty movement for its
           // post-sweep overlap check. An aperture may legitimately overlap the
@@ -30,6 +46,8 @@ void WorldCollisionSim::addSlidingCollider(
           auto response = mPortalHitCallback(result, portalLineIndex);
           if (response == PortalLineResponse::Ignore) return false;
           if (response == PortalLineResponse::Traverse) {
+            mRemainingFrameFraction *= 1.0f - std::clamp(
+                result->distanceMoved / result->movementDesired.length(), 0.0f, 1.0f);
             // A Portal is relocation rather than a swept crossing. Its exit
             // can therefore jump entirely over the enclosing lines; constrain
             // it before Willpower recursively consumes the remaining motion.
@@ -44,6 +62,7 @@ void WorldCollisionSim::addSlidingCollider(
           onWallHit();
         }
 
+        mRemainingFrameFraction *= 1.0f - t;
         auto contactPosition =
             result->oldPosition + result->movementDesired * t;
         auto closestPoint = contactPosition.closestPointOnLine(
@@ -73,7 +92,7 @@ void WorldCollisionSim::addSlidingCollider(
 
 wp::Vector2 WorldCollisionSim::constrainToMovementBoundary(
     wp::Vector2 const& position) const {
-  if (!mMovementBoundary || !mPlayerCollider) return position;
+  if (!mMovementBoundary || !mPlayerCollider || (mBoundaryApplies && !mBoundaryApplies())) return position;
 
   auto const halfSize = mPlayerCollider->getBounds().getHalfSize();
   auto minimum = mMovementBoundary->getMinExtent() + halfSize;
@@ -105,7 +124,7 @@ void WorldCollisionSim::recordMovementCandidate(
   }
   mMovementCandidates.push_back(
       {result.oldPosition, result.newPosition, portalSource,
-       portalRelocation});
+       portalRelocation, mIgnoreWorldGeometry && mIgnoreWorldGeometry()});
 }
 
 void WorldCollisionSim::finishMovementTrace() {
@@ -113,6 +132,7 @@ void WorldCollisionSim::finishMovementTrace() {
 
   auto const finalPosition = mPlayerCollider->getCentre();
   auto cursor = mUpdateStart;
+  bool physicallyAbsent = mUpdatePhysicallyAbsent;
   auto samePosition = [](wp::Vector2 const& a, wp::Vector2 const& b) {
     return a.distanceTo(b) <= 1.0e-5f;
   };
@@ -120,7 +140,7 @@ void WorldCollisionSim::finishMovementTrace() {
                     PlayerMovementSegmentType type) {
     if (type == PlayerMovementSegmentType::PortalRelocation ||
         !samePosition(from, to)) {
-      mPlayerMovementTrace.push_back({from, to, type});
+      mPlayerMovementTrace.push_back({from, to, type, physicallyAbsent});
     }
   };
 
@@ -150,6 +170,7 @@ void WorldCollisionSim::finishMovementTrace() {
              PlayerMovementSegmentType::Swept);
     }
     cursor = candidate.newPosition;
+    physicallyAbsent = candidate.physicallyAbsentAfter;
   }
 
   append(cursor, finalPosition, PlayerMovementSegmentType::Swept);
@@ -158,12 +179,14 @@ void WorldCollisionSim::finishMovementTrace() {
 void WorldCollisionSim::update(float frameTime) {
   mPlayerMovementTrace.clear();
   mMovementCandidates.clear();
+  mRemainingFrameFraction = 1.0f;
   if (!mPlayerCollider) {
     collide::Simulation::update(frameTime);
     return;
   }
 
   mUpdateStart = mPlayerCollider->getCentre();
+  mUpdatePhysicallyAbsent = mIgnoreWorldGeometry && mIgnoreWorldGeometry();
   mTracingUpdate = true;
   try {
     collide::Simulation::update(frameTime);
@@ -216,6 +239,16 @@ bool WorldCollisionSim::sweepAgainstStaticLine(
     wp::collide::Collider const* collider,
     wp::Vector2 const& desiredPosition,
     wp::collide::StaticLine const& line, float* time) const {
+  if (line.getUserData() <= ZoneLineBase) {
+    if (!mZoneQuery) return false;
+    auto crossing = mZoneQuery(collider->getCentre(), desiredPosition,
+        uint32_t(ZoneLineBase - line.getUserData()));
+    if (!crossing) return false;
+    *time = float(*crossing);
+    return true;
+  }
+  if (line.getUserData() == -1 && mBoundaryApplies && !mBoundaryApplies()) return false;
+  if (line.getUserData() != -1 && mIgnoreWorldGeometry && mIgnoreWorldGeometry()) return false;
   // Shape sweeps only report initial contact. Once an allowed approach has
   // overlapped the aperture, keep reporting it until the centre crosses so
   // that small frame movements cannot walk straight through without transport.
@@ -250,6 +283,29 @@ void WorldCollisionSim::clearLines() {
 
 void WorldCollisionSim::setPortalHitCallback(PortalHitCallback callback) {
   mPortalHitCallback = std::move(callback);
+}
+
+void WorldCollisionSim::setZoneCallbacks(
+    std::function<std::optional<double>(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> query,
+    std::function<void(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> crossed,
+    std::function<bool()> ignoreWorldGeometry, std::function<bool()> boundaryApplies) {
+  mZoneQuery = std::move(query);
+  mZoneCrossed = std::move(crossed);
+  mIgnoreWorldGeometry = std::move(ignoreWorldGeometry);
+  mBoundaryApplies = std::move(boundaryApplies);
+}
+
+void WorldCollisionSim::addZoneLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t wall) {
+  if (wall >= uint32_t(-ZoneLineBase)) throw std::invalid_argument("Too many Zone walls");
+  mStaticLines.push_back({v0, v1, true, 1.0f, ZoneLineBase - int32_t(wall)});
+}
+
+void WorldCollisionSim::updatePhantom(float frameTime, wp::BoundingBox const& boundary) {
+  auto previous = std::move(mIgnoreWorldGeometry);
+  mIgnoreWorldGeometry = [] { return true; };
+  try { updateWithinBoundary(frameTime, boundary); }
+  catch (...) { mIgnoreWorldGeometry = std::move(previous); throw; }
+  mIgnoreWorldGeometry = std::move(previous);
 }
 
 void WorldCollisionSim::addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t index) {

@@ -1,4 +1,5 @@
 #include <cmath>
+#include <core/Phantom.h>
 
 #include "PreviewSurfacePick.h"
 
@@ -131,7 +132,8 @@ PreviewScenePick pickPreviewSceneSurface(
   using bw::core::arr::DetailSurfaceKind;
   bool omitBack = bw::core::wallBackFaceTreatment(zone) ==
       bw::core::WallBackFaceTreatment::Omitted;
-  for (size_t index = 0; index < triangles.size(); ++index) {
+  bool phantom = zone == bw::core::ZoneId::Phantom;
+  for (size_t index = 0; !phantom && index < triangles.size(); ++index) {
     auto const& triangle = triangles[index];
     for (auto const [surface, elevations] : {
              std::pair{PreviewSurface::Floor, &triangle.floor.elevation},
@@ -160,11 +162,13 @@ PreviewScenePick pickPreviewSceneSurface(
   auto const& walls = worldData.getWalls();
   for (size_t index = 0; index < walls.size(); ++index) {
     auto const& wall = walls[index];
-    if (!wall.visible || detail.isSuppressed(DetailSurfaceKind::Wall, index)) {
+    if (phantom ? !bw::core::phantomApertureFacesEye(arrangement, wall,
+                      {rayOrigin[0], rayOrigin[1]})
+                : (!wall.visible || detail.isSuppressed(DetailSurfaceKind::Wall, index))) {
       continue;
     }
     auto orientation = bw::core::arr::OrientArrangementWall(arrangement, wall);
-    if (bw::core::wallBackFaceTreatment(zone) ==
+    if (!phantom && bw::core::wallBackFaceTreatment(zone) ==
             bw::core::WallBackFaceTreatment::Omitted &&
         orientation.normal.x * direction[0] +
             orientation.normal.y * direction[1] > 0.0f) {
@@ -190,6 +194,7 @@ PreviewScenePick pickPreviewSceneSurface(
     }
   }
 
+  if (phantom) return nearest;
   for (auto const& facet : detail.getTriangles()) {
     auto const& source = facet.source;
     bool isWall = source.kind == DetailSurfaceKind::Wall;

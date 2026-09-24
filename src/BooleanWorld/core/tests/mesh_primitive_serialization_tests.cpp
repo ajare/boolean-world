@@ -419,6 +419,60 @@ void otherZonesRoundTripAndValidateAtomically() {
   verify(*static_cast<MeshPrimitive*>(binaryWorld.getPrimitive(0)), 1);
 }
 
+void phantomWorldPersistenceAndValidation() {
+  using namespace bw::core;
+  World source(100.0f, 10.0f);
+  auto* mesh = MeshPrimitive::fromTree(Primitive::Operation::Union, {{square(-20, -20, 20, 20), {}}});
+  auto proxy = mesh->createEditingProxy();
+  auto edge = proxy->getFirstEdgeIndex();
+  proxy->setEdgeOtherZone(edge, ZoneId::Phantom);
+  proxy->setEdgeVisible(edge, false);
+  proxy->setEdgeCollisionOverride(edge, false);
+  proxy->commitTo(*mesh);
+  source.addPrimitive(mesh);
+  for (bool binary : {false, true}) {
+    auto save = [&]() {
+      std::shared_ptr<Serializer> writer = binary
+          ? std::shared_ptr<Serializer>(BinarySerializer::toString())
+          : std::shared_ptr<Serializer>(YamlSerializer::toString());
+      SerializationWorkData work;
+      source.serialize(writer, work);
+      return binary ? static_cast<BinarySerializer&>(*writer).getSerializedString()
+                    : static_cast<YamlSerializer&>(*writer).getSerializedString();
+    };
+    World destination;
+    auto load = [&](std::string const& text) {
+      std::shared_ptr<Serializer> reader = binary
+          ? std::shared_ptr<Serializer>(BinarySerializer::fromString(text))
+          : std::shared_ptr<Serializer>(YamlSerializer::fromString(text));
+      reader->deserialize();
+      SerializationWorkData work{10.0f};
+      return destination.deserialize(reader, work);
+    };
+    require(load(save()), "valid Phantom World failed to load");
+    auto loaded = static_cast<MeshPrimitive*>(destination.getPrimitive(0))->createEditingProxy();
+    bool found = false;
+    for (auto e = loaded->getFirstEdgeIndex(); !loaded->edgeIndexIterationFinished(e); e = loaded->getNextEdgeIndex(e))
+      found |= loaded->getEdgeOtherZone(e) == ZoneId::Phantom;
+    require(found, "Phantom identity did not round trip");
+    auto before = destination.getPrimitive(0);
+    proxy->setEdgeVisible(edge, true);
+    bool generationRejected = false;
+    try { proxy->commitTo(*mesh); }
+    catch (std::invalid_argument const&) { generationRejected = true; }
+    require(generationRejected, "live generation accepted a visible Phantom opening");
+    require(!load(save()) && destination.getPrimitive(0) == before &&
+        containsMessage(destination.getDeserializationErrors(), "Phantom"),
+        "invalid visible Phantom World load was not atomic/diagnosed");
+    proxy->setEdgeCollisionOverride(edge, true);
+    proxy->commitTo(*mesh);
+    require(load(save()), "dormant Phantom Other Zone rejected on load");
+    proxy->setEdgeVisible(edge, false);
+    proxy->setEdgeCollisionOverride(edge, false);
+    proxy->commitTo(*mesh);
+  }
+}
+
 void authoredVisibleValuesRoundTripThroughSaveAndLoad() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
@@ -908,6 +962,7 @@ int main() {
     authoredCollidesValuesRoundTripThroughSaveAndLoad();
     authoredVisibleValuesRoundTripThroughSaveAndLoad();
     otherZonesRoundTripAndValidateAtomically();
+    phantomWorldPersistenceAndValidation();
     authoredNormalMapValuesRoundTripAndRejectFutureVersions();
     wallMaskValueValidation();
     authoredWallMaskValuesRoundTripAndRejectFutureVersions();

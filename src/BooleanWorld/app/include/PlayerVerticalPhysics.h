@@ -5,6 +5,7 @@
 #include <limits>
 
 #include <core/LiquidProperties.h>
+#include <core/ZoneId.h>
 
 #include <common/GameDefines.h>
 
@@ -31,6 +32,7 @@ struct PlayerVerticalInputs {
   // How hard fly controls are asking the swimmer up or down this frame.
   float swimEffort{0.0f};
   float frameTime{0.0f};
+  bw::core::ZoneId zone{bw::core::ZoneId::Euclidean};
 };
 
 // A body floats with its own density over the liquid's of itself submerged.
@@ -46,7 +48,7 @@ struct PlayerVerticalInputs {
 
 [[nodiscard]] inline PlayerVerticalState stepPlayerVerticalPhysics(
     PlayerVerticalState state, PlayerVerticalInputs const& inputs) {
-  if (!inputs.inWorld) {
+  if (!inputs.inWorld || inputs.zone == bw::core::ZoneId::Phantom) {
     // Off the edge of the arrangement entirely (eg. walked through a
     // non-colliding wall) - there is no face to read a floor height from,
     // and the floor query would return -infinity here. Freeze in place

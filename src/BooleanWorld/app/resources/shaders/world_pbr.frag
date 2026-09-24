@@ -9,6 +9,7 @@ layout(location = 8) in vec2 portalClipDepth;
 layout(depth_greater) out float gl_FragDepth;
 @@Uniform(int HIGHLIGHTED_WALL);
 @@Uniform(int PORTAL_VIEW_ENABLED);
+@@Uniform(int PHANTOM_APERTURE);
 @@Uniform(mat4 PORTAL_PROJECTIVE_MATRIX);
 
 // Global
@@ -3523,6 +3524,10 @@ vec3 applyLiquidAbsorption(
 void main()
 {
     gl_FragDepth = gl_FragCoord.z;
+    // Phantom windows exist only while bound from their non-solid side. They
+    // never fall back to an authored/white surface or participate in depth-only
+    // passes. The separate aperture scene contains no ordinary world meshes.
+    if (@Uniform(PHANTOM_APERTURE) != 0 && @Uniform(PORTAL_VIEW_ENABLED) == 0) discard;
     // Keep reserved values distinct before dispatch. Clamping the Triplanar
     // sentinel (42) to the Liquid index (41) routes image-backed walls through
     // the Liquid interface path, whose unlit reflection output is black there.
@@ -3539,11 +3544,15 @@ void main()
             gl_FragDepth = clamp(0.5 * portalClipDepth.x / portalClipDepth.y + 0.5, 0.0, 1.0);
         // The child uses the same screen projection. Screen coordinates also
         // remain well-defined when the aperture passes through the eye.
-        vec2 uv = gl_FragCoord.xy / vec2(textureSize(@Texture(TEX3), 0));
+        // Full Phantom child pipelines may resolve SSAA before compositing;
+        // normalize against this pass's viewport, not the child's texel size.
+        vec2 uv = @Uniform(PHANTOM_APERTURE) != 0
+            ? gl_FragCoord.xy * VIEWPORT_SIZE.zw
+            : gl_FragCoord.xy / vec2(textureSize(@Texture(TEX3), 0));
         @Out(vec4 COLOUR) = vec4(texture(@Texture(TEX3), clamp(uv, vec2(0.0), vec2(1.0))).rgb, 1.0);
         @Out(vec4 BLOOM_MASK) = vec4(0.0);
         @Out(vec2 SHADING_NORMAL) = vec2(0.0);
-        @Out(float LIQUID_RETENTION) = 1.0;
+        @Out(float LIQUID_RETENTION) = @Uniform(PHANTOM_APERTURE) != 0 ? 0.0 : 1.0;
         return;
     }
 

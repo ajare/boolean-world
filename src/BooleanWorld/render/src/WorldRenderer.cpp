@@ -8,6 +8,7 @@
 #include <common/GameDefines.h>
 
 #include <core/Defines.h>
+#include <core/Phantom.h>
 #include <core/LiquidProperties.h>
 #include <core/LiquidType.h>
 #include <core/MaterialDefinition.h>
@@ -91,6 +92,39 @@ class WorldRenderer::PreparedWorldRenderData {
 
   bw::core::WorldDataPtr worldData;
   std::array<DataProvider, 3> providers;
+};
+
+// The primary Phantom scene contains only apertures, but retains the real
+// world's shadow casters. Child views execute the complete Euclidean pipeline
+// (including water/reflections/AO), rather than the reduced Portal colour pass.
+class WorldRenderer::PhantomRenderState {
+public:
+  struct ApertureScene : mpp::Scene {
+    mpp::ScenePtr world;
+    ApertureScene(mpp::RenderSystem* system, mpp::ScenePtr source)
+        : mpp::Scene(system), world(std::move(source)) {}
+    std::vector<mpp::SceneModel3dPtr> get3dModelsInSphere(
+        glm::vec3 const& centre, float radius) override {
+      return world->get3dModelsInSphere(centre, radius);
+    }
+  };
+  mpp::RenderSystem* system{};
+  mpp::ScenePtr scene;
+  Renderer renderer;
+  DataProvider provider;
+  std::vector<uint32_t> walls;
+  std::map<uint32_t, mpp::RenderPipelinePtr> pipelines;
+  std::weak_ptr<mpp::RenderPipeline> hostPipeline;
+  void clearPipelines() {
+    for (auto const& [wall, pipeline] : pipelines)
+      system->removeRenderPipeline(pipeline->getName());
+    pipelines.clear();
+  }
+  ~PhantomRenderState() {
+    // Pipelines retain their last submitted models; release them before batches.
+    clearPipelines();
+    renderer.reset();
+  }
 };
 
 WorldRenderer::WorldRenderer(
@@ -223,6 +257,7 @@ void WorldRenderer::publishWorldRenderData(
   }
   // All camera-dependent choices are uniforms; published buffers are final.
   mWorldHasChanged = false;
+  mPhantomGeometryDirty = true;
   mHighlightedTriangle = -1;
   mHighlightedCeiling = false;
 }
@@ -231,6 +266,7 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   mwWorld = world;
   mScene = scene;
   mRenderSystem = renderSystem;
+  mRenderResourceMgr = resourceMgr;
 
   // Turn authored ImageResource references into stable variant buckets before
   // the wall batch is created. Disabled and Unset intentionally seed nothing.
@@ -444,6 +480,7 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
 
 void WorldRenderer::setWorldChanged() {
   mWorldHasChanged = true;
+  mPhantomGeometryDirty = true;
 }
 
 uint32_t WorldRenderer::getSurfaceTriangleCount(
@@ -949,6 +986,147 @@ void WorldRenderer::updateWallDataProvider(
 }
 
 void WorldRenderer::renderScene(
+    bw::core::WorldData const& worldData, mpp::CameraPtr const& camera,
+    mpp::RenderPipelinePtr const& pipeline, uint32_t width, uint32_t height) {
+  if (mZone == bw::core::ZoneId::Phantom)
+    renderPhantomScene(worldData, camera, pipeline, width, height);
+  else
+    renderWorldScene(worldData, camera, pipeline, width, height);
+}
+
+void WorldRenderer::renderPhantomScene(
+    bw::core::WorldData const& worldData, mpp::CameraPtr const& camera,
+    mpp::RenderPipelinePtr const& pipeline, uint32_t width, uint32_t height) {
+  if (!mScene || !mRenderSystem || !camera || !pipeline || !width || !height)
+    throw std::invalid_argument("Phantom rendering requires a created scene, camera and target");
+  auto const& arrangement = worldData.getArrangement();
+  auto const& walls = worldData.getWalls();
+  // Snapshot changes, not camera/Zone changes, own the aperture geometry.
+  if (!mPhantom || mPhantomGeometryDirty) {
+    mPhantom.reset();
+    mPhantom = std::make_unique<PhantomRenderState>();
+    auto& state = *mPhantom;
+    state.system = mRenderSystem;
+    state.scene = std::make_shared<PhantomRenderState::ApertureScene>(mRenderSystem, mScene);
+    state.scene->setClearColour({0.0f, 0.0f, 0.0f, 1.0f});
+    std::vector<WallRenderSurface> surfaces;
+    for (uint32_t index = 0; index < walls.size(); ++index) {
+      if (!bw::core::isPhantomAperture(walls[index])) continue;
+      state.walls.push_back(index);
+      auto const& properties = arrangement.palette[walls[index].paletteIndex];
+      surfaces.push_back({properties.wallMaterial,
+          WallRenderVariant{.identity = portalWallRenderVariantIdentity(index)},
+          properties.wallEmbossPresetId});
+    }
+    state.provider = std::make_shared<WorldTriangle3dDataProvider>();
+    state.renderer = std::make_shared<WorldRenderer3d>(
+        mResourceMgr->getResource("Material.Default", "World"),
+        mResourceMgr->getResource("Material.FragmentOverdraw", "World"), mwLogger,
+        WorldSurfaceSet::Walls, &mSurfaceMaterialResolver, surfaces, false,
+        mBatchNamePrefix + ".Phantom", true);
+    state.renderer->create(state.provider, mwWorld, mRenderSystem, mRenderResourceMgr);
+    state.renderer->addToScene(state.scene, mwWorld);
+    std::vector<uint32_t> counts(state.provider->getNumMeshes());
+    auto meshFor = [&](uint32_t index) {
+      auto const& properties = arrangement.palette[walls[index].paletteIndex];
+      auto resolved = mSurfaceMaterialResolver.resolve(properties.wallMaterial, properties.wallEmbossPresetId);
+      return state.renderer->getMeshIndexForMaterialHash(resolved.hash(), false,
+          WallRenderVariant{.identity = portalWallRenderVariantIdentity(index)});
+    };
+    for (auto index : state.walls) {
+      auto surface = bw::core::arr::BuildArrangementWallSurface(arrangement, walls[index]);
+      if (surface.vertexCount >= 3) counts[meshFor(index)] += surface.vertexCount - 2;
+    }
+    state.provider->updateInternals(counts);
+    for (auto index : state.walls) {
+      auto mesh = meshFor(index);
+      auto frame = bw::core::arr::OrientArrangementWall(arrangement, walls[index]);
+      auto surface = bw::core::arr::BuildArrangementWallSurface(arrangement, walls[index]);
+      auto vertex = [&](uint8_t corner) {
+        auto const& v = surface.vertices[corner];
+        return addVertexToDataProvider(state.provider, mesh,
+            v.position.x, v.elevation, -v.position.y,
+            frame.normal.x, 0.0f, -frame.normal.y, 0, 0, untintedVertexColour);
+      };
+      for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+        auto a = vertex(0), b = vertex(corner), c = vertex(corner + 1);
+        state.provider->addTriangle(mesh, a, b, c);
+      }
+    }
+    state.provider->finalizeInternals();
+    state.provider->setNumPrimitives(state.provider->getNumTriangles());
+    mPhantomGeometryDirty = false;
+  }
+  auto& state = *mPhantom;
+  if (state.hostPipeline.lock() != pipeline) {
+    state.clearPipelines();
+    state.hostPipeline = pipeline;
+  }
+  state.scene->setViewport(0, 0, width, height);
+  state.renderer->setPortalFallback();
+  state.renderer->update(camera->getPosition(), mPlayerTorchPosition,
+      WorldTriangle3dDataProvider::dryLiquidSurfaceHeight, {}, {}, {}, {},
+      defaultLiquidReflectionMipLevel, false, mPlayerTorchOptions, false,
+      -1, 32.0f, 1.0f / 32.0f, {}, 0.0f);
+  auto view = camera->getViewTransform();
+  auto projection = camera->getProjectionTransform();
+  auto eye = camera->getPosition();
+  std::set<uint32_t> usedViews;
+  mLastPortalViewPlan = {};
+  mSelectedPortal.reset();
+  for (auto index : state.walls) {
+    if (!bw::core::phantomApertureFacesEye(arrangement, walls[index], {eye.x, -eye.z})) continue;
+    auto surface = bw::core::arr::BuildArrangementWallSurface(arrangement, walls[index]);
+    std::array<uint8_t, 5> outside{};
+    for (uint8_t corner = 0; corner < surface.vertexCount; ++corner) {
+      auto const& vertex = surface.vertices[corner];
+      auto p = projection * view * glm::vec4(vertex.position.x, vertex.elevation, -vertex.position.y, 1.0f);
+      outside[0] += p.x < -p.w; outside[1] += p.x > p.w;
+      outside[2] += p.y < -p.w; outside[3] += p.y > p.w;
+      outside[4] += p.z > p.w;
+    }
+    // Do not reject the near plane: the aperture is depth-clamped until the
+    // centre crosses it, just like an ordinary Portal surface.
+    if (surface.vertexCount < 3 || std::ranges::any_of(outside,
+          [&](auto count) { return count == surface.vertexCount; })) continue;
+    usedViews.insert(index);
+    auto frame = bw::core::arr::OrientArrangementWall(arrangement, walls[index]);
+    glm::vec3 normal{frame.normal.x, 0.0f, -frame.normal.y};
+    glm::vec3 point{frame.v0.x, 0.0f, -frame.v0.y};
+    glm::vec4 plane{normal, -glm::dot(normal, point)};
+    auto clipped = mpp::buildObliquelyClippedVirtualCamera(view, projection, plane, 0.0f);
+    auto childCamera = std::make_shared<mpp::VirtualCamera>(clipped.view, clipped.projection,
+        camera->getNearClipDistance(), camera->getFarClipDistance());
+    auto name = mBatchNamePrefix + ".Phantom.View." + std::to_string(index);
+    auto child = mRenderSystem->getOrCreateRenderPipeline(name, pipeline->getOptions());
+    state.pipelines[index] = child;
+    child->setBloomOptions(pipeline->getOptions().bloom);
+    child->setAmbientOcclusionOptions(pipeline->getOptions().ambientOcclusion);
+    child->setGraphPassDebugOptions(pipeline->getOptions().graphPasses);
+    child->resize(width, height);
+    // renderWorldScene deliberately bypasses Phantom dispatch. All nested
+    // Portal and reflection cameras inherit Euclidean material treatment.
+    renderWorldScene(worldData, childCamera, child, width, height);
+    auto const& outputs = pipeline->getOptions().outputs;
+    auto texture = std::dynamic_pointer_cast<mpp::RenderTexture>(outputs.empty()
+        ? child->getOutputRenderTarget() : child->getOutputRenderTarget(outputs.front().name));
+    if (!texture) throw std::runtime_error("Phantom view has no sampleable output");
+    state.renderer->setPortalView(index, std::static_pointer_cast<mpp::Resource>(texture),
+        projection * view, true);
+  }
+  for (auto it = state.pipelines.begin(); it != state.pipelines.end();) {
+    if (!usedViews.contains(it->first)) {
+      mRenderSystem->removeRenderPipeline(it->second->getName());
+      it = state.pipelines.erase(it);
+    } else ++it;
+  }
+  // Apertures write their own depth, so the nearest one owns overlapping
+  // pixels even when its child image contains only black. No primary world
+  // geometry, liquid or physical-world markers can leak outside their outline.
+  mRenderSystem->renderScene(state.scene, camera, {0.0f, 0.0f}, pipeline->getName());
+}
+
+void WorldRenderer::renderWorldScene(
     bw::core::WorldData const& worldData,
     mpp::CameraPtr const& camera,
     mpp::RenderPipelinePtr const& pipeline,
@@ -1254,7 +1432,7 @@ void WorldRenderer::update(
   glm::vec3 liquidExtinction{
       extinction[0], extinction[1], extinction[2]};
   glm::vec3 liquidTint{liquid.tint[0], liquid.tint[1], liquid.tint[2]};
-  if (!std::isfinite(liquidEyeSurfaceHeight)) {
+  if (mZone == bw::core::ZoneId::Phantom || !std::isfinite(liquidEyeSurfaceHeight)) {
     liquidEyeSurfaceHeight =
         WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
   }

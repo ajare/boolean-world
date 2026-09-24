@@ -187,12 +187,13 @@ WorldRenderer3d::WorldRenderer3d(
     SurfaceMaterialResolver const* resolver,
     vector<WallRenderSurface> wallRenderSurfaces,
     bool deferToWaterPass,
-    string batchNamePrefix)
+    string batchNamePrefix, bool apertureOnly)
     : mRenderer(nullptr),
       mMaterial(resource),
       mFragmentOverdrawMaterial(fragmentOverdrawMaterial),
       mSurfaceSet(surfaceSet),
       mDeferToWaterPass(deferToWaterPass),
+      mApertureOnly(apertureOnly),
       mBatchNamePrefix(move(batchNamePrefix)),
       mwResolver(resolver),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
@@ -464,6 +465,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   auto initializeGlobalUniforms = [this](mpp::UniformCollection& uniforms) {
     uniforms.setUniform("HIGHLIGHTED_WALL", int32_t{-1});
     uniforms.setUniform("PORTAL_VIEW_ENABLED", int32_t{0});
+    uniforms.setUniform("PHANTOM_APERTURE", int32_t{mApertureOnly ? 1 : 0});
     uniforms.setUniform("PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
     uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
@@ -860,7 +862,8 @@ void WorldRenderer3d::setPortalFallback() {
   auto params = mSceneModel->getParams();
   for (auto const& binding : mPortalMeshBindings) {
     binding.uniforms->updateUniform("PORTAL_VIEW_ENABLED", int32_t{0});
-    params->setMeshDepthPrepass(binding.meshName, std::nullopt);
+    params->setMeshDepthPrepass(binding.meshName,
+        mApertureOnly ? std::optional<bool>{false} : std::nullopt);
     binding.uniforms->updateUniform(
         "PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
     params->setMeshTexture(
@@ -878,7 +881,7 @@ void WorldRenderer3d::setPortalView(
     if (binding.endpointBucket != endpointBucket) continue;
     // The ordinary depth-only shader does not clamp Portal apertures.
     params->setMeshDepthPrepass(binding.meshName,
-        clampNearPlane ? std::optional<bool>{false} : std::nullopt);
+        (clampNearPlane || mApertureOnly) ? std::optional<bool>{false} : std::nullopt);
     // 0: fallback, 1: auxiliary view (retain its oblique clip plane),
     // 2: primary view (depth-clamp the aperture until traversal).
     binding.uniforms->updateUniform(

@@ -86,6 +86,11 @@ struct RenderFixture {
   int detailBack{-1};
   bool detailFront{};
   bool planar{};
+  bool phantomWindow{};
+  bool phantomReverse{};
+  bool phantomDiagnostic{};
+  bool phantomObstruction{};
+  bool phantomFarWindow{};
 };
 
 struct ViewTrace {
@@ -154,7 +159,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       bw::core::Primitive::Operation::Union, {{{ring, {}}}});
 
   if (fixture.map != MapFixture::Unset || fixture.wallMask ||
-      !fixture.wallsVisible || !fixture.wallCollides) {
+      !fixture.wallsVisible || !fixture.wallCollides || fixture.phantomWindow) {
     auto proxy = primitive->createEditingProxy();
     auto normalImageReference = (fixture.triplanar || fixture.bundledNormal)
                                     ? "World/TriplanarCompositionNormal"
@@ -168,6 +173,11 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
          edge = proxy->getNextEdgeIndex(edge), ++ordinal) {
       proxy->setEdgeVisible(edge, fixture.wallsVisible);
       proxy->setEdgeCollisionOverride(edge, fixture.wallCollides);
+      if (fixture.phantomWindow && ordinal == 0) {
+        proxy->setEdgeVisible(edge, false);
+        proxy->setEdgeCollisionOverride(edge, false);
+        proxy->setEdgeOtherZone(edge, bw::core::ZoneId::Phantom);
+      }
       if (fixture.map != MapFixture::Unset) {
         auto image = bw::core::WallNormalMapOverride::image(
             normalImageReference,
@@ -230,10 +240,30 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     properties.ceilingEmbossPresetId = "builtin.emboss.stone";
     properties.wallEmbossPresetId = "builtin.emboss.stone";
   }
+  if (fixture.phantomDiagnostic)
+    properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("missing.phantom.diagnostic");
   properties.liquidLevel = fixture.wet ? 2.0f : 0.0f;
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
   std::vector<bw::core::Primitive*> primitives{primitive};
+  if (fixture.phantomObstruction || fixture.phantomFarWindow) {
+    auto* extra = bw::core::MeshPrimitive::fromTree(
+        bw::core::Primitive::Operation::Union, {{{ring, {}}}});
+    extra->setPosition({0, fixture.phantomObstruction ? -48.0f : 64.0f});
+    auto extraProperties = properties;
+    extraProperties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("migrated.marble.1");
+    extra->setProperties(extraProperties);
+    if (fixture.phantomFarWindow) {
+      auto proxy = extra->createEditingProxy();
+      auto edge = proxy->getFirstEdgeIndex();
+      proxy->setEdgeVisible(edge, false);
+      proxy->setEdgeCollisionOverride(edge, false);
+      proxy->setEdgeOtherZone(edge, bw::core::ZoneId::Phantom);
+      proxy->commitTo(*extra);
+    }
+    world.addPrimitive(extra);
+    primitives.push_back(extra);
+  }
   if (fixture.portalBackSurface) {
     // An elevated floor with invisible walls exposes its underside through the
     // destination aperture. It lies behind the primary eye, but in front of a
@@ -347,6 +377,11 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       generator.getWorldData(), world.getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       world.getWedgeGenerationParameters(), false, portalPairs);
+  if (fixture.phantomFarWindow && std::ranges::count_if(result->getWalls(),
+          [](auto const& wall) { return !wall.visible && wall.sideZones.has_value(); }) != 2)
+    throw std::runtime_error("Phantom overlap fixture lost an aperture");
+  if (fixture.phantomObstruction && result->getWalls().size() < 8)
+    throw std::runtime_error("Phantom near-plane fixture lost its obstruction");
   if (fixture.map == MapFixture::Image) {
     auto mappedWalls = std::ranges::count_if(
         result->getWalls(), [](auto const& wall) {
@@ -496,6 +531,10 @@ std::vector<float> render(
       fixture.lookAtCeiling ? -45.0f : (fixture.lookAtFloor ? 45.0f : 0.0f),
       BW_PLAYER_FOV,
       kWidth / float(kHeight));
+  if (fixture.phantomWindow) {
+    camera->setLookAt(fixture.phantomReverse ? glm::vec3{0, 16, 0} : glm::vec3{0, 16, 80},
+                     fixture.phantomReverse ? glm::vec3{0, 16, 80} : glm::vec3{0, 16, 0});
+  }
   if (fixture.portalBackSurface) camera->setPitch(-12.0f);
   if (fixture.horizontalBack) {
     camera->setPosition({0, fixture.horizontalBack == 2 ? 52.0f :
@@ -587,6 +626,15 @@ std::vector<float> render(
       else if (scene.surfaceGeometryCounters(set) != counters)
         throw std::runtime_error("Zone switch rebuilt or uploaded surface geometry");
     }
+  }
+  if (fixture.phantomWindow) {
+    auto before = readColour(texture);
+    scene.worldGeometryChanged();
+    texture = scene.render(&world, *worldData, camera, camera->getPosition(), 0.0f, {},
+        -1, fixture.debugWallTechnique, fixture.zone);
+    auto after = readColour(texture);
+    if (regionDifference(before, after) >= 0.0005)
+      throw std::runtime_error("Phantom snapshot rebuild changed aperture view");
   }
   if (texture == 0)
     throw std::runtime_error("WorldRenderer produced no render texture");
@@ -1006,6 +1054,43 @@ void immutableWallsRenderBothSides(editor::EditorRenderSystem& renderSystem) {
           "post-publication view rebuilt wall buffers again");
 }
 
+void phantomWindowsRender(editor::EditorRenderSystem& renderSystem) {
+  using bw::core::ZoneId;
+  for (auto horizontal : {bw::app::HorizontalMaterials::ThreeDimensional,
+                          bw::app::HorizontalMaterials::TwoDimensional}) {
+    auto image = render(renderSystem, {.horizontal = horizontal,
+        .zone = ZoneId::Phantom, .phantomWindow = true});
+    auto at = [&](int x, int y, int channel) { return image[(y * kWidth + x) * 4 + channel]; };
+    require(at(kWidth / 2, kHeight / 2, 0) > 0.001f ||
+            at(kWidth / 2, kHeight / 2, 1) > 0.001f,
+            "Phantom window did not show its Euclidean interior");
+    for (int y = 0; y < kHeight; ++y)
+      for (int x : {0, 20, kWidth - 21, kWidth - 1})
+        for (int c = 0; c < 3; ++c)
+          require(std::abs(at(x, y, c)) < 0.0001f,
+                  "world geometry leaked outside Phantom aperture");
+    auto reverse = render(renderSystem, {.horizontal = horizontal,
+        .zone = ZoneId::Phantom, .phantomWindow = true, .phantomReverse = true});
+    for (size_t pixel = 0; pixel < reverse.size(); pixel += 4)
+      for (size_t c = 0; c < 3; ++c)
+        require(std::abs(reverse[pixel + c]) < 0.0001f, "Phantom reverse side was rendered");
+  }
+  auto diagnostic = render(renderSystem, {.zone = ZoneId::Phantom,
+      .phantomWindow = true, .phantomDiagnostic = true});
+  auto obstructed = render(renderSystem, {.zone = ZoneId::Phantom,
+      .phantomWindow = true, .phantomDiagnostic = true, .phantomObstruction = true});
+  auto overlapping = render(renderSystem, {.zone = ZoneId::Phantom,
+      .phantomWindow = true, .phantomDiagnostic = true, .phantomFarWindow = true});
+  auto centre = (kHeight / 2 * kWidth + kWidth / 2) * 4;
+  for (auto const* image : {&diagnostic, &obstructed, &overlapping})
+    require((*image)[centre] > 0.9f && (*image)[centre + 1] < 0.01f && (*image)[centre + 2] > 0.9f,
+        "Phantom clipping/nearest-aperture selection lost the diagnostic interior");
+  auto counts = resourceCounts(renderSystem.renderResourceManager());
+  (void)render(renderSystem, {.zone = ZoneId::Phantom, .phantomWindow = true});
+  require(resourceCounts(renderSystem.renderResourceManager()) == counts,
+      "Phantom preview teardown leaked aperture resources");
+}
+
 void portalLightIsClippedToTheRenderedApertureProjection(
     editor::EditorRenderSystem& renderSystem) {
   // Compile and exercise the production Portal-capable world programs first.
@@ -1319,6 +1404,8 @@ int main(int argc, char** argv) {
         portalZonesRender(renderSystem);
       } else if (scenario == "detail-zones") {
         detailZonesRender(renderSystem);
+      } else if (scenario == "phantom") {
+        phantomWindowsRender(renderSystem);
       } else if (scenario == "horizontal-zones") {
         horizontalZonesRender(renderSystem);
       } else if (scenario == "immutable-walls") {

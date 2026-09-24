@@ -10,6 +10,7 @@ namespace bw::core {
 enum class ZoneId : uint32_t {
   Euclidean = 1,
   NegativeSpace = 2,
+  Phantom = 3,
 };
 
 // Runtime generated-surface strategy (historical wall API name). Geometry and
@@ -19,20 +20,22 @@ enum class WallBackFaceTreatment : int32_t { Omitted = 0, MatteWhite = 1 };
 
 constexpr WallBackFaceTreatment wallBackFaceTreatment(ZoneId id) {
   switch (id) {
-    case ZoneId::Euclidean: return WallBackFaceTreatment::Omitted;
+    case ZoneId::Euclidean:
+    case ZoneId::Phantom: return WallBackFaceTreatment::Omitted;
     case ZoneId::NegativeSpace: return WallBackFaceTreatment::MatteWhite;
   }
   return WallBackFaceTreatment::Omitted;
 }
 
 constexpr bool isKnownZone(ZoneId id) {
-  return id == ZoneId::Euclidean || id == ZoneId::NegativeSpace;
+  return id == ZoneId::Euclidean || id == ZoneId::NegativeSpace || id == ZoneId::Phantom;
 }
 
 constexpr std::string_view zoneSymbol(ZoneId id) {
   switch (id) {
     case ZoneId::Euclidean: return "euclidean";
     case ZoneId::NegativeSpace: return "negative_space";
+    case ZoneId::Phantom: return "phantom";
   }
   return {};
 }

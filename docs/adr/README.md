@@ -54,6 +54,8 @@ removed the dependency entirely. Geometry terms are defined in
 | [0045](0045-liquid-equilibrium-uses-affine-hydraulic-cells.md) | Liquid equilibrium uses affine Hydraulic cells | Accepted |
 | [0046](0046-triplanar-materials-use-tagged-surface-references-and-shared-wall-projection-normals.md) | Triplanar materials use tagged surface references and shared wall projection normals | Accepted |
 | [0047](0047-portals-are-layer-owned-and-resolve-as-complete-pairs.md) | Portals are Layer-owned and resolve as complete pairs | Accepted |
+| [0048](0048-zones-are-explicit-player-modes-entered-through-border-walls.md) | Zones are explicit player modes entered through Border walls | Partially superseded by ADR-0049 |
+| [0049](0049-phantom-views-euclidean-space-through-hidden-border-apertures.md) | Phantom views Euclidean space through hidden Border apertures | Accepted |
 
 ## World geometry rewrite scope
 

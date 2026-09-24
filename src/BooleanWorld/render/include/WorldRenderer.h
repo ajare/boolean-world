@@ -85,6 +85,17 @@ private:
   mpp::ScenePtr mScene;
   mpp::RenderSystem* mRenderSystem{};
   PortalViewPlanner mPortalViewPlanner;
+  bw::core::ZoneId mZone{bw::core::ZoneId::Euclidean};
+  class PhantomRenderState;
+  std::unique_ptr<PhantomRenderState> mPhantom;
+  mpp::ResourceManager* mRenderResourceMgr{};
+  bool mPhantomGeometryDirty{true};
+  void renderPhantomScene(bw::core::WorldData const& worldData,
+      mpp::CameraPtr const& camera, mpp::RenderPipelinePtr const& pipeline,
+      uint32_t width, uint32_t height);
+  void renderWorldScene(bw::core::WorldData const& worldData,
+      mpp::CameraPtr const& camera, mpp::RenderPipelinePtr const& pipeline,
+      uint32_t width, uint32_t height);
   PortalViewPlan mLastPortalViewPlan;
   PortalLightLimits mPortalLightLimits;
   PortalLightPlan mLastPortalLightPlan;
@@ -152,8 +163,9 @@ public:
 
   virtual ~WorldRenderer();
 
-  // Player (or editor preview) state shared by the primary view and every
-  // recursive Portal pass. A virtual camera must never choose its own Zone.
+  // Player (or editor preview) state shared by recursive views. Phantom owns
+  // an aperture-only primary scene whose child views use Euclidean treatment;
+  // other virtual cameras never infer a Zone from their position.
   // Only facing is camera-local, via CameraFrame and geometric shader normals.
   // Never invalidates prepared data, endpoint buckets, or geometry buffers.
   // A shading input shared by ordinary, Screen-space source, and Planar
@@ -161,6 +173,7 @@ public:
   // never filter these buckets by the primary eye (or shadow casters vanish).
   // Zone changes must not invalidate prepared geometry or shadow state.
   void setZone(bw::core::ZoneId zone) {
+    mZone = zone;
     for (auto const& material : mMaterialRenderers)
       material.renderer->setZone(zone);
   }

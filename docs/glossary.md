@@ -247,6 +247,41 @@ arrangement's native edge–face incidence.
 
 ## Gameplay
 
+**Zone** — The player's current interaction mode for World rendering and
+collision. A player occupies exactly one World-owned Zone at a time, regardless
+of which Arrangement face contains their position.
+
+**Euclidean Zone** — The built-in default Zone: front-facing solid World
+surfaces use their authored treatment, back-facing solid surfaces are not
+rendered, and Liquid remains two-sided. It normally describes play inside
+bounded geometry but is an explicit player mode, not a containment test.
+
+**Negative Space Zone** — The built-in Zone normally entered through a
+Zone-bearing Border whose non-solid side names it, into either the unbounded
+exterior or a bounded Hole. Front-facing World surfaces retain their authored
+treatment and back-facing surfaces render matte white; all non-solid spaces
+share this one mode.
+
+**Phantom Zone** — The Zone in which the World is physically absent and visible
+only through Phantom apertures against black. Walking preserves entry feet
+elevation; valid inward aperture crossings return the player to Euclidean.
+
+**Phantom aperture** — The unchipped outline of a hidden, non-colliding Border
+linking Phantom and Euclidean, visible only from its non-solid side as a window
+into Euclidean space. It is not a Portal endpoint and does not relocate the view.
+
+**Zone-bearing Border wall** — A generated non-colliding Border wall whose
+solid side is always the Euclidean Zone and whose non-solid side is the other
+Zone selected on its contributing authored External edge; the other side may
+also be Euclidean. The other-Zone value persists while the edge is colliding
+or does not currently generate a Border.
+
+**Zone crossing** — Assignment of the destination side's Zone when the centre
+of the player crosses a Zone-bearing Border wall during ordinary swept
+movement; equal side Zones leave the player unchanged. Crossings are applied
+in travel order, while containment, Portals, teleports, rebuild recovery, and
+other relocation never infer one.
+
 **Player feet elevation** — The simulated elevation of the player's feet. It
 matches the authoritative floor sample while grounded, but remains distinct
 while the player steps, falls, floats, or swims. Do not call it `floorZ`, which

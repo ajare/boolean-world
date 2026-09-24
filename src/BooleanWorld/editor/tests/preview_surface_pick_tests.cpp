@@ -145,6 +145,30 @@ void wallPickingFollowsZoneAndGlobalVisibility() {
   }
 }
 
+void phantomPickingSelectsOnlyHiddenReturnApertures() {
+  using bw::core::ZoneId;
+  auto room = makeRoom();
+  auto proxy = room->createEditingProxy();
+  for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    proxy->setEdgeVisible(edge, false);
+    proxy->setEdgeCollisionOverride(edge, false);
+    proxy->setEdgeOtherZone(edge, ZoneId::Phantom);
+  }
+  proxy->commitTo(*room);
+  auto data = buildData({room.get()});
+  auto pick = editor::pickPreviewSceneSurface(*data, {10, 0, 10}, {-1, 0, 0}, ZoneId::Phantom);
+  require(pick.hit() && pick.surfaceHit.surface == PreviewSurface::Wall &&
+      near(pick.surfaceHit.distance, 5), "Phantom did not pick the aperture");
+  require(editor::resolvePreviewSurfaceOwner(*data, pick).valid(), "Phantom aperture lost authoring owner");
+  require(!editor::pickPreviewSceneSurface(*data, {0, 0, 10}, {1, 0, 0}, ZoneId::Phantom).hit(),
+      "Phantom picked the invisible reverse side");
+  require(!editor::pickPreviewSceneSurface(*data, {0, 0, 10}, {0, 0, -1}, ZoneId::Phantom).hit(),
+      "Phantom picked physically absent floor");
+  require(!editor::pickPreviewSceneSurface(*data, {10, 0, 1000}, {-1, 0, 0}, ZoneId::Phantom).hit(),
+      "Phantom aperture picking ignored its elevation");
+}
+
 void looksAtTheFloorWhenAimedDown() {
   auto room = makeRoom();
   auto data = buildData({room.get()});
@@ -695,6 +719,7 @@ void unpickedSurfacesResolveToNothing() {
 
 int main() {
   try {
+    phantomPickingSelectsOnlyHiddenReturnApertures();
     wallPickingFollowsZoneAndGlobalVisibility();
     looksAtTheFloorWhenAimedDown();
     looksAtTheCeilingWhenAimedUp();

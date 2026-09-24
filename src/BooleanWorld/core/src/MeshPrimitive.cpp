@@ -1766,6 +1766,7 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
               auto symbol = serializer->readString("otherZone");
               if (symbol == zoneSymbol(ZoneId::Euclidean)) zone = ZoneId::Euclidean;
               if (symbol == zoneSymbol(ZoneId::NegativeSpace)) zone = ZoneId::NegativeSpace;
+              if (symbol == zoneSymbol(ZoneId::Phantom)) zone = ZoneId::Phantom;
             }
             if (!isKnownZone(zone)) throw CoreException("Unknown Zone reference");
             ring.back().edgeOtherZone = zone;

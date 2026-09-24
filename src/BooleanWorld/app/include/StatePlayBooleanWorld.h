@@ -166,6 +166,7 @@ private:
   float mPlayerTraversalStartFeetElevation{0.0f};
   float mPlayerTraversalStartVerticalVelocity{0.0f};
   bool mPlayerTraversalStartValid{false};
+  float mPlayerPhysicalFrameFraction{1.0f};
 
   // True once PhysicalStats::feetElevation has been snapped to the sampled
   // floor at least once. Until mWorldData exists (early in map load) the floor

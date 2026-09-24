@@ -32,6 +32,7 @@ class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mFragmentOverdrawMaterial;
   WorldSurfaceSet mSurfaceSet;
   bool mDeferToWaterPass;
+  bool mApertureOnly;
 
   SurfaceMaterialResolver const* mwResolver;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
@@ -90,7 +91,8 @@ public:
       SurfaceMaterialResolver const* resolver,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       bool deferToWaterPass = false,
-      std::string batchNamePrefix = "World3d");
+      std::string batchNamePrefix = "World3d",
+      bool apertureOnly = false);
 
   virtual ~WorldRenderer3d();
 

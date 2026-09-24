@@ -554,11 +554,15 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
   applib::ModelInstance::entityHandler()->setupCollisions(
       mWorldCollisionSim, mPlayerCollider,
       [this](float frameTime) {
+        // Zone events are ordered with contacts and change collision strategy
+        // before the unconsumed movement, including a fast return from Phantom.
         mPlayerZone.resolveMovement(*mWorldCollisionSim, frameTime);
-        if (mWorldData) {
-          mPlayerZone.applyResolvedMovement(
-              *mWorldData, mWorldCollisionSim->getPlayerMovementTrace());
-        }
+        auto const& trace = mWorldCollisionSim->getPlayerMovementTrace();
+        mPlayerZone.rememberMovement(trace);
+        for (auto const& segment : trace)
+          if (!segment.physicallyAbsent && segment.type == WorldCollisionSim::PlayerMovementSegmentType::Swept)
+            getMap()->getWorld()->checkPlayerTriggers(segment.from, segment.to,
+                BW_PLAYER_RADIUS, layerSelection());
       });
 }
 
@@ -591,6 +595,26 @@ void StatePlayBooleanWorld::createWorldCollisions(
   auto const& walls = mWorldData->getWalls();
   auto const& physicalStats = getPlayerPhysicalStats();
   auto const& playerPosition = physicalStats.position;
+  mPlayerZone.configureMovement(*mWorldCollisionSim, *mWorldData, physicalStats.feetElevation,
+      [this](bw::core::ZoneId zone, wp::Vector2 const& point) {
+        // Surface traversal must never resolve a chord through the physically
+        // absent part of a frame. Start again at the last actual Zone event.
+        mPlayerTraversalStartPosition = point;
+        mPlayerTraversalStartFeetElevation = getPlayerPhysicalStats().feetElevation;
+        if (zone == bw::core::ZoneId::Phantom) {
+          mPlayerVerticalVelocity = 0.0f;
+          mPlayerPhysicalFrameFraction = 0.0f;
+          mPlayerPortalUpdateState.exitSide = {};
+        } else if (mPlayerPhysicalFrameFraction == 0.0f) {
+          mPlayerPhysicalFrameFraction = mWorldCollisionSim->remainingFrameFraction();
+        }
+        mPlayerTraversalStartVerticalVelocity = mPlayerVerticalVelocity;
+      });
+  for (uint32_t index = 0; index < walls.size(); ++index) {
+    if (!walls[index].sideZones) continue;
+    auto frame = bw::core::arr::OrientArrangementWall(arrangement, walls[index]);
+    mWorldCollisionSim->addZoneLine(frame.v0, frame.v1, index);
+  }
   auto movementReach = playerPosition.distanceTo(predictedPosition);
   auto radius = movementReach + BW_PLAYER_RADIUS + 1.0f;
   auto swimming = isPlayerSwimming();
@@ -683,7 +707,8 @@ void StatePlayBooleanWorld::createWorldCollisions(
     }
   }
 
-  liftPlayerOffOverlappingWalls(addedWalls);
+  if (mPlayerZone.current() != bw::core::ZoneId::Phantom)
+    liftPlayerOffOverlappingWalls(addedWalls);
 }
 
 WorldCollisionSim::PortalLineResponse
@@ -923,7 +948,7 @@ float StatePlayBooleanWorld::getPlayerCeilingElevation() const {
 }
 
 float StatePlayBooleanWorld::getPlayerLiquidSubmersionDepth() const {
-  if (!mWorldData) {
+  if (!mWorldData || mPlayerZone.current() == bw::core::ZoneId::Phantom) {
     return 0.0f;
   }
 
@@ -1221,6 +1246,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   mPlayerTraversalStartFeetElevation = traversalStart.feetElevation;
   mPlayerTraversalStartVerticalVelocity = mPlayerVerticalVelocity;
   mPlayerTraversalStartValid = mPlayerVerticalHeightInitialized;
+  mPlayerPhysicalFrameFraction = mPlayerZone.current() == bw::core::ZoneId::Phantom ? 0.0f : 1.0f;
 
   // Uses last frame's settled position/feet elevation - this frame's movement
   // has not been computed yet - which is exactly the submersion state that
@@ -1250,7 +1276,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   playerPosition = newPosition;
   playerAngle = bw::app::worldViewAngle(newAngle);
 
-  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection()}, {0, 0});
+  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection(), false}, {0, 0});
 
   auto rebuiltWorldData = world->getWorldData();
   auto const worldSnapshotChanged = rebuiltWorldData != mWorldData;
@@ -1264,7 +1290,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
     auto& physicalStats = getPlayerPhysicalStats();
     auto reconciliation = bw::app::reconcilePlayerAfterWorldRebuild(
         *mWorldData, *rebuiltWorldData, physicalStats.position,
-        {physicalStats.feetElevation, mPlayerVerticalVelocity});
+        {physicalStats.feetElevation, mPlayerVerticalVelocity}, mPlayerZone.current());
     physicalStats.feetElevation = reconciliation.vertical.feetElevation;
     mPlayerVerticalVelocity = reconciliation.vertical.verticalVelocity;
     mPlayerRebuildNeedsLocationRecovery =
@@ -1358,6 +1384,7 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
   auto& physicalStats = getPlayerPhysicalStats();
 
   if (mPlayerTraversalStartValid && mWorldData &&
+      mPlayerZone.current() != bw::core::ZoneId::Phantom &&
       mPlayerPortalUpdateState.crossings == 0) {
     auto traversal = bw::app::evaluatePlayerSurfaceTraversal(
         *mWorldData, mPlayerTraversalStartPosition, physicalStats.position,
@@ -1394,7 +1421,7 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
     // ...
   }
 
-  updatePlayerVerticalPhysics(frameTime);
+  updatePlayerVerticalPhysics(frameTime * mPlayerPhysicalFrameFraction);
 
   // After the vertical step, so a swimmer rising toward the surface is tested
   // at the float height it has just settled them at rather than one frame
@@ -1414,6 +1441,13 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
 
 void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
   auto& physicalStats = getPlayerPhysicalStats();
+  if (mPlayerZone.current() == bw::core::ZoneId::Phantom) {
+    auto next = bw::app::stepPlayerVerticalPhysics(
+        {physicalStats.feetElevation, mPlayerVerticalVelocity}, {.zone = bw::core::ZoneId::Phantom});
+    physicalStats.feetElevation = next.feetElevation;
+    mPlayerVerticalVelocity = next.verticalVelocity;
+    return;
+  }
 
   if (!mPlayerVerticalHeightInitialized) {
     // Before mWorldData exists (very start of map load) the floor query
@@ -1524,9 +1558,10 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // The real light, its shadow origin, and its marker share this one placement.
   auto lightDirection = Vector2::fromAngle(
       bw::app::worldViewAngle(physicalStats.angle), Clockwise);
-  auto torch = bw::app::placePlayerTorch(
-      *mWorldData, physicalStats.position, playerViewHeight,
-      lightDirection, mDebugDisplay.lightDistance);
+  auto torch = mPlayerZone.current() == bw::core::ZoneId::Phantom
+      ? bw::app::PlayerTorchPlacement{physicalStats.position + lightDirection * mDebugDisplay.lightDistance, playerViewHeight}
+      : bw::app::placePlayerTorch(*mWorldData, physicalStats.position, playerViewHeight,
+            lightDirection, mDebugDisplay.lightDistance);
   glm::vec3 playerPosition{
       physicalStats.position.x,
       playerViewHeight,

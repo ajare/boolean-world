@@ -21,6 +21,7 @@ public:
     wp::Vector2 from;
     wp::Vector2 to;
     PlayerMovementSegmentType type{PlayerMovementSegmentType::Swept};
+    bool physicallyAbsent{false};
   };
 
 private:
@@ -29,13 +30,21 @@ private:
     wp::Vector2 newPosition;
     wp::Vector2 portalSourcePosition;
     bool portalRelocation{false};
+    bool physicallyAbsentAfter{false};
   };
 
   PortalHitCallback mPortalHitCallback;
+  static constexpr int32_t ZoneLineBase = -1073741824;
+  std::function<std::optional<double>(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> mZoneQuery;
+  std::function<void(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> mZoneCrossed;
+  std::function<bool()> mIgnoreWorldGeometry;
+  std::function<bool()> mBoundaryApplies;
   uint32_t mPortalLineCount{0};
   wp::collide::Collider* mPlayerCollider{nullptr};
   bool mTracingUpdate{false};
   wp::Vector2 mUpdateStart;
+  bool mUpdatePhysicallyAbsent{false};
+  float mRemainingFrameFraction{1.0f};
   std::vector<MovementCandidate> mMovementCandidates;
   std::vector<PlayerMovementSegment> mPlayerMovementTrace;
   std::optional<wp::BoundingBox> mMovementBoundary;
@@ -80,6 +89,18 @@ public:
   void clearLines();
 
   void setPortalHitCallback(PortalHitCallback callback);
+
+  // Pure queries participate in nearest-contact ordering. The commit callback
+  // runs only for the selected centre crossing, before the remaining sweep.
+  void setZoneCallbacks(
+      std::function<std::optional<double>(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> query,
+      std::function<void(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> crossed,
+      std::function<bool()> ignoreWorldGeometry,
+      std::function<bool()> boundaryApplies = {});
+  void addZoneLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t wall);
+  void updatePhantom(float frameTime, wp::BoundingBox const& boundary);
+  bool hasZoneCallbacks() const { return bool(mZoneQuery); }
+  float remainingFrameFraction() const { return mRemainingFrameFraction; }
 
   void addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t index);
 

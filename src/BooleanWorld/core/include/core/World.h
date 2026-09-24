@@ -275,6 +275,8 @@ public:
   [[nodiscard]] std::vector<WorldTriggerLine*> findTriggerLines(wp::BoundingBox const& bounds) const;
 
   void update(float frameTime, WorldUpdateData const& data, wp::Vector2 const& viewSize);
+  void checkPlayerTriggers(wp::Vector2 const& from, wp::Vector2 const& to,
+      float radius, LayerSelection const& layers);
 
   void generateClipping(bool regetPrimitives);
 

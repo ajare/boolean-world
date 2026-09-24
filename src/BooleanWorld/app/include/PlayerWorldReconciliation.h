@@ -25,7 +25,12 @@ struct PlayerWorldReconciliation {
     bw::core::ArrangementWorldData const& previousWorld,
     bw::core::ArrangementWorldData const& rebuiltWorld,
     wp::Vector2 const& position,
-    PlayerVerticalState vertical) {
+    PlayerVerticalState vertical,
+    bw::core::ZoneId zone = bw::core::ZoneId::Euclidean) {
+  if (zone == bw::core::ZoneId::Phantom) {
+    vertical.verticalVelocity = 0.0f;
+    return {vertical};
+  }
   constexpr float ElevationEpsilon = 0.001f;
   auto previousSurface = previousWorld.getSurfaceSample(position);
   auto rebuiltSurface = rebuiltWorld.getSurfaceSample(position);

@@ -1778,6 +1778,10 @@ vector<ArrangementWall> BuildArrangementWalls(
            ownerFace});
       if (kind == ArrangementWallKind::Border &&
           edge.collidesOverride == false && edge.otherZone) {
+        if (*edge.otherZone == ZoneId::Phantom && walls.back().visible) {
+          throw std::invalid_argument(
+              "Phantom Border must be hidden and non-colliding (disable Visible).");
+        }
         walls.back().sideZones = face0.solid
             ? array{ZoneId::Euclidean, *edge.otherZone}
             : array{*edge.otherZone, ZoneId::Euclidean};
