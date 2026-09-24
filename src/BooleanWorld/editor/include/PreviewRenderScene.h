@@ -25,6 +25,7 @@
 #include "PreviewOutlineRenderer.h"
 
 class WorldRenderer;
+struct PortalViewPlan;
 enum class WorldSurfaceSet;
 
 namespace wp::application::resourcesystem {
@@ -103,6 +104,7 @@ public:
   // CPU payload revision and completed GPU upload count, respectively.
   [[nodiscard]] std::array<std::uint64_t, 2> wallGeometryCounters() const;
   [[nodiscard]] std::array<std::uint64_t, 2> surfaceGeometryCounters(WorldSurfaceSet set) const;
+  [[nodiscard]] PortalViewPlan const& portalViewDiagnostics() const;
   [[nodiscard]] bool renderedPortalView() const;
   [[nodiscard]] std::uint32_t portalRenderedPassCount() const;
   [[nodiscard]] std::uint32_t portalSelectedEndpointCount() const;

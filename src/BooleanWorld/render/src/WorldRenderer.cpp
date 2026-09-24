@@ -1115,8 +1115,12 @@ void WorldRenderer::renderScene(
     }
   }
 
-  // Every pass shares the published buffers. Only endpoint texture bindings
-  // change; a child target must have completed earlier in deepest-first order.
+  // Every pass shares the published buffers and the player's Zone material
+  // uniforms. renderAuxiliaryScene supplies each transformed CameraFrame, so
+  // shaders classify geometric facing from that eye, not PLAYER_POSITION.
+  // Portal placement/traversal never selects a Zone or rebuilds endpoint buckets.
+  // Only endpoint texture bindings change; a child target must have completed
+  // earlier in deepest-first order.
   auto configurePortalSurfaces = [&](std::vector<PortalViewPlanEdge> const& edges, bool clampNearPlane) {
     walls->setPortalFallback();
     for (auto const& edge : edges) {

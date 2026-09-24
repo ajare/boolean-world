@@ -70,6 +70,8 @@ struct RenderFixture {
   bool continuityJunction{};
   bool portal{};
   bool manyPortalEndpoints{};
+  bool portalBackSurface{};
+  bool portalBackDecorated{};
   // 0 uses the built-in material; 1 and 2 use identical RGB with alpha 0/1.
   int triplanarAlphaVariant{};
   bw::core::ZoneId zone{bw::core::ZoneId::Euclidean};
@@ -206,6 +208,32 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
   std::vector<bw::core::Primitive*> primitives{primitive};
+  if (fixture.portalBackSurface) {
+    // An elevated floor with invisible walls exposes its underside through the
+    // destination aperture. It lies behind the primary eye, but in front of a
+    // transformed Portal eye, so using the primary CameraFrame cannot pass.
+    bw::core::ClosedPolygon platformRing{
+        {{-15, -14}}, {{15, -14}}, {{15, -2}}, {{-15, -2}}};
+    auto* platform = bw::core::MeshPrimitive::fromTree(
+        bw::core::Primitive::Operation::Union, {{{platformRing, {}}}});
+    auto platformProperties = properties;
+    platformProperties.floorZ = bw::core::Elevation{10.0f, {0.0f, -1.0f}};
+    if (fixture.portalBackDecorated) {
+      platformProperties.floorMaterial = bw::core::SurfaceMaterialReference::triplanar(
+          "World/TriplanarFloorTiles");
+      platformProperties.floorEmbossPresetId = "builtin.emboss.stone";
+    }
+    platform->setProperties(platformProperties);
+    platform->setPriority(1);
+    auto proxy = platform->createEditingProxy();
+    for (auto edge = proxy->getFirstEdgeIndex();
+         !proxy->edgeIndexIterationFinished(edge);
+         edge = proxy->getNextEdgeIndex(edge))
+      proxy->setEdgeVisible(edge, false);
+    proxy->commitTo(*platform);
+    world.addPrimitive(platform);
+    primitives.push_back(platform);
+  }
   if (fixture.continuityJunction) {
     struct JunctionPrimitive {
       bw::core::ClosedPolygon ring;
@@ -391,7 +419,7 @@ std::vector<float> render(
                              : fixture.triplanarAlphaVariant == 2
                                  ? "World/TriplanarAlphaOneDiagnostic"
                                  : "World/TriplanarFloorTiles";
-  auto dependencies = fixture.triplanar || fixture.triplanarWallOnly
+  auto dependencies = fixture.triplanar || fixture.triplanarWallOnly || fixture.portalBackDecorated
                           ? std::vector<std::string>{triplanarDependency}
                           : std::vector<std::string>{};
   if (fixture.wallMask) {
@@ -426,6 +454,7 @@ std::vector<float> render(
       fixture.lookAtCeiling ? -45.0f : (fixture.lookAtFloor ? 45.0f : 0.0f),
       BW_PLAYER_FOV,
       kWidth / float(kHeight));
+  if (fixture.portalBackSurface) camera->setPitch(-12.0f);
   if (fixture.horizontalBack) {
     camera->setPosition({0, fixture.horizontalBack == 2 ? 52.0f :
                                fixture.horizontalBack == 3 ? 1.0f : -4.0f, 0});
@@ -448,6 +477,7 @@ std::vector<float> render(
   camera->setClipDistances(fixture.detailBack >= 0 ? 0.001f : 0.1f, 1000000.0f);
   uint32_t texture{};
   std::array<std::array<uint64_t, 2>, 3> surfaceCounters{};
+  PortalViewPlan initialPortalPlan;
   for (int frame = 0; frame < 3; ++frame) {
     texture = scene.render(
         &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f, {},
@@ -457,6 +487,42 @@ std::vector<float> render(
                           : bw::core::ZoneId::Euclidean)
                    : fixture.zone);
     if (frame == 1 && switchedZoneImage) *switchedZoneImage = readColour(texture);
+    if (fixture.portal) {
+      auto const& plan = scene.portalViewDiagnostics();
+      if (frame == 0) initialPortalPlan = plan;
+      auto sameEdges = [](auto const& first, auto const& second) {
+        if (first.size() != second.size()) return false;
+        for (size_t i = 0; i < first.size(); ++i)
+          if (first[i].endpoint != second[i].endpoint ||
+              first[i].childNode != second[i].childNode ||
+              first[i].sourceProjectiveTransform != second[i].sourceProjectiveTransform)
+            return false;
+        return true;
+      };
+      if (plan.nodes.size() != initialPortalPlan.nodes.size() ||
+          plan.deepestFirst != initialPortalPlan.deepestFirst ||
+          !sameEdges(plan.rootChildren, initialPortalPlan.rootChildren))
+        throw std::runtime_error("Zone switch changed Portal endpoint routing");
+      for (size_t i = 0; i < plan.nodes.size(); ++i) {
+        auto const& node = plan.nodes[i];
+        auto const& initial = initialPortalPlan.nodes[i];
+        if (node.slot != initial.slot || node.cameraPosition != initial.cameraPosition ||
+            node.recursionDepth != initial.recursionDepth ||
+            !sameEdges(node.children, initial.children))
+          throw std::runtime_error("Zone switch changed recursive Portal routing");
+      }
+      if (fixture.portalBackSurface) {
+        // In renderer coordinates the generated floor is y = 10 + z.
+        // Its geometric normal points up and toward -z. The primary eye is
+        // above that plane, while retained transformed eyes lie below it.
+        auto signedFacing = [](glm::vec3 eye) { return eye.y - 10.0f - eye.z; };
+        if (signedFacing(camera->getPosition()) <= 0 ||
+            !std::ranges::any_of(plan.nodes, [&](auto const& node) {
+              return node.recursionDepth > 1 && signedFacing(node.cameraPosition) < 0;
+            }))
+          throw std::runtime_error("Portal fixture lost opposing per-camera facing");
+      }
+    }
     for (auto set : {WorldSurfaceSet::Horizontal, WorldSurfaceSet::Liquid, WorldSurfaceSet::Walls}) {
       auto& counters = surfaceCounters[static_cast<size_t>(set)];
       if (frame == 0) counters = scene.surfaceGeometryCounters(set);
@@ -485,6 +551,37 @@ std::vector<float> render(
 
 void require(bool condition, char const* message) {
   if (!condition) throw std::runtime_error(message);
+}
+
+void portalZonesRender(editor::EditorRenderSystem& renderSystem) {
+  using bw::core::ZoneId;
+  std::vector<float> switched;
+  uint32_t passes{}, endpoints{};
+  auto euclidean = render(renderSystem, {.portal = true, .portalBackSurface = true}, nullptr,
+                          &passes, &endpoints, &switched);
+  auto negative = render(renderSystem,
+      {.portal = true, .portalBackSurface = true, .zone = ZoneId::NegativeSpace});
+  require(regionDifference(euclidean, negative) > 0.05,
+          "recursive Portal cameras did not apply Zone-specific back faces");
+  require(passes > endpoints && endpoints >= 2,
+          "Zone fixture did not retain recursive Portal views");
+  require(regionDifference(switched, negative) < 0.0005,
+          "recursive Portal Zone switch missed the next frame");
+  auto decoratedBack = render(renderSystem,
+      {.portal = true, .portalBackSurface = true, .portalBackDecorated = true,
+       .zone = ZoneId::NegativeSpace});
+  require(regionDifference(negative, decoratedBack) < 0.0005,
+          "Portal back face inherited authored texture or Embossing instead of matte white");
+  auto highIds = render(renderSystem,
+      {.portal = true, .manyPortalEndpoints = true, .portalBackSurface = true,
+       .zone = ZoneId::NegativeSpace});
+  require(regionDifference(negative, highIds) < 0.0005,
+          "Zone rendering confused endpoint buckets with recursive view slots");
+  auto front = render(renderSystem, {.portal = true});
+  auto negativeFront = render(renderSystem,
+      {.portal = true, .zone = ZoneId::NegativeSpace});
+  require(regionDifference(front, negativeFront) < 0.0005,
+          "Zone changed authored fronts in recursive Portal views");
 }
 
 void detailZonesRender(editor::EditorRenderSystem& renderSystem) {
@@ -1085,6 +1182,8 @@ int main(int argc, char** argv) {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
       } else if (scenario == "mines-portal") {
         minesPortalRenders(renderSystem);
+      } else if (scenario == "portal-zones") {
+        portalZonesRender(renderSystem);
       } else if (scenario == "detail-zones") {
         detailZonesRender(renderSystem);
       } else if (scenario == "horizontal-zones") {

@@ -181,6 +181,8 @@ if(BUILD_TESTING)
              COMMAND boolean_world_editor_world_renderer_smoke triplanar-composition)
     add_test(NAME boolean_world_triplanar_wall_continuity_real_render
              COMMAND boolean_world_editor_world_renderer_smoke triplanar-continuity)
+    add_test(NAME boolean_world_portal_zone_render
+        COMMAND boolean_world_editor_world_renderer_smoke portal-zones)
     add_test(NAME boolean_world_detail_zone_render
         COMMAND boolean_world_editor_world_renderer_smoke detail-zones)
     add_test(NAME boolean_world_horizontal_zone_render

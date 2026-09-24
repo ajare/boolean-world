@@ -187,6 +187,10 @@ bool PreviewRenderScene::renderedPortalView() const {
   return mRenderer->getSelectedPortal().has_value();
 }
 
+PortalViewPlan const& PreviewRenderScene::portalViewDiagnostics() const {
+  return mRenderer->getPortalViewDiagnostics();
+}
+
 std::uint32_t PreviewRenderScene::portalRenderedPassCount() const {
   return mRenderer->getPortalViewDiagnostics().renderedPassCount;
 }

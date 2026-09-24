@@ -152,7 +152,10 @@ public:
 
   virtual ~WorldRenderer();
 
-  // Runtime view state only: never invalidates prepared data or mesh buckets.
+  // Player (or editor preview) state shared by the primary view and every
+  // recursive Portal pass. A virtual camera must never choose its own Zone.
+  // Only facing is camera-local, via CameraFrame and geometric shader normals.
+  // Never invalidates prepared data, endpoint buckets, or geometry buffers.
   void setZone(bw::core::ZoneId zone) {
     for (auto const& material : mMaterialRenderers)
       material.renderer->setZone(zone);
