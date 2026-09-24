@@ -30,6 +30,12 @@ void WorldCollisionSim::addSlidingCollider(
           auto response = mPortalHitCallback(result, portalLineIndex);
           if (response == PortalLineResponse::Ignore) return false;
           if (response == PortalLineResponse::Traverse) {
+            // A Portal is relocation rather than a swept crossing. Its exit
+            // can therefore jump entirely over the enclosing lines; constrain
+            // it before Willpower recursively consumes the remaining motion.
+            result->newPosition =
+                constrainToMovementBoundary(result->newPosition);
+            result->movementDone = result->newPosition - result->oldPosition;
             recordMovementCandidate(*result, true);
             return true;
           }
@@ -63,6 +69,25 @@ void WorldCollisionSim::addSlidingCollider(
         return true;
       });
   addCollider(move(collider));
+}
+
+wp::Vector2 WorldCollisionSim::constrainToMovementBoundary(
+    wp::Vector2 const& position) const {
+  if (!mMovementBoundary || !mPlayerCollider) return position;
+
+  auto const halfSize = mPlayerCollider->getBounds().getHalfSize();
+  auto minimum = mMovementBoundary->getMinExtent() + halfSize;
+  auto maximum = mMovementBoundary->getMaxExtent() - halfSize;
+  // A malformed boundary smaller than the player still has a deterministic
+  // safe centre rather than reversing the clamp range.
+  if (minimum.x > maximum.x) {
+    minimum.x = maximum.x = mMovementBoundary->getCentre().x;
+  }
+  if (minimum.y > maximum.y) {
+    minimum.y = maximum.y = mMovementBoundary->getCentre().y;
+  }
+  return {std::clamp(position.x, minimum.x, maximum.x),
+          std::clamp(position.y, minimum.y, maximum.y)};
 }
 
 void WorldCollisionSim::recordMovementCandidate(
@@ -148,6 +173,38 @@ void WorldCollisionSim::update(float frameTime) {
   }
   mTracingUpdate = false;
   finishMovementTrace();
+}
+
+void WorldCollisionSim::updateWithinBoundary(
+    float frameTime, wp::BoundingBox const& boundary) {
+  auto const firstBoundaryLine = mStaticLines.size();
+  mMovementBoundary = boundary;
+  auto const minimum = boundary.getMinExtent();
+  auto const maximum = boundary.getMaxExtent();
+  // -1 is an engine collision line, distinct from Portal lines (<= -2) and
+  // from every generated ArrangementWall index (>= 0).
+  mStaticLines.push_back({{minimum.x, minimum.y}, {maximum.x, minimum.y},
+                          true, 1.0f, -1});
+  mStaticLines.push_back({{maximum.x, minimum.y}, {maximum.x, maximum.y},
+                          true, 1.0f, -1});
+  mStaticLines.push_back({{maximum.x, maximum.y}, {minimum.x, maximum.y},
+                          true, 1.0f, -1});
+  mStaticLines.push_back({{minimum.x, maximum.y}, {minimum.x, minimum.y},
+                          true, 1.0f, -1});
+
+  if (mPlayerCollider) {
+    mPlayerCollider->_setPosition(
+        constrainToMovementBoundary(mPlayerCollider->getCentre()));
+  }
+  try {
+    update(frameTime);
+  } catch (...) {
+    mStaticLines.resize(firstBoundaryLine);
+    mMovementBoundary.reset();
+    throw;
+  }
+  mStaticLines.resize(firstBoundaryLine);
+  mMovementBoundary.reset();
 }
 
 vector<WorldCollisionSim::PlayerMovementSegment> const&

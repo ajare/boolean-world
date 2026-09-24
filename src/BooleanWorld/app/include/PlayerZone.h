@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <core/ArrangementWorldData.h>
+#include <core/Defines.h>
 #include "WorldCollisionSim.h"
 
 namespace bw::app {
@@ -121,10 +122,16 @@ class PlayerZone {
   }
 
  private:
-  // Independently dispatched strategies currently share ordinary two-sided
-  // blocking-wall collision. Zone is not a collision/visibility override.
+  // Both strategies retain ordinary two-sided generated-wall collision. The
+  // Negative Space strategy additionally owns the invisible engine boundary;
+  // it is not authored geometry and cannot participate in Zone crossings.
   static void resolveEuclidean(WorldCollisionSim& simulation, float dt) { simulation.update(dt); }
-  static void resolveNegativeSpace(WorldCollisionSim& simulation, float dt) { simulation.update(dt); }
+  static void resolveNegativeSpace(WorldCollisionSim& simulation, float dt) {
+    constexpr float halfExtent = float(BW_WORLD_SIZE) * 0.5f;
+    simulation.updateWithinBoundary(
+        dt, {{-halfExtent, -halfExtent},
+             {float(BW_WORLD_SIZE), float(BW_WORLD_SIZE)}});
+  }
   core::ZoneId mCurrent{core::ZoneId::Euclidean};
   std::optional<WorldCollisionSim::PlayerMovementSegment> mApproach;
 };

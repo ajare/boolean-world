@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include <willpower/common/BoundingBox.h>
@@ -37,7 +38,10 @@ private:
   wp::Vector2 mUpdateStart;
   std::vector<MovementCandidate> mMovementCandidates;
   std::vector<PlayerMovementSegment> mPlayerMovementTrace;
+  std::optional<wp::BoundingBox> mMovementBoundary;
 
+  [[nodiscard]] wp::Vector2 constrainToMovementBoundary(
+      wp::Vector2 const& position) const;
   void recordMovementCandidate(
       wp::collide::SweepResult const& result, bool portalRelocation);
   void finishMovementTrace();
@@ -62,6 +66,12 @@ public:
   // Swept segments contain only movement actually travelled by the player
   // centre; Portal jumps are separate relocation segments.
   void update(float frameTime);
+
+  // Resolves movement against an engine-owned rectangular boundary. The four
+  // sides exist only for this update and never enter generated World data.
+  // Relocations are constrained before their recursive sweep resumes.
+  void updateWithinBoundary(
+      float frameTime, wp::BoundingBox const& boundary);
 
   std::vector<PlayerMovementSegment> const& getPlayerMovementTrace() const;
 
