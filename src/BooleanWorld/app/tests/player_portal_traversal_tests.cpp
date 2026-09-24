@@ -9,6 +9,8 @@
 
 #include <common/GameDefines.h>
 #include <core/LayerBuildStep.h>
+#include <core/MeshPrimitive.h>
+#include <core/ArrangementWorldDataGenerator.h>
 #include <core/Portal.h>
 #include <core/RectanglePolygon.h>
 #include <core/World.h>
@@ -254,6 +256,38 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
                   WorldCollisionSim::PlayerMovementSegmentType::Swept &&
               std::prev(relocation)->to.distanceTo(relocation->from) < 0.001f,
           "Portal trace did not preserve ordinary movement before relocation");
+  if (!smallSteps) {
+    // Overlay generated, passable Borders on the ordinary portions of this
+    // real Portal sweep. The source exit assigns Negative Space, the jump
+    // preserves it, and the destination entry repairs it to Euclidean.
+    using namespace bw::core;
+    auto box = [](wp::Vector2 centre) {
+      auto mesh = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+          Primitive::Operation::Union,
+          {{{{{centre.x - 1, centre.y - 1}}, {{centre.x + 1, centre.y - 1}},
+              {{centre.x + 1, centre.y + 1}}, {{centre.x - 1, centre.y + 1}}}, {}}}));
+      auto proxy = mesh->createEditingProxy();
+      for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+           edge = proxy->getNextEdgeIndex(edge))
+        proxy->setEdgeCollisionOverride(edge, false);
+      proxy->commitTo(*mesh);
+      return mesh;
+    };
+    auto source = box(trace.front().from);
+    auto destinationBox = box(trace.back().to);
+    ArrangementWorldData borders(arr::BuildArrangement(
+        SnapshotPrimitives({source.get(), destinationBox.get()})),
+        wp::BoundingBox({-500, -500}, {500, 500}), 4);
+    bw::app::PlayerZone zone;
+    for (auto it = trace.begin(); it != relocation; ++it)
+      zone.applyResolvedMovement(borders, {*it});
+    require(zone.current() == ZoneId::NegativeSpace, "pre-Portal Border was skipped");
+    zone.applyResolvedMovement(borders, {*relocation});
+    require(zone.current() == ZoneId::NegativeSpace, "Portal jump assigned a Zone");
+    for (auto it = std::next(relocation); it != trace.end(); ++it)
+      zone.applyResolvedMovement(borders, {*it});
+    require(zone.current() == ZoneId::Euclidean, "post-Portal Border was skipped");
+  }
   if (smallSteps) {
     require(relocation->to.distanceTo(player->getCentre()) < 0.001f,
             "small-step Portal trace did not end at its relocation");
