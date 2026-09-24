@@ -301,6 +301,42 @@ void activeAperturesCutWallRenderingCollisionAndExposeFallback() {
   }
 }
 
+void portalCentresSnapOnlyToNearestLegalWallCoverage() {
+  bw::core::World world(200.0f, 10.0f);
+  addRoom(world);
+  auto snapshot = world.getWorldData();
+  auto const& arrangement = snapshot->getArrangement();
+  auto const& walls = snapshot->getWalls();
+  auto requested = aperture(0.0f, 0.0f);
+
+  auto side = bw::core::FindNearestLegalPortalCentre(
+      arrangement, walls, requested, requested.width,
+      {-48.0f, 10.0f}, 3.0f);
+  require(side && side->distanceToSq({-50.0f, 10.0f}) < 0.000001f,
+          "Portal centre did not snap and orient to the nearest wall");
+
+  // The centre is clamped far enough from a corner for the complete aperture
+  // to remain on rendered wall coverage.
+  auto corner = bw::core::FindNearestLegalPortalCentre(
+      arrangement, walls, requested, requested.width,
+      {-48.0f, 44.0f}, 3.0f);
+  require(corner && corner->distanceToSq({-50.0f, 42.0f}) < 0.000001f,
+          "Portal wall snap did not keep its full width on the wall");
+
+  auto tooFar = bw::core::FindNearestLegalPortalCentre(
+      arrangement, walls, requested, requested.width,
+      {-48.0f, 46.0f}, 3.0f);
+  require(!tooFar, "Portal centre snapped beyond the three-unit capture distance");
+
+  auto tooTall = requested;
+  tooTall.top = 1000.0f;
+  auto noVerticalCoverage = bw::core::FindNearestLegalPortalCentre(
+      arrangement, walls, tooTall, tooTall.width,
+      {-48.0f, 10.0f}, 3.0f);
+  require(!noVerticalCoverage,
+          "Portal centre snapped to a wall without complete vertical coverage");
+}
+
 void canonicalRigidTransformPreservesScaleAndWorldUp() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
@@ -343,6 +379,7 @@ int main() {
     layerSelectionIncludesCompletePairsOnly();
     identityAndEndpointStateRoundTripCopyAndAssignment();
     activeAperturesCutWallRenderingCollisionAndExposeFallback();
+    portalCentresSnapOnlyToNearestLegalWallCoverage();
     canonicalRigidTransformPreservesScaleAndWorldUp();
     noPortalWorldKeepsItsKeyedSerializationShapeAndGeometry();
     std::cout << "Portal pair authoring and resolution passed\n";

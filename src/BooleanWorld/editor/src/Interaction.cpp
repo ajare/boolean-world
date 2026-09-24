@@ -609,7 +609,8 @@ bool EditorInteraction::updatePlayerProxy(
 }
 
 void EditorInteraction::updateDrag(
-    Document* doc, Settings const& settings, PointerInput const& input) {
+    Document* doc, Settings const& settings, PointerInput const& input,
+    bw::core::WorldData const* worldData) {
   // Placing a clone is a pointer gesture of its own - see updateSelection.
   if (doc->clonePlacementArmed()) {
     return;
@@ -689,33 +690,54 @@ void EditorInteraction::updateDrag(
         commitUndoableAction(doc);
       }
       mMovingSelectedPortalEndpoint = false;
+      mPortalDragCumulativeDelta = {};
     } else if (input.leftDragging) {
       auto* portalLayer = doc->getWorld()->getLayer(
           doc->getSelectedPortalLayerId());
-      if (portalLayer && portalLayer->getPortalPair(selectedPortalPairId)) {
+      auto const* portalPair =
+          portalLayer ? portalLayer->getPortalPair(selectedPortalPairId)
+                      : nullptr;
+      auto const endpointIndex = doc->getSelectedPortalEndpointIndex();
+      if (portalPair && endpointIndex < 2) {
         if (!mMovingSelectedPortalEndpoint) {
           mMovingSelectedPortalEndpoint = true;
+          mPortalDragStartPosition =
+              portalPair->getEndpoint(endpointIndex).getAperture().centre;
+          mPortalDragCumulativeDelta = {};
           if (!undoableActionInProgress()) {
             beginTransaction(
                 doc, CommandId::MovePortalEndpointGesture, 0.0f);
           }
         }
-        auto movement =
+        mPortalDragCumulativeDelta +=
             wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom;
-        if (settings.showGrid && settings.gridSize > 0.0f) {
-          auto const& endpoint = portalLayer->getPortalPair(selectedPortalPairId)
-                                     ->getEndpoint(
-                                         doc->getSelectedPortalEndpointIndex());
-          auto const current = endpoint.getAperture().centre;
-          auto const target = current + movement;
-          auto const snapped = wp::Vector2{
+        auto target = mPortalDragStartPosition + mPortalDragCumulativeDelta;
+
+        // A rendered wall is the stronger constraint: test the unsnapped drag
+        // target so an enabled grid cannot pull an endpoint out of wall-snap
+        // range. Keeping the raw cumulative drag also lets the endpoint detach
+        // once the pointer moves more than the three-unit capture distance.
+        std::optional<wp::Vector2> wallSnap;
+        if (worldData) {
+          auto const& aperture =
+              portalPair->getEndpoint(endpointIndex).getAperture();
+          auto const otherIndex = 1u - endpointIndex;
+          auto const resolvedWidth = std::min(
+              aperture.width,
+              portalPair->getEndpoint(otherIndex).getAperture().width);
+          wallSnap = bw::core::FindNearestLegalPortalCentre(
+              worldData->getArrangement(), worldData->getWalls(), aperture,
+              resolvedWidth, target, 3.0f);
+        }
+        if (wallSnap) {
+          target = *wallSnap;
+        } else if (settings.showGrid && settings.gridSize > 0.0f) {
+          target = {
               round(target.x / settings.gridSize) * settings.gridSize,
               round(target.y / settings.gridSize) * settings.gridSize};
-          movement = snapped - current;
         }
-        movePortalEndpoint(
-            doc, portalLayer, selectedPortalPairId,
-            doc->getSelectedPortalEndpointIndex(), movement);
+        setPortalEndpointPosition(
+            doc, portalLayer, selectedPortalPairId, endpointIndex, target);
       }
     }
     return;

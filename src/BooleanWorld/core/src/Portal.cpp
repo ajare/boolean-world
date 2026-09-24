@@ -359,6 +359,135 @@ bool AuthoredApertureIsValid(AuthoredAperture const& aperture) {
          aperture.width > 0.0f && aperture.top > aperture.bottom;
 }
 
+std::optional<wp::Vector2> FindNearestLegalPortalCentre(
+    arr::ArrangementResult const& arrangement,
+    std::vector<arr::ArrangementWall> const& walls,
+    AuthoredAperture const& aperture, float resolvedWidth,
+    wp::Vector2 const& target, float maxDistance) {
+  if (!AuthoredApertureIsValid(aperture) ||
+      !std::isfinite(resolvedWidth) || resolvedWidth <= 0.0f ||
+      !std::isfinite(target.x) || !std::isfinite(target.y) ||
+      !std::isfinite(maxDistance) || maxDistance < 0.0f) {
+    return std::nullopt;
+  }
+
+  auto const halfWidth = resolvedWidth * 0.5f;
+  auto const maxDistanceSq = maxDistance * maxDistance;
+  std::optional<wp::Vector2> nearest;
+  auto nearestDistanceSq = std::numeric_limits<float>::infinity();
+
+  // Each rendered wall acts as a representative for its collinear,
+  // consistently oriented coverage. Reconsidering the same line is harmless
+  // and preserves generated wall order as the deterministic tie-break.
+  for (auto const& candidateWall : walls) {
+    if (!candidateWall.visible) continue;
+    auto const candidate =
+        arr::OrientArrangementWall(arrangement, candidateWall);
+    auto const candidateEdge = candidate.v1 - candidate.v0;
+    auto const tangent = normalized(candidateEdge);
+    if (tangent.lengthSq() == 0.0f) continue;
+    if (std::abs(cross(target - candidate.v0, tangent)) >
+        maxDistance + PositionTolerance) {
+      continue;
+    }
+    auto const front = normalized(candidate.normal);
+
+    std::vector<Interval> intervals;
+    for (uint32_t wallIndex = 0; wallIndex < walls.size(); ++wallIndex) {
+      auto const& wall = walls[wallIndex];
+      if (!wall.visible) continue;
+      auto orientation = arr::OrientArrangementWall(arrangement, wall);
+      auto const wallDirection = orientation.v1 - orientation.v0;
+      auto const wallLength = wallDirection.length();
+      if (wallLength <= PositionTolerance) continue;
+      auto const wallTangent = wallDirection / wallLength;
+      if (std::abs(cross(wallTangent, tangent)) > DirectionTolerance ||
+          std::abs(cross(orientation.v0 - candidate.v0, tangent)) >
+              PositionTolerance ||
+          normalized(orientation.normal).dot(front) <
+              1.0f - DirectionTolerance) {
+        continue;
+      }
+
+      auto x0 = (orientation.v0 - candidate.v0).dot(tangent);
+      auto x1 = (orientation.v1 - candidate.v0).dot(tangent);
+      auto bottom0 = orientation.bottomZ[0];
+      auto bottom1 = orientation.bottomZ[1];
+      auto top0 = orientation.topZ[0];
+      auto top1 = orientation.topZ[1];
+      if (x1 < x0) {
+        std::swap(x0, x1);
+        std::swap(bottom0, bottom1);
+        std::swap(top0, top1);
+      }
+
+      auto begin = x0;
+      auto end = x1;
+      auto const span = x1 - x0;
+      if (span <= PositionTolerance) continue;
+      auto const bottomSlope = (bottom1 - bottom0) / span;
+      auto const topSlope = (top1 - top0) / span;
+      auto const bottomOrigin = bottom0 - bottomSlope * x0;
+      auto const topOrigin = top0 - topSlope * x0;
+      if (clipAffineInterval(
+              begin, end, bottomOrigin, bottomSlope, aperture.bottom, true) &&
+          clipAffineInterval(
+              begin, end, topOrigin, topSlope, aperture.top, false) &&
+          end >= begin + PositionTolerance) {
+        intervals.push_back({begin, end, wallIndex});
+      }
+    }
+    if (intervals.empty()) continue;
+
+    std::sort(intervals.begin(), intervals.end(), [](auto const& a, auto const& b) {
+      if (a.begin != b.begin) return a.begin < b.begin;
+      if (a.end != b.end) return a.end < b.end;
+      return a.wallIndex < b.wallIndex;
+    });
+
+    auto considerCoverage = [&](float begin, float end) {
+      if (end - begin < resolvedWidth - PositionTolerance) return;
+      auto legalBegin = begin + halfWidth;
+      auto legalEnd = end - halfWidth;
+      if (legalEnd < legalBegin) {
+        auto const midpoint = (legalBegin + legalEnd) * 0.5f;
+        legalBegin = midpoint;
+        legalEnd = midpoint;
+      }
+      auto const targetX = (target - candidate.v0).dot(tangent);
+      auto const snappedX = std::clamp(targetX, legalBegin, legalEnd);
+      auto const snapped = candidate.v0 + tangent * snappedX;
+      auto const distanceSq = snapped.distanceToSq(target);
+      if (distanceSq <= maxDistanceSq + PositionTolerance &&
+          distanceSq < nearestDistanceSq) {
+        nearest = snapped;
+        nearestDistanceSq = distanceSq;
+      }
+    };
+
+    auto coverageBegin = intervals.front().begin;
+    auto coverageEnd = intervals.front().end;
+    for (size_t index = 1; index < intervals.size(); ++index) {
+      auto const& interval = intervals[index];
+      if (interval.begin <= coverageEnd + PositionTolerance) {
+        coverageEnd = std::max(coverageEnd, interval.end);
+      } else {
+        considerCoverage(coverageBegin, coverageEnd);
+        coverageBegin = interval.begin;
+        coverageEnd = interval.end;
+      }
+    }
+    considerCoverage(coverageBegin, coverageEnd);
+  }
+
+  if (!nearest) return std::nullopt;
+  auto snappedAperture = aperture;
+  snappedAperture.centre = *nearest;
+  auto resolved = resolveEndpoint(
+      arrangement, walls, PortalEndpoint{0, snappedAperture}, resolvedWidth);
+  return resolved.resolved ? nearest : std::nullopt;
+}
+
 std::vector<ResolvedPortalPair> ResolvePortalPairs(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,

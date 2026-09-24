@@ -85,6 +85,8 @@ class EditorInteraction {
   bool mMovingSelectedTriggerLine{false};
   int mMovingSelectedTriggerLinePart{-1};
   bool mMovingSelectedPortalEndpoint{false};
+  wp::Vector2 mPortalDragStartPosition;
+  wp::Vector2 mPortalDragCumulativeDelta;
 
   bool mMovingMeshSelection{false};
   wp::Vector2 mMeshDragCumulativeDelta;
@@ -111,7 +113,8 @@ public:
   void updateDrag(
       Document* doc,
       Settings const& settings,
-      PointerInput const& input);
+      PointerInput const& input,
+      bw::core::WorldData const* worldData = nullptr);
 
   // Handles a right-button gesture that began on the runtime player proxy.
   // Returns true while it owns the gesture, so view navigation can stand down.

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -178,6 +179,17 @@ struct PortalPairSnapshot {
 
 [[nodiscard]] BW_API bool AuthoredApertureIsValid(
     AuthoredAperture const& aperture);
+
+// Finds the nearest centre at which the requested horizontal and vertical
+// aperture is completely covered by collinear rendered walls. The returned
+// point is no farther than maxDistance from target. This uses the same wall
+// visibility, orientation, elevation, and continuity rules as resolution.
+[[nodiscard]] BW_API std::optional<wp::Vector2>
+FindNearestLegalPortalCentre(
+    arr::ArrangementResult const& arrangement,
+    std::vector<arr::ArrangementWall> const& walls,
+    AuthoredAperture const& aperture, float resolvedWidth,
+    wp::Vector2 const& target, float maxDistance);
 
 [[nodiscard]] BW_API std::vector<ResolvedPortalPair> ResolvePortalPairs(
     arr::ArrangementResult const& arrangement,

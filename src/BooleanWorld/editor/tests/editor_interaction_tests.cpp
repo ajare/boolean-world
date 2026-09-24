@@ -1715,6 +1715,50 @@ void primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown() {
   editor::undo(&document);
 }
 
+void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
+  editor::Document document;
+  document.newDoc();
+  addRectangle(document, {0.0f, 0.0f}, 100.0f);
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto const pairId = layer->addPortalPair(
+      {{-40.0f, 0.0f}, 16.0f, 0.0f, 24.0f},
+      {{50.0f, 0.0f}, 16.0f, 0.0f, 24.0f});
+  document.setSelectedPortalEndpoint(layer->getId(), pairId, 0);
+  auto snapshot = document.getWorld()->getWorldData();
+
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Primitive;
+  settings.showGrid = false;
+  editor::EditorInteraction interaction;
+
+  auto drag = pointerAt({500.0f, 500.0f});
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  drag.dragDelta = {-8.0f, 0.0f};
+  interaction.updateDrag(&document, settings, drag, snapshot.get());
+  require(layer->getPortalPair(pairId)
+                  ->getEndpoint(0)
+                  .getAperture()
+                  .centre == wp::Vector2{-50.0f, 0.0f},
+          "a dragged Portal endpoint did not snap to a legal wall within three units");
+
+  // The raw gesture remains cumulative while snapped. Moving four units back
+  // makes the intended position -44, outside the wall's capture distance, so
+  // the endpoint must detach rather than becoming stuck at its snapped centre.
+  drag.dragDelta = {4.0f, 0.0f};
+  interaction.updateDrag(&document, settings, drag, snapshot.get());
+  require(layer->getPortalPair(pairId)
+                  ->getEndpoint(0)
+                  .getAperture()
+                  .centre == wp::Vector2{-44.0f, 0.0f},
+          "a wall-snapped Portal endpoint did not detach from cumulative drag motion");
+
+  auto release = pointerAt({500.0f, 500.0f});
+  release.leftReleased = true;
+  interaction.updateDrag(&document, settings, release, snapshot.get());
+  editor::undo(&document);
+}
+
 void meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive() {
   editor::Document document;
   editor::Settings settings;
@@ -4503,6 +4547,7 @@ int main() {
     draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
     selectedGhostMovesWhileAuthoringAPrefab();
     primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown();
+    portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
     vertexDeletionHealsRingAndRefusesAtMinimumCount();
     edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount();

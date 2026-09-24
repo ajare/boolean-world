@@ -609,6 +609,7 @@ void handleViewNavigation(editor::Document* doc, bool playerProxyDragActive) {
 
 bool handleWorldInteraction(
     editor::Document* doc,
+    bw::core::WorldData const* worldData,
     editor::PointerInput const& input) {
   // View navigation remains a presentation concern; authored-object drag
   // semantics are delegated to the ImGui-free interaction seam below.
@@ -626,7 +627,7 @@ bool handleWorldInteraction(
     return false;
   }
 
-  gEditorInteraction.updateDrag(doc, gEditorSettings, input);
+  gEditorInteraction.updateDrag(doc, gEditorSettings, input, worldData);
   return gEditorInteraction.updatePlayerProxy(doc, input);
 }
 
@@ -751,7 +752,8 @@ void run() {
         if (!io.WantCaptureMouse || tileMapsActive) {
           handleSelections(doc, worldDataPtr, gEditorSettings, pointerInput);
         }
-        auto playerProxyDragActive = handleWorldInteraction(doc, pointerInput);
+        auto playerProxyDragActive =
+            handleWorldInteraction(doc, worldDataPtr, pointerInput);
         handleViewNavigation(doc, playerProxyDragActive);
       }
     }
