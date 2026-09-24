@@ -16,6 +16,8 @@
 
 #include <willpower/common/Logger.h>
 
+#include <core/ZoneId.h>
+
 #include "SecondaryMaterialOptions.h"
 #include "VideoOptions.h"
 #include "SurfaceMaterialResolver.h"
@@ -67,6 +69,7 @@ class WorldRenderer3d {
   std::string mBatchNamePrefix;
 
   float mGlobalTime;
+  bw::core::ZoneId mZone{bw::core::ZoneId::Euclidean};
 
   wp::Logger* mwLogger;
 
@@ -125,6 +128,7 @@ public:
       mpp::ResourcePtr const& texture,
       glm::mat4 const& sourceProjectiveTransform, bool clampNearPlane = false);
 
+  void setZone(bw::core::ZoneId zone) { mZone = zone; }
   void setHighlightedWall(int32_t wall);
   [[nodiscard]] uint64_t geometryUploadCount() const;
 

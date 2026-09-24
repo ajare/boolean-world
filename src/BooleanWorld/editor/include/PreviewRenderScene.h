@@ -20,6 +20,7 @@
 #include <core/Emboss.h>
 #include <core/World.h>
 #include <core/WorldData.h>
+#include <core/ZoneId.h>
 
 #include "PreviewOutlineRenderer.h"
 
@@ -126,7 +127,8 @@ public:
       float frameTime,
       std::vector<PreviewOutline> const& outlines = {},
       std::int32_t horizontalMaterialIndexOverride = -1,
-      std::int32_t wallMaterialIndexOverride = -1);
+      std::int32_t wallMaterialIndexOverride = -1,
+      bw::core::ZoneId zone = bw::core::ZoneId::Euclidean);
 
 private:
   mpp::RenderSystem* mwRenderSystem{};

@@ -461,7 +461,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
   mMaterialIndices.resize(worldBatch->getMaterialMeshCount(), 0);
 
-  auto initializeGlobalUniforms = [](mpp::UniformCollection& uniforms) {
+  auto initializeGlobalUniforms = [this](mpp::UniformCollection& uniforms) {
     uniforms.setUniform("HIGHLIGHTED_WALL", int32_t{-1});
     uniforms.setUniform("PORTAL_VIEW_ENABLED", int32_t{0});
     uniforms.setUniform("PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
@@ -469,6 +469,8 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
     uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
     uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
+    uniforms.setUniform("WALL_BACK_FACE_TREATMENT",
+        static_cast<int32_t>(bw::core::wallBackFaceTreatment(mZone)));
     uniforms.setUniform("LIGHT_POSITION", glm::vec3{});
     uniforms.setUniform(
         "LIQUID_EYE_SURFACE_Z",
@@ -926,6 +928,8 @@ void WorldRenderer3d::update(
     uc->updateUniform("GLOBAL_TIME", mGlobalTime);
     uc->updateUniform("PIXEL_SIZE", pixelSize);
     uc->updateUniform("PLAYER_POSITION", playerPosition);
+    uc->updateUniform("WALL_BACK_FACE_TREATMENT",
+        static_cast<int32_t>(bw::core::wallBackFaceTreatment(mZone)));
     uc->updateUniform("LIGHT_POSITION", lightPosition);
     uc->updateUniform("LIQUID_EYE_SURFACE_Z", liquidEyeSurfaceHeight);
     uc->updateUniform("LIQUID_EXTINCTION", liquidExtinction);

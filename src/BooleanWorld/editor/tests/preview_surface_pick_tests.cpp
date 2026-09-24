@@ -111,6 +111,40 @@ std::shared_ptr<bw::core::ArrangementWorldData> buildData(
       16.0f, nullptr, wedgeSettings);
 }
 
+void wallPickingFollowsZoneAndGlobalVisibility() {
+  using bw::core::ZoneId;
+  for (bool visible : {false, true}) {
+    for (bool collides : {false, true}) {
+      auto room = makeRoom();
+      auto proxy = room->createEditingProxy();
+      for (auto edge = proxy->getFirstEdgeIndex();
+           !proxy->edgeIndexIterationFinished(edge);
+           edge = proxy->getNextEdgeIndex(edge)) {
+        require(proxy->setEdgeVisible(edge, visible) &&
+                    proxy->setEdgeCollisionOverride(edge, collides),
+                "could not author wall fixture");
+      }
+      proxy->commitTo(*room);
+      auto data = buildData({room.get()});
+      for (auto zone : {ZoneId::Euclidean, ZoneId::NegativeSpace}) {
+        auto front = editor::pickPreviewSceneSurface(*data, {0, 0, 10}, {1, 0, 0}, zone);
+        require(front.hit() == visible, "front picking ignored global visibility");
+        auto back = editor::pickPreviewSceneSurface(*data, {10, 0, 10}, {-1, 0, 0}, zone);
+        require(back.hit() == visible, "back picking ignored global visibility");
+        if (visible) {
+          require(near(front.surfaceHit.distance, 5.0f), "front wall omitted");
+          require(near(back.surfaceHit.distance,
+                       zone == ZoneId::Euclidean ? 15.0f : 5.0f),
+                  "wall picking did not omit only the Euclidean back face");
+        }
+      }
+      auto defaultPick = editor::pickPreviewSceneSurface(*data, {10, 0, 10}, {-1, 0, 0});
+      require(!visible || near(defaultPick.surfaceHit.distance, 15.0f),
+              "preview default was not Euclidean");
+    }
+  }
+}
+
 void looksAtTheFloorWhenAimedDown() {
   auto room = makeRoom();
   auto data = buildData({room.get()});
@@ -437,7 +471,8 @@ void outlinesUseTheRenderersReflectedGroundPlane() {
   }
 
   auto wall = editor::pickPreviewSceneSurface(
-      *data, {5.0f, 35.0f, 10.0f}, {1.0f, 0.0f, 0.0f});
+      *data, {5.0f, 35.0f, 10.0f}, {1.0f, 0.0f, 0.0f},
+      bw::core::ZoneId::NegativeSpace);
   auto wallOutline = editor::previewSurfaceOutline(*data, wall);
   require(
       wall.surfaceHit.surface == PreviewSurface::Wall && wallOutline.size() == 8,
@@ -553,7 +588,8 @@ void crossingStepSegmentsPickAndOutlineAsTrianglesWithTheirOwners() {
            Candidate{{-0.5f, 2.0f, 35.0f}, 35.0f, 0, "left.wall"},
            Candidate{{-0.5f, 8.0f, 35.0f}, 35.0f, 1, "right.wall"}}) {
     auto pick = editor::pickPreviewSceneSurface(
-        data, candidate.origin, {1.0f, 0.0f, 0.0f});
+        data, candidate.origin, {1.0f, 0.0f, 0.0f},
+        bw::core::ZoneId::NegativeSpace);
     auto owner = editor::resolvePreviewSurfaceOwner(data, pick);
     require(pick.surfaceHit.surface == PreviewSurface::Wall &&
                 near(pick.surfaceHit.distance, 0.5f),
@@ -601,6 +637,7 @@ void unpickedSurfacesResolveToNothing() {
 
 int main() {
   try {
+    wallPickingFollowsZoneAndGlobalVisibility();
     looksAtTheFloorWhenAimedDown();
     looksAtTheCeilingWhenAimedUp();
     looksAtTheWallAheadRatherThanTheOneBehind();

@@ -72,6 +72,10 @@ struct RenderFixture {
   bool manyPortalEndpoints{};
   // 0 uses the built-in material; 1 and 2 use identical RGB with alpha 0/1.
   int triplanarAlphaVariant{};
+  bw::core::ZoneId zone{bw::core::ZoneId::Euclidean};
+  bool bundledNormal{};
+  bool wallsVisible{true};
+  bool wallCollides{true};
 };
 
 struct ResourceCounts {
@@ -117,9 +121,10 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   auto* primitive = bw::core::MeshPrimitive::fromTree(
       bw::core::Primitive::Operation::Union, {{{ring, {}}}});
 
-  if (fixture.map != MapFixture::Unset || fixture.wallMask) {
+  if (fixture.map != MapFixture::Unset || fixture.wallMask ||
+      !fixture.wallsVisible || !fixture.wallCollides) {
     auto proxy = primitive->createEditingProxy();
-    auto normalImageReference = fixture.triplanar
+    auto normalImageReference = (fixture.triplanar || fixture.bundledNormal)
                                     ? "World/TriplanarCompositionNormal"
                                     : kDirectionalNormal;
     auto maskImageReference = fixture.wallMask
@@ -129,6 +134,8 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     for (auto edge = proxy->getFirstEdgeIndex();
          !proxy->edgeIndexIterationFinished(edge);
          edge = proxy->getNextEdgeIndex(edge), ++ordinal) {
+      proxy->setEdgeVisible(edge, fixture.wallsVisible);
+      proxy->setEdgeCollisionOverride(edge, fixture.wallCollides);
       if (fixture.map != MapFixture::Unset) {
         auto image = bw::core::WallNormalMapOverride::image(
             normalImageReference,
@@ -369,7 +376,8 @@ std::vector<float> render(
     editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture,
     std::array<uint32_t, 3>* surfaceTriangles = nullptr,
     uint32_t* portalPasses = nullptr,
-    uint32_t* selectedPortalEndpoints = nullptr) {
+    uint32_t* selectedPortalEndpoints = nullptr,
+    std::vector<float>* switchedZoneImage = nullptr) {
   std::string dependencyError;
   auto triplanarDependency = fixture.continuityJunction
                                  ? "World/TriplanarWallContinuityDiagnostic"
@@ -384,7 +392,7 @@ std::vector<float> render(
   if (fixture.wallMask) {
     dependencies.emplace_back("World/OreMask");
   }
-  if (fixture.triplanar && fixture.map != MapFixture::Unset) {
+  if ((fixture.triplanar || fixture.bundledNormal) && fixture.map != MapFixture::Unset) {
     dependencies.emplace_back("World/TriplanarCompositionNormal");
   } else if (fixture.map == MapFixture::Image ||
              fixture.map == MapFixture::MixedSharedImage) {
@@ -419,7 +427,12 @@ std::vector<float> render(
   for (int frame = 0; frame < 3; ++frame) {
     texture = scene.render(
         &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f, {},
-        -1, fixture.debugWallTechnique);
+        -1, fixture.debugWallTechnique,
+        frame == 1 ? (fixture.zone == bw::core::ZoneId::Euclidean
+                          ? bw::core::ZoneId::NegativeSpace
+                          : bw::core::ZoneId::Euclidean)
+                   : fixture.zone);
+    if (frame == 1 && switchedZoneImage) *switchedZoneImage = readColour(texture);
     if (frame == 0) wallCounters = scene.wallGeometryCounters();
     else if (scene.wallGeometryCounters() != wallCounters)
       throw std::runtime_error("unchanged snapshot rebuilt or uploaded wall geometry");
@@ -563,13 +576,54 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
 }
 
 void immutableWallsRenderBothSides(editor::EditorRenderSystem& renderSystem) {
-  auto back = render(renderSystem, {.lookAtWallBack = true});
-  auto texturedBack = render(renderSystem, {.lookAtWallBack = true, .triplanar = true});
+  using bw::core::ZoneId;
+  std::vector<float> switchedZoneImage;
+  auto back = render(renderSystem, {.lookAtWallBack = true, .zone = ZoneId::NegativeSpace},
+                     nullptr, nullptr, nullptr, &switchedZoneImage);
+  auto texturedBack = render(renderSystem, {.lookAtWallBack = true, .triplanar = true,
+      .zone = ZoneId::NegativeSpace});
   auto decoratedBack = render(renderSystem,
-      {.emboss = true, .wallMask = true, .lookAtWallBack = true});
+      {.emboss = true, .wallMask = true, .lookAtWallBack = true,
+       .zone = ZoneId::NegativeSpace});
   auto mappedBack = render(renderSystem,
-      {.map = MapFixture::Image, .lookAtWallBack = true, .triplanar = true});
-  auto wetBack = render(renderSystem, {.lookAtWallBack = true, .wet = true});
+      {.map = MapFixture::Image, .lookAtWallBack = true, .triplanar = true,
+       .zone = ZoneId::NegativeSpace});
+  auto wetBack = render(renderSystem, {.lookAtWallBack = true, .wet = true,
+      .zone = ZoneId::NegativeSpace});
+  auto omitted = render(renderSystem, {.lookAtWallBack = true});
+  require(regionDifference(switchedZoneImage, omitted) < 0.0005,
+          "runtime Zone change did not affect the very next frame");
+  require(regionDifference(back, omitted) > 0.001,
+          "Euclidean did not omit the Negative Space white wall back");
+  for (auto fixture : {RenderFixture{}, RenderFixture{.map = MapFixture::Image, .bundledNormal = true},
+                       RenderFixture{.wallMask = true}, RenderFixture{.triplanar = true},
+                       RenderFixture{.emboss = true}}) {
+    auto front = render(renderSystem, fixture);
+    fixture.zone = ZoneId::NegativeSpace;
+    require(regionDifference(front, render(renderSystem, fixture)) < 0.0005,
+            "Zone changed authored wall front treatment");
+    fixture.lookAtWallBack = true;
+    require(regionDifference(back, render(renderSystem, fixture)) < 0.0005,
+            "authored treatment leaked into Negative Space white back");
+    fixture.zone = ZoneId::Euclidean;
+    require(regionDifference(omitted, render(renderSystem, fixture)) < 0.0005,
+            "authored treatment changed Euclidean wall omission");
+  }
+  for (auto zone : {ZoneId::Euclidean, ZoneId::NegativeSpace}) {
+    for (bool reverse : {false, true}) {
+      RenderFixture fixture{.lookAtWallBack = reverse, .zone = zone};
+      auto ordinary = render(renderSystem, fixture);
+      fixture.wallCollides = false;
+      require(regionDifference(ordinary, render(renderSystem, fixture)) < 0.0005,
+              "non-colliding wall changed Zone rendering");
+      fixture.wallsVisible = false;
+      auto hidden = render(renderSystem, fixture);
+      fixture.zone = zone == ZoneId::Euclidean ? ZoneId::NegativeSpace : ZoneId::Euclidean;
+      require(regionDifference(hidden, render(renderSystem, fixture)) < 0.0005 &&
+                  regionDifference(hidden, ordinary) > 0.001,
+              "globally hidden walls remained visible or changed with Zone");
+    }
+  }
   require(regionDifference(back, wetBack) < 0.0005,
           "dry reverse wall used the wet front's Liquid height");
   require(centreRegionEnergy(back) > 0.01, "immutable wall back rendered black");
@@ -590,11 +644,13 @@ void immutableWallsRenderBothSides(editor::EditorRenderSystem& renderSystem) {
   bw::core::World world(1.0f, -1.0f);
   auto data = buildWorldData(world, {.portal = true, .manyPortalEndpoints = true});
   editor::PreviewRenderScene scene(renderSystem, &world, kWidth, kHeight);
-  auto draw = [&](glm::vec3 position, float yaw) {
+  auto draw = [&](glm::vec3 position, float yaw,
+                  ZoneId zone = ZoneId::Euclidean) {
     auto camera = std::make_shared<ReactiveCamera>(position, bw::app::cameraYaw(yaw),
         0.0f, BW_PLAYER_FOV, kWidth / float(kHeight));
     camera->setClipDistances(0.1f, 1000000.0f);
-    require(scene.render(&world, *data, camera, position, 1.0f / 60.0f) != 0,
+    require(scene.render(&world, *data, camera, position, 1.0f / 60.0f,
+                         {}, -1, -1, zone) != 0,
             "immutable wall scene produced no image");
   };
   draw({0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f}, 0.0f);
@@ -604,7 +660,7 @@ void immutableWallsRenderBothSides(editor::EditorRenderSystem& renderSystem) {
   auto triangles = scene.worldSurfaceTriangleCount(WorldSurfaceSet::Walls);
   for (int frame = 0; frame < 16; ++frame) {
     draw({float(frame - 8), BW_PLAYER_EYE_HEIGHT, frame % 2 ? -32.0f : 0.0f},
-         float(frame * 90));
+         float(frame * 90), frame % 2 ? ZoneId::NegativeSpace : ZoneId::Euclidean);
     require(scene.wallGeometryCounters() == baseline,
             "camera movement/Portal visibility changed immutable wall buffers");
   }

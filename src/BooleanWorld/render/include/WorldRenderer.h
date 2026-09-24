@@ -152,6 +152,12 @@ public:
 
   virtual ~WorldRenderer();
 
+  // Runtime view state only: never invalidates prepared data or mesh buckets.
+  void setZone(bw::core::ZoneId zone) {
+    for (auto const& material : mMaterialRenderers)
+      material.renderer->setZone(zone);
+  }
+
   void setWorldChanged();
 
   struct WallGeometryDiagnostics {

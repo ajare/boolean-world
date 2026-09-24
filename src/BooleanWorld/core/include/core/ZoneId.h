@@ -12,6 +12,17 @@ enum class ZoneId : uint32_t {
   NegativeSpace = 2,
 };
 
+// Runtime wall-face strategy; geometry and shadow participation are unchanged.
+enum class WallBackFaceTreatment : int32_t { Omitted = 0, MatteWhite = 1 };
+
+constexpr WallBackFaceTreatment wallBackFaceTreatment(ZoneId id) {
+  switch (id) {
+    case ZoneId::Euclidean: return WallBackFaceTreatment::Omitted;
+    case ZoneId::NegativeSpace: return WallBackFaceTreatment::MatteWhite;
+  }
+  return WallBackFaceTreatment::Omitted;
+}
+
 constexpr bool isKnownZone(ZoneId id) {
   return id == ZoneId::Euclidean || id == ZoneId::NegativeSpace;
 }

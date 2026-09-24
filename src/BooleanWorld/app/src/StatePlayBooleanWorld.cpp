@@ -1552,6 +1552,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
     mwRenderSystem->configureShadowDomain(domainName, desiredOptions);
   }
   mPlayerTorchShadowRequestedEnabled = desiredOptions.enabled;
+  mwRenderer->setZone(mPlayerZone.current());
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       mDebugDisplay.playerTorch, mDebugDisplay.liquidOpacityOverride,

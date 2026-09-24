@@ -16,6 +16,7 @@ layout(depth_greater) out float gl_FragDepth;
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
 @@Uniform(vec3 PLAYER_POSITION);
+@@Uniform(int WALL_BACK_FACE_TREATMENT);
 @@Uniform(vec3 LIGHT_POSITION);
 @@Uniform(float LIQUID_EYE_SURFACE_Z);
 @@Uniform(vec3 LIQUID_EXTINCTION);
@@ -3715,7 +3716,10 @@ void main()
 
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
+    // Classify before any normal-map, material, or Emboss perturbation,
+    // using this pass's camera (also correct for secondary views).
     bool wallBackFace = wallData.x > 0.0 && dot(shadingNormal, viewDir) < 0.0;
+    if (wallBackFace && @Uniform(WALL_BACK_FACE_TREATMENT) == 0) discard;
     bool liquidBackSide = wallData.x != 0.0 &&
         dot(wallData.x > 0.0 ? shadingNormal : normalize(@In(SURFACE_UP)), viewDir) < 0.0;
     float receiverLiquidHeight = liquidBackSide ? wallData.y : liquidSurfaceHeight;

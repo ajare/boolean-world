@@ -114,7 +114,8 @@ uint32_t wallFace(
 PreviewScenePick pickPreviewSceneSurface(
     bw::core::ArrangementWorldData const& worldData,
     std::array<float, 3> const& rayOrigin,
-    std::array<float, 3> const& rayDirection) {
+    std::array<float, 3> const& rayDirection,
+    bw::core::ZoneId zone) {
   PreviewScenePick nearest;
   auto length = std::sqrt(dot(rayDirection, rayDirection));
   if (!(length > 0.0f)) {
@@ -150,6 +151,13 @@ PreviewScenePick pickPreviewSceneSurface(
   for (size_t index = 0; index < walls.size(); ++index) {
     auto const& wall = walls[index];
     if (!wall.visible) {
+      continue;
+    }
+    auto orientation = bw::core::arr::OrientArrangementWall(arrangement, wall);
+    if (bw::core::wallBackFaceTreatment(zone) ==
+            bw::core::WallBackFaceTreatment::Omitted &&
+        orientation.normal.x * direction[0] +
+            orientation.normal.y * direction[1] > 0.0f) {
       continue;
     }
     auto surface =

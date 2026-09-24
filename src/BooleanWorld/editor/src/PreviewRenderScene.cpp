@@ -217,7 +217,8 @@ std::uint32_t PreviewRenderScene::render(
     float frameTime,
     std::vector<PreviewOutline> const& outlines,
     std::int32_t horizontalMaterialIndexOverride,
-    std::int32_t wallMaterialIndexOverride) {
+    std::int32_t wallMaterialIndexOverride,
+    bw::core::ZoneId zone) {
   // The Player proxy is represented by the preview camera. Keep the Torch at
   // that eye position, as the game does, and use the shared release defaults
   // (range, near plane, biases, PCF filtering, and fade semantics).
@@ -227,6 +228,7 @@ std::uint32_t PreviewRenderScene::render(
 
   // No highlighted triangle or wall: the preview marks the surface under the
   // pointer by outlining it below, not by tinting the material.
+  mRenderer->setZone(zone);
   mRenderer->update(
       world, worldData, cameraPosition, cameraPosition,
       bw::app::PlayerTorchOptions{}, std::nullopt, std::nullopt, std::nullopt,
