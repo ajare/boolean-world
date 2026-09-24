@@ -306,20 +306,28 @@ void WindowSDL::warpCapturedMouseToCenter() {
 }
 
 void WindowSDL::captureMouse() {
-  // Relative mode supplies unbounded motion directly. Some Linux X11
-  // installations lack XInput2 and reject it; centre warping under a window
-  // grab provides the same infinite mouse-look semantics there.
-  if (SDL_SetWindowRelativeMouseMode(mWindow, true)) {
+  // Relative mode supplies unbounded motion, while an explicit grab ensures
+  // the platform confines the pointer to this window. SDL documents relative
+  // mode as doing both, but its X11 backend can enable relative events without
+  // establishing confinement.
+  auto const relativeModeEnabled =
+      SDL_SetWindowRelativeMouseMode(mWindow, true);
+  auto const relativeError =
+      relativeModeEnabled ? string{} : string(SDL_GetError());
+
+  if (!SDL_SetWindowMouseGrab(mWindow, true)) {
+    throw runtime_error(format(
+        "Could not capture mouse (relative mode: {}; grab: {})",
+        relativeModeEnabled ? "enabled" : relativeError, SDL_GetError()));
+  }
+
+  if (relativeModeEnabled) {
     mWarpMouseCapture = false;
     return;
   }
 
-  auto const relativeError = string(SDL_GetError());
-  if (!SDL_SetWindowMouseGrab(mWindow, true)) {
-    throw runtime_error(format(
-        "Could not capture mouse (relative mode: {}; grab: {})",
-        relativeError, SDL_GetError()));
-  }
+  // Some Linux X11 installations lack XInput2 and reject relative mode;
+  // centre warping under the grab preserves infinite mouse-look there.
   gLogger->warn(format(
       "Relative mouse mode unavailable ({}); using centre-warp fallback",
       relativeError));
@@ -337,7 +345,7 @@ void WindowSDL::showCursor(bool show) {
       gLogger->warn(
           format("Could not disable relative mouse mode: {}", SDL_GetError()));
     }
-    if (mWarpMouseCapture && !SDL_SetWindowMouseGrab(mWindow, false)) {
+    if (!SDL_SetWindowMouseGrab(mWindow, false)) {
       gLogger->warn(
           format("Could not release mouse grab: {}", SDL_GetError()));
     }

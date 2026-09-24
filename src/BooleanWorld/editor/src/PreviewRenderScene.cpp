@@ -48,6 +48,13 @@ mpp::RenderPipelineOptions pipelineOptions(
 
   options.ambientOcclusion.method = mpp::AmbientOcclusionMethod::Gtao;
   options.ambientOcclusion.gtao.normalSource = mpp::GTAONormalSource::Depth;
+  // Match gameplay's fixed shader output locations and AO modulation.
+  // Unlit Negative Space backs write zero retention to remain pure white.
+  options.sceneExtraOutputs = {
+      {"BLOOM_MASK", mpp::GraphImageFormat::R8},
+      {"SHADING_NORMAL", mpp::GraphImageFormat::R8},
+      {"LIQUID_RETENTION", mpp::GraphImageFormat::R8}};
+  options.ambientOcclusion.modulationInput = "SceneExtra.LIQUID_RETENTION";
   // This render system is separate from Launcher’s, but its single preview
   // pipeline joins the same Player Torch domain contract.
   bw::app::joinPlayerTorchShadowDomain(options);

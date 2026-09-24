@@ -3564,6 +3564,17 @@ void main()
     if (geometricBackFace && omittedBack && !liquidInterface) discard;
     bool surfaceBackFace = geometricBackFace && !omittedBack;
 
+    // Negative Space backs are display white, not a lit white material.
+    // Zero retention also exempts them from the later AO composite.
+    if (surfaceBackFace)
+    {
+        @Out(COLOUR) = vec4(1.0);
+        @Out(BLOOM_MASK) = vec4(0.0);
+        @Out(SHADING_NORMAL) = vec2(0.0);
+        @Out(LIQUID_RETENTION) = 0.0;
+        return;
+    }
+
     if (bucketMaterialIndex < 0 && !surfaceBackFace)
     {
         @Out(COLOUR) = vec4(1.0, 0.0, 1.0, 1.0);

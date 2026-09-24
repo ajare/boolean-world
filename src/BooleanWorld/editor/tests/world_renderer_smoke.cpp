@@ -958,6 +958,14 @@ void immutableWallsRenderBothSides(editor::EditorRenderSystem& renderSystem) {
   std::vector<float> switchedZoneImage;
   auto back = render(renderSystem, {.lookAtWallBack = true, .zone = ZoneId::NegativeSpace},
                      nullptr, nullptr, nullptr, &switchedZoneImage);
+  for (int y = kHeight / 4; y < 3 * kHeight / 4; ++y) {
+    for (int x = kWidth / 4; x < 3 * kWidth / 4; ++x) {
+      auto offset = (size_t(y) * kWidth + x) * 4;
+      for (int channel = 0; channel < 3; ++channel)
+        require(back[offset + channel] >= 0.999f,
+                "Negative Space back is not pure white after shadows and AO");
+    }
+  }
   auto texturedBack = render(renderSystem, {.lookAtWallBack = true, .triplanar = true,
       .zone = ZoneId::NegativeSpace});
   auto decoratedBack = render(renderSystem,

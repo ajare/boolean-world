@@ -159,6 +159,13 @@ int main() {
             result = 1;
             break;
           }
+          auto brightness = averageBrightness(
+              texture, editor::SubMaterialThumbnailRenderer::size);
+          if (brightness < 0.005f) {
+            std::printf("FAILED: black thumbnail for %s (brightness=%.4f)\n",
+                        material.id.c_str(), brightness);
+            result = 1;
+          }
           ++rendered;
         }
       }
