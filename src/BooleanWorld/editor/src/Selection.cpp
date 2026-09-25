@@ -79,10 +79,10 @@ void Selection::revalidateSelection() {
   }
   if (mSelectedPortalLoopId != ~0u) {
     auto const* layer = world->getLayer(mSelectedPortalLayerId);
-    auto const* pair = layer
+    auto const* portalLoop = layer
                            ? layer->getPortalLoop(mSelectedPortalLoopId)
                            : nullptr;
-    if (!pair || !pair->findEndpoint(mSelectedPortalEndpointId)) {
+    if (!portalLoop || !portalLoop->findEndpoint(mSelectedPortalEndpointId)) {
       mSelectedPortalLayerId = ~0u;
       mSelectedPortalLoopId = ~0u;
       mSelectedPortalEndpointId = ~0u;

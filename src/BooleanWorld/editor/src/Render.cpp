@@ -307,14 +307,14 @@ void renderPortalOverlays(
   constexpr ImU32 resolvedColour = IM_COL32(70, 225, 245, 255);
   constexpr ImU32 inactiveColour = IM_COL32(255, 70, 65, 255);
 
-  for (auto const& pair : layer->getPortalLoops()) {
+  for (auto const& portalLoop : layer->getPortalLoops()) {
     auto const* generated =
-        worldData.findPortalLoop(layer->getId(), pair.getId());
-    for (auto endpointId : pair.getTraversalOrder()) {
+        worldData.findPortalLoop(layer->getId(), portalLoop.getId());
+    for (auto endpointId : portalLoop.getTraversalOrder()) {
       auto const& authored =
-          pair.findEndpoint(endpointId)->getAperture();
+          portalLoop.findEndpoint(endpointId)->getAperture();
       auto const* destination =
-          pair.findEndpoint(pair.getNextEndpointId(endpointId));
+          portalLoop.findEndpoint(portalLoop.getNextEndpointId(endpointId));
       auto sourceScreen = worldToScreen(authored.centre);
       auto destinationScreen =
           worldToScreen(destination->getAperture().centre);
@@ -338,14 +338,14 @@ void renderPortalOverlays(
       }
       auto const* endpoint = generated
                                  ? worldData.findPortalEndpoint(
-                                       layer->getId(), pair.getId(), endpointId)
+                                       layer->getId(), portalLoop.getId(), endpointId)
                                  : nullptr;
       auto tangent = endpoint && endpoint->resolved
                          ? endpoint->aperture.tangent
                          : wp::Vector2{1.0f, 0.0f};
       auto const selected =
           doc->getSelectedPortalLayerId() == layer->getId() &&
-          doc->getSelectedPortalLoopId() == pair.getId() &&
+          doc->getSelectedPortalLoopId() == portalLoop.getId() &&
           doc->getSelectedPortalEndpointId() == endpointId;
       auto const authoredHalf = tangent * (authored.width * 0.5f);
       drawList->AddLine(
@@ -384,7 +384,7 @@ void renderPortalOverlays(
         char label[256];
         std::snprintf(
             label, sizeof(label), "Portal %u.%u [%.1f, %.1f]  %.*s",
-            pair.getId(), endpointId, authored.bottom, authored.top,
+            portalLoop.getId(), endpointId, authored.bottom, authored.top,
             static_cast<int>(diagnostic.size()), diagnostic.data());
         drawList->AddText(
             {centre.x + 9.0f, centre.y + 7.0f},

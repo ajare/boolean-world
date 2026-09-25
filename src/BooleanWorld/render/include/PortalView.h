@@ -35,7 +35,7 @@ struct SelectedPortalView {
 // Coverage, distance, and stable authored identity are deterministic ordering
 // keys, in that order. Multi-view planning below uses the same evaluation.
 [[nodiscard]] std::optional<SelectedPortalView> SelectPortalView(
-    std::span<bw::core::ResolvedPortalLoop const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> loops,
     glm::mat4 const& viewProjection,
     glm::vec3 const& cameraPosition);
 
@@ -142,7 +142,7 @@ public:
   explicit PortalViewPlanner(PortalViewLimits limits = {});
 
   [[nodiscard]] PortalViewPlan build(
-      std::span<bw::core::ResolvedPortalLoop const> pairs,
+      std::span<bw::core::ResolvedPortalLoop const> loops,
       glm::mat4 const& primaryView,
       glm::mat4 const& primaryProjection,
       float nearDistance,

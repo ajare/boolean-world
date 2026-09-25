@@ -135,8 +135,8 @@ struct ResolvedPortalLoop {
   uint32_t loopId{};
   bool active{false};
   PortalResolutionDiagnostic diagnostic{PortalResolutionDiagnostic::None};
-  std::vector<ResolvedPortalEndpoint> endpoints{2};
-  std::vector<uint32_t> traversalOrder{0, 1};
+  std::vector<ResolvedPortalEndpoint> endpoints;
+  std::vector<uint32_t> traversalOrder;
 };
 
 // Canonical directed routing seam. Order contains stable endpoint IDs, not
@@ -145,9 +145,9 @@ struct ResolvedPortalLoop {
     std::span<uint32_t const> order, uint32_t sourceId);
 // Stable-identity lookup used by every generated Portal consumer.
 [[nodiscard]] BW_API ResolvedPortalEndpoint const* FindPortalEndpoint(
-    ResolvedPortalLoop const& pair, uint32_t endpointId);
+    ResolvedPortalLoop const& portalLoop, uint32_t endpointId);
 [[nodiscard]] BW_API ResolvedPortalEndpoint const* NextPortalEndpoint(
-    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId);
+    ResolvedPortalLoop const& portalLoop, uint32_t sourceEndpointId);
 
 // A generated directed next-endpoint hop between incident Hydraulic cells,
 // distinct from ordinary shared-edge Hydraulic links and wall collision.
@@ -198,7 +198,7 @@ struct PortalRigidTransform {
 };
 
 [[nodiscard]] BW_API PortalRigidTransform BuildPortalRigidTransform(
-    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId);
+    ResolvedPortalLoop const& portalLoop, uint32_t sourceEndpointId);
 
 // A value-only copy made on the generation-requesting thread. It is safe to
 // carry to the asynchronous arrangement worker with the other generation
@@ -225,7 +225,7 @@ FindNearestLegalPortalCentre(
 [[nodiscard]] BW_API std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
-    std::vector<PortalLoopSnapshot> const& pairs);
+    std::vector<PortalLoopSnapshot> const& loops);
 
 // Resolves active apertures onto their incident Hydraulic cells, then accepts
 // Portal loops in stable (Layer id, loop id) order. Ordinary links participate
@@ -236,6 +236,6 @@ BuildPortalLiquidAdjacency(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
     std::vector<arr::HydraulicCell> const& cells,
-    std::vector<ResolvedPortalLoop> const& pairs);
+    std::vector<ResolvedPortalLoop> const& loops);
 
 }  // namespace bw::core

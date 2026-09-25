@@ -66,19 +66,19 @@ float attenuation(
 }
 
 PortalLightEndpointKey endpointKey(
-    bw::core::ResolvedPortalLoop const& pair, uint32_t endpointId) {
-  return {pair.layerId, pair.loopId, endpointId};
+    bw::core::ResolvedPortalLoop const& portalLoop, uint32_t endpointId) {
+  return {portalLoop.layerId, portalLoop.loopId, endpointId};
 }
 
 std::optional<PortalLightPathHop> buildHop(
-    bw::core::ResolvedPortalLoop const& pair,
+    bw::core::ResolvedPortalLoop const& portalLoop,
     uint32_t sourceEndpointId,
     glm::vec3 const& inputLightPosition) {
-  if (!pair.active) return std::nullopt;
+  if (!portalLoop.active) return std::nullopt;
   auto const* sourceEndpoint =
-      bw::core::FindPortalEndpoint(pair, sourceEndpointId);
+      bw::core::FindPortalEndpoint(portalLoop, sourceEndpointId);
   auto const* destinationEndpoint =
-      bw::core::NextPortalEndpoint(pair, sourceEndpointId);
+      bw::core::NextPortalEndpoint(portalLoop, sourceEndpointId);
   if (!sourceEndpoint || !destinationEndpoint) return std::nullopt;
   auto const& source = *sourceEndpoint;
   auto const& destination = *destinationEndpoint;
@@ -91,12 +91,12 @@ std::optional<PortalLightPathHop> buildHop(
   }
 
   auto const transform = bw::core::BuildPortalRigidTransform(
-      pair, source.endpointId);
+      portalLoop, source.endpointId);
   auto const virtualPlane = transform.transformPoint(lightPlane);
 
   PortalLightPathHop hop;
-  hop.sourceEndpoint = endpointKey(pair, source.endpointId);
-  hop.destinationEndpoint = endpointKey(pair, destination.endpointId);
+  hop.sourceEndpoint = endpointKey(portalLoop, source.endpointId);
+  hop.destinationEndpoint = endpointKey(portalLoop, destination.endpointId);
   hop.virtualLightPosition = rendererPosition(
       virtualPlane, transform.transformElevation(inputLightPosition.y));
   hop.sourceApertureCentre =
@@ -299,12 +299,12 @@ uint32_t PortalLightPlan::count(
 }
 
 std::optional<PortalLightAttachment> BuildPortalLightAttachment(
-    bw::core::ResolvedPortalLoop const& pair,
+    bw::core::ResolvedPortalLoop const& portalLoop,
     uint32_t sourceEndpointId,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch) {
   if (!validOptions(playerTorch)) return std::nullopt;
-  auto hop = buildHop(pair, sourceEndpointId, playerTorchPosition);
+  auto hop = buildHop(portalLoop, sourceEndpointId, playerTorchPosition);
   if (!hop) return std::nullopt;
 
   auto sourceCentre = glm::vec3{
@@ -333,7 +333,7 @@ std::optional<PortalLightAttachment> BuildPortalLightAttachment(
 }
 
 PortalLightPlan PlanPortalLights(
-    std::span<bw::core::ResolvedPortalLoop const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> loops,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch,
     PortalLightLimits limits) {
@@ -350,9 +350,9 @@ PortalLightPlan PlanPortalLights(
     PortalLightEndpointKey key{};
   };
   std::vector<Endpoint> endpoints;
-  for (auto const& pair : pairs) {
-    for (auto const& source : pair.endpoints) {
-      endpoints.push_back({&pair, endpointKey(pair, source.endpointId)});
+  for (auto const& portalLoop : loops) {
+    for (auto const& source : portalLoop.endpoints) {
+      endpoints.push_back({&portalLoop, endpointKey(portalLoop, source.endpointId)});
     }
   }
   std::ranges::sort(endpoints, {}, &Endpoint::key);

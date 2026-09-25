@@ -88,7 +88,7 @@ class BW_API ArrangementWorldData {
   // It never mutates either authored Portal data or the wall collection.
   std::vector<ResolvedPortalLoop> mPortalLoops;
   // Kept separate from ordinary shared-edge Hydraulic links and collision.
-  // Conflicting offset cycles omit the offending pair from adjacency and
+  // Conflicting offset cycles omit the offending loop from adjacency and
   // retain a stable diagnostic here instead.
   std::vector<PortalLiquidAdjacency> mPortalLiquidAdjacency;
   std::vector<PortalLiquidAdjacencyDiagnostic> mPortalLiquidDiagnostics;
@@ -219,7 +219,7 @@ public:
       float radius) const;
 
   // Splits one colliding wall around all active resolved horizontal aperture
-  // spans. Inactive pairs leave the wall intact. Vertical eligibility remains
+  // spans. Inactive loops leave the wall intact. Vertical eligibility remains
   // the swept Portal traversal's responsibility, so an ineligible crossing
   // resolves against the special aperture collision span instead.
   [[nodiscard]] std::vector<WallCollisionSegment> getWallCollisionSegments(

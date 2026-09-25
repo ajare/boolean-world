@@ -140,7 +140,7 @@ struct CandidateEvaluation {
 };
 
 std::vector<CandidateEvaluation> evaluateCandidates(
-    std::span<bw::core::ResolvedPortalLoop const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> loops,
     glm::mat4 const& viewProjection,
     glm::vec3 const& position,
     uint32_t recursionDepth,
@@ -149,14 +149,14 @@ std::vector<CandidateEvaluation> evaluateCandidates(
   std::vector<CandidateEvaluation> result;
   auto cameraWorldPlane = wp::Vector2{position.x, -position.z};
 
-  for (auto const& pair : pairs) {
-    for (auto const& endpoint : pair.endpoints) {
-      PortalEndpointKey key{pair.layerId, pair.loopId, endpoint.endpointId};
+  for (auto const& portalLoop : loops) {
+    for (auto const& endpoint : portalLoop.endpoints) {
+      PortalEndpointKey key{portalLoop.layerId, portalLoop.loopId, endpoint.endpointId};
       PortalViewDiagnostic diagnostic;
       diagnostic.endpoint = key;
       diagnostic.recursionDepth = recursionDepth;
 
-      if (!pair.active || !endpoint.resolved) {
+      if (!portalLoop.active || !endpoint.resolved) {
         diagnostic.cutoff = PortalViewCutoffReason::Inactive;
         result.push_back({std::nullopt, diagnostic});
         continue;
@@ -215,7 +215,7 @@ std::vector<CandidateEvaluation> evaluateCandidates(
       }
       diagnostic.cameraDistance = distance;
       result.push_back({SelectedPortalView{
-                            key, &pair, projected.area, distance},
+                            key, &portalLoop, projected.area, distance},
                         diagnostic});
     }
   }
@@ -263,11 +263,11 @@ CameraStateKey cameraStateKey(
 }  // namespace
 
 std::optional<SelectedPortalView> SelectPortalView(
-    std::span<bw::core::ResolvedPortalLoop const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> loops,
     glm::mat4 const& viewProjection,
     glm::vec3 const& cameraPositionValue) {
   auto evaluated = evaluateCandidates(
-      pairs, viewProjection, cameraPositionValue, 1, 1e-8f, {});
+      loops, viewProjection, cameraPositionValue, 1, 1e-8f, {});
   std::vector<SelectedPortalView> candidates;
   for (auto const& item : evaluated) {
     if (item.selected) candidates.push_back(*item.selected);
@@ -378,7 +378,7 @@ void PortalViewPlanner::resetHistory() {
 }
 
 PortalViewPlan PortalViewPlanner::build(
-    std::span<bw::core::ResolvedPortalLoop const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> loops,
     glm::mat4 const& primaryView,
     glm::mat4 const& primaryProjection,
     float nearDistance,
@@ -426,7 +426,7 @@ PortalViewPlan PortalViewPlanner::build(
                uint32_t parentDepth,
                BranchPath const& parentPath) {
     auto evaluations = evaluateCandidates(
-        pairs, visibilityViewProjection, observingPosition, parentDepth + 1,
+        loops, visibilityViewProjection, observingPosition, parentDepth + 1,
         mLimits.minimumProjectedCoverage, occluded);
 
     struct Eligible {

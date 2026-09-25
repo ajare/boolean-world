@@ -1603,7 +1603,7 @@ uint32_t Layer::addPortalLoop(
 void Layer::removePortalLoop(uint32_t loopId) {
   auto found = find_if(
       mPortalLoops.begin(), mPortalLoops.end(),
-      [loopId](auto const& pair) { return pair.getId() == loopId; });
+      [loopId](auto const& portalLoop) { return portalLoop.getId() == loopId; });
   if (found == mPortalLoops.end()) {
     throw CoreException(format("Portal loop {} not found in Layer", loopId));
   }
@@ -1673,14 +1673,14 @@ void Layer::setPortalEndpointAperture(
 PortalLoop* Layer::getPortalLoop(uint32_t loopId) {
   auto found = find_if(
       mPortalLoops.begin(), mPortalLoops.end(),
-      [loopId](auto const& pair) { return pair.getId() == loopId; });
+      [loopId](auto const& portalLoop) { return portalLoop.getId() == loopId; });
   return found == mPortalLoops.end() ? nullptr : &*found;
 }
 
 PortalLoop const* Layer::getPortalLoop(uint32_t loopId) const {
   auto found = find_if(
       mPortalLoops.begin(), mPortalLoops.end(),
-      [loopId](auto const& pair) { return pair.getId() == loopId; });
+      [loopId](auto const& portalLoop) { return portalLoop.getId() == loopId; });
   return found == mPortalLoops.end() ? nullptr : &*found;
 }
 

@@ -203,8 +203,28 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
 
   auto portalData = map.getWorld()->getWorldData();
   auto const* portalLoop = portalData->findPortalLoop(0, 0);
-  require(portalLoop && portalLoop->active,
-          "mines example Portal pair is not active in the game");
+  require(portalLoop && portalLoop->active &&
+              portalLoop->endpoints.size() == 2 &&
+              portalLoop->traversalOrder == std::vector<uint32_t>{0, 1},
+          "legacy mines Portal did not migrate to an active two-endpoint loop");
+  auto writer = std::shared_ptr<bw::core::YamlSerializer>(
+      bw::core::YamlSerializer::toString());
+  bw::core::SerializationWorkData workData;
+  map.getWorld()->serialize(writer, workData);
+  auto const migratedYaml = writer->getSerializedString();
+  require(migratedYaml.find("portalLoops:") != std::string::npos &&
+              migratedYaml.find("traversalOrder:") != std::string::npos &&
+              migratedYaml.find("portalPairs:") == std::string::npos &&
+              migratedYaml.find("nextPortalPairId:") == std::string::npos,
+          "saving the legacy mines World retained the pair schema");
+  Map reloaded("map", "", "", {}, nullptr, &logger, &runtime);
+  reloaded.loadWorldFromYaml(makeWorldResource(migratedYaml));
+  auto const reloadedData = reloaded.getWorld()->getWorldData();
+  auto const* reloadedLoop = reloadedData->findPortalLoop(0, 0);
+  require(reloadedLoop && reloadedLoop->active &&
+              reloadedLoop->traversalOrder == portalLoop->traversalOrder &&
+              reloadedLoop->endpoints.size() == 2,
+          "the migrated shipping World did not reload as the same Portal loop");
   for (auto const& endpoint : portalLoop->endpoints) {
     auto const& aperture = endpoint.aperture;
     bw::app::PlayerPortalMotion motion;
@@ -216,7 +236,7 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
                 *portalData, *portalLoop, endpoint.endpointId,
                 BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT, motion, state) ==
                 bw::app::PlayerPortalCrossingResult::Traversed,
-            "mines example Portal pair cannot be traversed in both directions");
+            "mines example Portal loop cannot be traversed in both directions");
     auto torch = bw::app::placePlayerTorch(
         *portalData, aperture.centre + aperture.front * 2.0f,
         aperture.bottom + 12.0f, -aperture.front, 4.0f);

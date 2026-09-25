@@ -72,7 +72,7 @@ enum class PlayerPortalCrossingResult : uint8_t {
 // remaining displacement; pitch and vertical velocity are left unchanged.
 [[nodiscard]] PlayerPortalCrossingResult tryPlayerPortalCrossing(
     core::ArrangementWorldData const& world,
-    core::ResolvedPortalLoop const& pair,
+    core::ResolvedPortalLoop const& portalLoop,
     uint32_t sourceEndpointId,
     float playerRadius,
     float playerHeight,

@@ -131,7 +131,7 @@ struct PortalLightPlan {
 // aperture visibility, then stable authored endpoint identity. Equivalent
 // folded paths are removed before the independent light and shadow budgets.
 [[nodiscard]] PortalLightPlan PlanPortalLights(
-    std::span<bw::core::ResolvedPortalLoop const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> loops,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch,
     PortalLightLimits limits = {});
@@ -141,7 +141,7 @@ struct PortalLightPlan {
 // the same path representation and canonical transform as recursive planning.
 // sourceEndpointId is stable authored identity, never an endpoint storage slot.
 [[nodiscard]] std::optional<PortalLightAttachment> BuildPortalLightAttachment(
-    bw::core::ResolvedPortalLoop const& pair,
+    bw::core::ResolvedPortalLoop const& portalLoop,
     uint32_t sourceEndpointId,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch);

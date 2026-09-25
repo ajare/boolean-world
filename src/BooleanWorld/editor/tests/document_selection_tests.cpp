@@ -848,9 +848,9 @@ void worldMines3BuildsPreviewWorldData(bw::core::ScriptRuntime& runtime) {
   // its effect on the starting chamber's supporting Portal walls.
   auto portalData = world->getWorldData();
   auto const* portalLoop = portalData->findPortalLoop(0, 0);
-  require(portalLoop != nullptr, "mines example Portal pair missing in editor generation");
+  require(portalLoop != nullptr, "mines example Portal loop missing in editor generation");
   require(portalLoop->active,
-          "mines example Portal pair inactive in editor: " +
+          "mines example Portal loop inactive in editor: " +
               std::string(bw::core::PortalResolutionDiagnosticText(portalLoop->diagnostic)));
   auto const selected = world->getWorldDataGenerator()->getLayerSelection();
   auto const inScope = editor::inScopePrimitives(*world, selected, settings);

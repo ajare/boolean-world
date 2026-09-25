@@ -18,7 +18,7 @@ Generation snapshots complete loops from selected Layers and resolves every endp
 
 Portal liquid-adjacency is directed from each endpoint's incident Hydraulic cells to the next endpoint's cells. Each hop is gated by its source Sill and maps the surface to the same height above the destination bottom. Liquid settles deterministically at generation time without retained runtime flow. Loops are trialled atomically in stable Layer-id/loop-id order against ordinary Hydraulic links and previously accepted loops; missing cells or contradictory accumulated offsets omit the whole loop from Liquid, with one diagnostic, without deactivating rendering or traversal.
 
-Old serialized pairs load as two-endpoint loops with endpoint IDs 0 and 1 and their original Layer-local loop ID. New saves use only the loop schema. During migration the canonical routing seam can coexist with the old pair-facing API, but the completed model has no runtime pair aliases.
+Old serialized pairs load as two-endpoint loops with endpoint IDs 0 and 1 and their original Layer-local loop ID. New saves use only the loop schema. Pair compatibility is confined to the legacy serialized-pair reader; there are no runtime pair aliases, adapters, or accessors. Resolved loops have no implicit endpoint slots or default traversal order.
 
 ## Consequences
 

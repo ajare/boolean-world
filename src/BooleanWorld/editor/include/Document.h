@@ -408,7 +408,7 @@ public:
 
   uint32_t getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
-  // Returns {pair id, endpoint index} for the nearest endpoint centre on the
+  // Returns {loop id, stable endpoint id} for the nearest endpoint centre on the
   // active Layer, or an empty vector when no endpoint is in handle range.
   [[nodiscard]] std::vector<uint32_t> getHoveredPortalEndpoint(
       wp::Vector2 const& mouseWorldPos, Settings const& settings) const;

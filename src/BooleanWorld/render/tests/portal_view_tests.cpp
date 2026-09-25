@@ -17,11 +17,13 @@ bool near(float left, float right, float tolerance = 1e-4f) {
   return std::abs(left - right) <= tolerance;
 }
 
-bw::core::ResolvedPortalLoop pair(
+bw::core::ResolvedPortalLoop makeLoop(
     uint32_t layerId, uint32_t loopId,
     wp::Vector2 sourceCentre, wp::Vector2 sourceFront,
     float width = 2.0f, float bottom = -1.0f, float top = 1.0f) {
   bw::core::ResolvedPortalLoop result;
+  result.endpoints.resize(2);
+  result.traversalOrder = {0, 1};
   result.layerId = layerId;
   result.loopId = loopId;
   result.active = true;
@@ -36,9 +38,9 @@ bw::core::ResolvedPortalLoop pair(
   return result;
 }
 
-bw::core::ResolvedPortalLoop translatedLoopPair(
+bw::core::ResolvedPortalLoop translatedLoop(
     uint32_t layerId, uint32_t loopId, float centreX = 0.0f) {
-  auto result = pair(
+  auto result = makeLoop(
       layerId, loopId, {centreX, 4.0f}, {0.0f, -1.0f}, 1.5f);
   // Separate planes: the source remains visible beyond the destination clip
   // plane. Coincident endpoints merely test whether the exit surface leaks
@@ -55,25 +57,25 @@ void selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering() {
       glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
 
-  auto backFacing = pair(0, 1, {0.0f, 4.0f}, {0.0f, 1.0f});
-  auto outside = pair(0, 2, {100.0f, 4.0f}, {0.0f, -1.0f});
-  auto small = pair(0, 3, {0.0f, 5.0f}, {0.0f, -1.0f}, 1.0f);
-  auto large = pair(0, 4, {0.0f, 5.0f}, {0.0f, -1.0f}, 2.0f);
+  auto backFacing = makeLoop(0, 1, {0.0f, 4.0f}, {0.0f, 1.0f});
+  auto outside = makeLoop(0, 2, {100.0f, 4.0f}, {0.0f, -1.0f});
+  auto small = makeLoop(0, 3, {0.0f, 5.0f}, {0.0f, -1.0f}, 1.0f);
+  auto large = makeLoop(0, 4, {0.0f, 5.0f}, {0.0f, -1.0f}, 2.0f);
   std::vector candidates{backFacing, outside, small, large};
   auto selected = SelectPortalView(
       candidates, projection * view, {0.0f, 0.0f, 0.0f});
   require(selected && selected->key.loopId == 4,
           "Portal selection did not reject invisible endpoints or rank projected coverage");
 
-  auto nearPair = pair(2, 9, {0.0f, 5.0f}, {0.0f, -1.0f});
-  auto farPair = pair(1, 8, {1.0f, 5.0f}, {0.0f, -1.0f});
-  candidates = {farPair, nearPair};
+  auto nearLoop = makeLoop(2, 9, {0.0f, 5.0f}, {0.0f, -1.0f});
+  auto farLoop = makeLoop(1, 8, {1.0f, 5.0f}, {0.0f, -1.0f});
+  candidates = {farLoop, nearLoop};
   selected = SelectPortalView(candidates, projection * view, {0.0f, 0.0f, 0.0f});
   require(selected && selected->key.loopId == 9,
           "Portal distance did not break equal-shape selection deterministically");
 
-  auto highIdentity = pair(2, 4, {0.0f, 5.0f}, {0.0f, -1.0f});
-  auto lowIdentity = pair(1, 7, {0.0f, 5.0f}, {0.0f, -1.0f});
+  auto highIdentity = makeLoop(2, 4, {0.0f, 5.0f}, {0.0f, -1.0f});
+  auto lowIdentity = makeLoop(1, 7, {0.0f, 5.0f}, {0.0f, -1.0f});
   candidates = {highIdentity, lowIdentity};
   selected = SelectPortalView(candidates, projection * view, {0.0f, 0.0f, 0.0f});
   require(selected && selected->key.layerId == 1,
@@ -82,21 +84,21 @@ void selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering() {
 
 void crossingPlaneRetainsThePortalWithoutAdmittingItsBackSide() {
   auto projection = glm::perspective(glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
-  std::vector pairs{pair(0, 0, {0.0f, 0.0f}, {0.0f, -1.0f})};
+  std::vector loops{makeLoop(0, 0, {0.0f, 0.0f}, {0.0f, -1.0f})};
   for (float distance : {0.2f, 0.05f, 0.001f, 0.0f}) {
     glm::vec3 eye{0.0f, 0.0f, distance};
     auto view = glm::lookAt(eye, eye + glm::vec3{0, 0, -1}, glm::vec3{0, 1, 0});
-    auto selected = SelectPortalView(pairs, projection * view, eye);
+    auto selected = SelectPortalView(loops, projection * view, eye);
     require(selected && selected->key.endpointId == 0 && selected->projectedCoverage > 3.9f,
             "near-plane clipping removed the crossing aperture");
   }
   for (glm::vec3 eye : {glm::vec3{0, 0, -0.01f}, glm::vec3{2, 0, 0}}) {
     auto view = glm::lookAt(eye, eye + glm::vec3{0, 0, -1}, glm::vec3{0, 1, 0});
-    require(!SelectPortalView(pairs, projection * view, eye),
+    require(!SelectPortalView(loops, projection * view, eye),
             "crossing tolerance admitted a back-side or outside-aperture camera");
   }
   auto away = glm::lookAt(glm::vec3{0}, glm::vec3{0, 0, 1}, glm::vec3{0, 1, 0});
-  require(!SelectPortalView(pairs, projection * away, glm::vec3{0}),
+  require(!SelectPortalView(loops, projection * away, glm::vec3{0}),
           "coplanar camera looking away selected the aperture");
 }
 
@@ -106,14 +108,14 @@ void plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork() {
   auto view = glm::lookAt(
       glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
-  std::vector pairs{
-      translatedLoopPair(0, 10, -0.75f),
-      translatedLoopPair(0, 11, 0.75f)};
+  std::vector loops{
+      translatedLoop(0, 10, -0.75f),
+      translatedLoop(0, 11, 0.75f)};
   PortalViewLimits limits;
   limits.maxRecursionDepth = 1;
   PortalViewPlanner planner(limits);
   auto plan = planner.build(
-      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+      loops, view, projection, 0.1f, 100.0f, 320, 240);
 
   require(plan.rootChildren.size() == 2,
           "several visible Portal endpoints did not receive live views");
@@ -130,13 +132,13 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
   auto view = glm::lookAt(
       glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
-  std::vector pairs{translatedLoopPair(0, 20)};
+  std::vector loops{translatedLoop(0, 20)};
 
   PortalViewLimits limits;
   limits.maxRecursionDepth = 3;
   PortalViewPlanner planner(limits);
   auto first = planner.build(
-      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+      loops, view, projection, 0.1f, 100.0f, 320, 240);
   require(first.renderedPassCount == 3 && first.deepestFirst.size() == 3,
           "a mutually visible Portal loop did not produce a bounded deterministic pass count");
   require(first.cutoffCount(PortalViewCutoffReason::RecursionDepth) != 0,
@@ -152,12 +154,12 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
       glm::vec3{0.001f, 0.0f, 0.0f},
       glm::vec3{0.001f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
-  pairs[0].endpoints[0].endpointId = 17;
-  pairs[0].endpoints[1].endpointId = 93;
-  pairs[0].traversalOrder = {93, 17};
-  std::swap(pairs[0].endpoints[0], pairs[0].endpoints[1]);
+  loops[0].endpoints[0].endpointId = 17;
+  loops[0].endpoints[1].endpointId = 93;
+  loops[0].traversalOrder = {93, 17};
+  std::swap(loops[0].endpoints[0], loops[0].endpoints[1]);
   auto stable = planner.build(
-      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+      loops, view, projection, 0.1f, 100.0f, 320, 240);
   require(stable.renderedPassCount == first.renderedPassCount,
           "stable endpoint identities changed recursive output");
   for (size_t index = 0; index < first.nodes.size(); ++index) {
@@ -168,9 +170,9 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
   require(stable.rootChildren.front().endpoint.endpointId == 17,
           "recursive view keys used endpoint slots instead of identity");
   first = stable;
-  std::swap(pairs[0].endpoints[0], pairs[0].endpoints[1]);
+  std::swap(loops[0].endpoints[0], loops[0].endpoints[1]);
   auto second = planner.build(
-      pairs, movedView, projection, 0.1f, 100.0f, 320, 240);
+      loops, movedView, projection, 0.1f, 100.0f, 320, 240);
   require(second.renderedPassCount == first.renderedPassCount &&
               second.nodes.size() == first.nodes.size(),
           "an unchanged Portal loop changed its pass budget");
@@ -183,7 +185,7 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
   limits.maxTargets = 2;
   limits.maxRenderedPasses = 8;
   auto targetLimited = PortalViewPlanner(limits).build(
-      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+      loops, view, projection, 0.1f, 100.0f, 320, 240);
   require(targetLimited.renderedPassCount == 2 &&
               targetLimited.cutoffCount(
                   PortalViewCutoffReason::TargetBudget) != 0,
@@ -192,7 +194,7 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
   limits.maxTargets = 8;
   limits.maxRenderedPasses = 2;
   auto frameLimited = PortalViewPlanner(limits).build(
-      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+      loops, view, projection, 0.1f, 100.0f, 320, 240);
   require(frameLimited.renderedPassCount == 2 &&
               frameLimited.cutoffCount(
                   PortalViewCutoffReason::FrameBudget) != 0,
@@ -205,19 +207,19 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
   auto view = glm::lookAt(
       glm::vec3{0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
-  auto visible = pair(0, 30, {0.0f, 5.0f}, {0.0f, -1.0f});
-  auto backFacing = pair(0, 31, {0.0f, 4.0f}, {0.0f, 1.0f});
-  auto outside = pair(0, 32, {100.0f, 4.0f}, {0.0f, -1.0f});
-  auto tiny = pair(
+  auto visible = makeLoop(0, 30, {0.0f, 5.0f}, {0.0f, -1.0f});
+  auto backFacing = makeLoop(0, 31, {0.0f, 4.0f}, {0.0f, 1.0f});
+  auto outside = makeLoop(0, 32, {100.0f, 4.0f}, {0.0f, -1.0f});
+  auto tiny = makeLoop(
       0, 33, {0.0f, 80.0f}, {0.0f, -1.0f}, 0.01f,
       -0.005f, 0.005f);
-  std::vector pairs{visible, backFacing, outside, tiny};
+  std::vector loops{visible, backFacing, outside, tiny};
   PortalViewLimits limits;
   limits.maxRecursionDepth = 1;
   limits.minimumProjectedCoverage = 0.001f;
   PortalViewPlanner planner(limits);
   auto plan = planner.build(
-      pairs, view, projection, 0.1f, 100.0f, 320, 240,
+      loops, view, projection, 0.1f, 100.0f, 320, 240,
       [](PortalEndpointKey const& key,
          bw::core::ResolvedAperture const&, glm::mat4 const&) {
         return key.loopId == 30;
@@ -236,7 +238,7 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
 }
 
 void threeEndpointViewsUseDirectedDestinations() {
-  auto loop = pair(7, 11, {0.0f, 4.0f}, {0.0f, -1.0f});
+  auto loop = makeLoop(7, 11, {0.0f, 4.0f}, {0.0f, -1.0f});
   loop.endpoints.push_back({});
   loop.endpoints[2].endpointId = 2;
   loop.endpoints[2].resolved = true;
@@ -269,7 +271,7 @@ void threeEndpointViewsUseDirectedDestinations() {
 }
 
 void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
-  auto portalLoop = pair(3, 5, {0.0f, 4.0f}, {0.0f, -1.0f});
+  auto portalLoop = makeLoop(3, 5, {0.0f, 4.0f}, {0.0f, -1.0f});
   portalLoop.endpoints[0].endpointId = 17;
   portalLoop.endpoints[1].endpointId = 93;
   portalLoop.traversalOrder = {93, 17};

@@ -159,7 +159,7 @@ ArrangementWorldData::ArrangementWorldData(
   timer.restart();
 
   auto hasActivePortal = std::ranges::any_of(
-      mPortalLoops, [](auto const& pair) { return pair.active; });
+      mPortalLoops, [](auto const& portalLoop) { return portalLoop.active; });
   if (hasActivePortal) {
     auto portalLiquid = BuildPortalLiquidAdjacency(
         *mArrangement, mWalls,
@@ -367,16 +367,16 @@ ResolvedPortalLoop const* ArrangementWorldData::findPortalLoop(
     uint32_t layerId, uint32_t loopId) const {
   auto found = std::find_if(
       mPortalLoops.begin(), mPortalLoops.end(),
-      [=](auto const& pair) {
-        return pair.layerId == layerId && pair.loopId == loopId;
+      [=](auto const& portalLoop) {
+        return portalLoop.layerId == layerId && portalLoop.loopId == loopId;
       });
   return found == mPortalLoops.end() ? nullptr : &*found;
 }
 
 ResolvedPortalEndpoint const* ArrangementWorldData::findPortalEndpoint(
     uint32_t layerId, uint32_t loopId, uint32_t endpointId) const {
-  auto const* pair = findPortalLoop(layerId, loopId);
-  return pair ? FindPortalEndpoint(*pair, endpointId) : nullptr;
+  auto const* portalLoop = findPortalLoop(layerId, loopId);
+  return portalLoop ? FindPortalEndpoint(*portalLoop, endpointId) : nullptr;
 }
 
 std::vector<PortalLiquidAdjacency> const&
@@ -668,9 +668,9 @@ ArrangementWorldData::getWallCollisionSegments(uint32_t wallIndex) const {
     float end;
   };
   std::vector<Interval> openings;
-  for (auto const& pair : mPortalLoops) {
-    if (!pair.active) continue;
-    for (auto const& endpoint : pair.endpoints) {
+  for (auto const& portalLoop : mPortalLoops) {
+    if (!portalLoop.active) continue;
+    for (auto const& endpoint : portalLoop.endpoints) {
       auto const& aperture = endpoint.aperture;
       if (std::find(
               aperture.wallIndices.begin(), aperture.wallIndices.end(),

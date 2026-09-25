@@ -805,7 +805,7 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
   auto const loopId = document.getSelectedPortalLoopId();
   require(loopId != ~0u &&
               document.getSelectedPortalEndpointId() == 0,
-          "creating a Portal pair did not select its first stable endpoint");
+          "creating a Portal loop did not select its first stable endpoint");
   editor::Settings settings;
   auto hover = document.getHover(first.centre, settings, nullptr);
   require(hover.type == editor::HoverableType::PortalEndpoint &&
@@ -920,11 +920,11 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
       });
   require(!layer->getPortalLoop(loopId) &&
               !document.hasSelectedPortalEndpoint(),
-          "deleting a Portal pair retained it or its endpoint selection");
+          "deleting a Portal loop retained it or its endpoint selection");
   editor::undo(&document);
   require(document.getWorld()->getActiveLayer()->getPortalLoop(loopId) &&
               document.getSelectedPortalLoopId() == loopId,
-          "undo did not restore a deleted Portal pair and stable selection");
+          "undo did not restore a deleted Portal loop and stable selection");
 }
 
 void aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry() {

@@ -2345,14 +2345,14 @@ vector<uint32_t> Document::getHoveredPortalEndpoint(
                              settings.triggerLineHandleRadius;
   auto bestDistance = numeric_limits<float>::max();
   vector<uint32_t> result;
-  for (auto const& pair : layer->getPortalLoops()) {
-    for (auto endpointId : pair.getTraversalOrder()) {
-      auto const* endpoint = pair.findEndpoint(endpointId);
+  for (auto const& portalLoop : layer->getPortalLoops()) {
+    for (auto endpointId : portalLoop.getTraversalOrder()) {
+      auto const* endpoint = portalLoop.findEndpoint(endpointId);
       auto const distance = endpoint->getAperture().centre.distanceToSq(
           mouseWorldPos);
       if (distance <= radiusSquared && distance < bestDistance) {
         bestDistance = distance;
-        result = {pair.getId(), endpointId};
+        result = {portalLoop.getId(), endpointId};
       }
     }
   }

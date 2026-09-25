@@ -61,8 +61,8 @@ vector<PortalLoopSnapshot> snapshotPortalLoops(
   vector<PortalLoopSnapshot> result;
   for (auto const* layer : world.getLayers()) {
     if (!IsLayerSelected(selection, layer->getId())) continue;
-    for (auto const& pair : layer->getPortalLoops()) {
-      result.push_back({layer->getId(), pair});
+    for (auto const& portalLoop : layer->getPortalLoops()) {
+      result.push_back({layer->getId(), portalLoop});
     }
   }
   return result;

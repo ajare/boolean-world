@@ -375,7 +375,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       auto loopId = layer->addPortalLoop(
           {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
           {{centreX, -16.0f}, 12.0f, 4.0f, 36.0f});
-      auto* pair = layer->getPortalLoop(loopId);
+      auto* portalLoop = layer->getPortalLoop(loopId);
       if (fixture.threeEndpointPortal) {
         [[maybe_unused]] auto const thirdEndpointId =
             layer->addPortalEndpointAfter(
@@ -383,15 +383,15 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
                 {{8.0f, 16.0f}, 12.0f, 4.0f, 36.0f});
       }
       if (fixture.stablePortalIdentity) {
-        auto first = pair->getEndpoints()[0].getAperture();
-        auto second = pair->getEndpoints()[1].getAperture();
-        *pair = bw::core::PortalLoop{
+        auto first = portalLoop->getEndpoints()[0].getAperture();
+        auto second = portalLoop->getEndpoints()[1].getAperture();
+        *portalLoop = bw::core::PortalLoop{
             loopId, 94,
             {bw::core::PortalEndpoint{93, second},
              bw::core::PortalEndpoint{17, first}},
             {17, 93}};
       }
-      portalLoops.push_back({layer->getId(), *pair});
+      portalLoops.push_back({layer->getId(), *portalLoop});
     }
   }
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
@@ -918,7 +918,7 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
   }
   auto data = world.getWorldData();
   require(data->findPortalLoop(0, 0) && data->findPortalLoop(0, 0)->active,
-          "mines Portal pair inactive");
+          "mines Portal loop inactive");
   editor::PreviewRenderScene scene(
       renderSystem, &world, kWidth, kHeight,
       bw::app::HorizontalMaterials::TwoDimensional);

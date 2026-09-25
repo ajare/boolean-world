@@ -13,8 +13,8 @@ constexpr float BoundsTolerance = 0.001f;
 constexpr float RepeatedStateTolerance = 0.001f;
 
 PortalEndpointIdentity Identity(
-    core::ResolvedPortalLoop const& pair, uint32_t endpointId) {
-  return {pair.layerId, pair.loopId, endpointId};
+    core::ResolvedPortalLoop const& portalLoop, uint32_t endpointId) {
+  return {portalLoop.layerId, portalLoop.loopId, endpointId};
 }
 
 bool SameRepeatedState(
@@ -29,19 +29,19 @@ bool SameRepeatedState(
 
 PlayerPortalCrossingResult tryPlayerPortalCrossing(
     core::ArrangementWorldData const& world,
-    core::ResolvedPortalLoop const& pair,
+    core::ResolvedPortalLoop const& portalLoop,
     uint32_t sourceEndpointId,
     float playerRadius,
     float playerHeight,
     PlayerPortalMotion& motion,
     PlayerPortalUpdateState& updateState) {
   auto const* sourceEndpoint =
-      core::FindPortalEndpoint(pair, sourceEndpointId);
-  if (!pair.active || !sourceEndpoint) {
+      core::FindPortalEndpoint(portalLoop, sourceEndpointId);
+  if (!portalLoop.active || !sourceEndpoint) {
     return PlayerPortalCrossingResult::NotCrossing;
   }
   auto const* destinationEndpoint =
-      core::NextPortalEndpoint(pair, sourceEndpointId);
+      core::NextPortalEndpoint(portalLoop, sourceEndpointId);
   if (!destinationEndpoint) {
     return PlayerPortalCrossingResult::NotCrossing;
   }
@@ -74,7 +74,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
     return PlayerPortalCrossingResult::Blocked;
   }
 
-  auto identity = Identity(pair, sourceEndpointId);
+  auto identity = Identity(portalLoop, sourceEndpointId);
   if (updateState.exitSide.active &&
       updateState.exitSide.endpoint == identity) {
     return PlayerPortalCrossingResult::Blocked;
@@ -137,7 +137,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
   updateState.visited.push_back(repeated);
   ++updateState.crossings;
   updateState.exitSide = {
-      Identity(pair, destinationEndpoint->endpointId), true};
+      Identity(portalLoop, destinationEndpoint->endpointId), true};
   updateState.cameraCut = true;
   return PlayerPortalCrossingResult::Traversed;
 }
@@ -148,13 +148,13 @@ void updatePortalExitSideState(
     float playerRadius,
     PortalExitSideState& state) {
   if (!state.active) return;
-  auto const* pair = world.findPortalLoop(
+  auto const* portalLoop = world.findPortalLoop(
       state.endpoint.layerId, state.endpoint.loopId);
-  auto const* endpoint = pair
+  auto const* endpoint = portalLoop
                              ? core::FindPortalEndpoint(
-                                   *pair, state.endpoint.endpointId)
+                                   *portalLoop, state.endpoint.endpointId)
                              : nullptr;
-  if (!pair || !pair->active || !endpoint) {
+  if (!portalLoop || !portalLoop->active || !endpoint) {
     state = {};
     return;
   }

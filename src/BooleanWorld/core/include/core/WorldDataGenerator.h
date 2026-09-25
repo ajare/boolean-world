@@ -49,7 +49,7 @@ selectAndOrderPrimitiveEntries(
     LayerSelection const& selection,
     PrimitiveFilter const& filter = {});
 
-// Copies complete pairs from selected owning Layers. Portal participation is
+// Copies complete loops from selected owning Layers. Portal participation is
 // intentionally not inferred endpoint-by-endpoint.
 [[nodiscard]] BW_API std::vector<PortalLoopSnapshot> snapshotPortalLoops(
     World const& world, LayerSelection const& selection);

@@ -285,24 +285,24 @@ uint32_t NextPortalEndpointId(
 }
 
 ResolvedPortalEndpoint const* FindPortalEndpoint(
-    ResolvedPortalLoop const& pair, uint32_t endpointId) {
+    ResolvedPortalLoop const& portalLoop, uint32_t endpointId) {
   auto found = std::ranges::find(
-      pair.endpoints, endpointId, &ResolvedPortalEndpoint::endpointId);
-  return found == pair.endpoints.end() ? nullptr : &*found;
+      portalLoop.endpoints, endpointId, &ResolvedPortalEndpoint::endpointId);
+  return found == portalLoop.endpoints.end() ? nullptr : &*found;
 }
 
 ResolvedPortalEndpoint const* NextPortalEndpoint(
-    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId) {
-  if (!FindPortalEndpoint(pair, sourceEndpointId)) return nullptr;
+    ResolvedPortalLoop const& portalLoop, uint32_t sourceEndpointId) {
+  if (!FindPortalEndpoint(portalLoop, sourceEndpointId)) return nullptr;
   return FindPortalEndpoint(
-      pair, NextPortalEndpointId(pair.traversalOrder, sourceEndpointId));
+      portalLoop, NextPortalEndpointId(portalLoop.traversalOrder, sourceEndpointId));
 }
 
 PortalRigidTransform BuildPortalRigidTransform(
-    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId) {
-  auto const* source = FindPortalEndpoint(pair, sourceEndpointId);
-  auto const* destination = NextPortalEndpoint(pair, sourceEndpointId);
-  if (!pair.active || !source || !destination) {
+    ResolvedPortalLoop const& portalLoop, uint32_t sourceEndpointId) {
+  auto const* source = FindPortalEndpoint(portalLoop, sourceEndpointId);
+  auto const* destination = NextPortalEndpoint(portalLoop, sourceEndpointId);
+  if (!portalLoop.active || !source || !destination) {
     throw CoreException("A Portal rigid transform requires an active loop and a valid source endpoint ID");
   }
   return {source->aperture, destination->aperture};
@@ -609,10 +609,10 @@ std::optional<wp::Vector2> FindNearestLegalPortalCentre(
 std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
-    std::vector<PortalLoopSnapshot> const& pairs) {
+    std::vector<PortalLoopSnapshot> const& loops) {
   std::vector<ResolvedPortalLoop> result;
-  result.reserve(pairs.size());
-  for (auto const& snapshot : pairs) {
+  result.reserve(loops.size());
+  for (auto const& snapshot : loops) {
     ResolvedPortalLoop resolved;
     resolved.layerId = snapshot.layerId;
     resolved.loopId = snapshot.loop.getId();
@@ -640,21 +640,21 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
           return resolveEndpoint(arrangement, walls, endpoint, width);
         });
 
-    // Pair-wide validation does not discard successful geometric resolution:
+    // Loop-wide validation does not discard successful geometric resolution:
     // the editor still needs the generated tangent and narrowed bounds to
     // distinguish resolved geometry from the reason the loop is inactive.
-    auto pairFailure = PortalResolutionDiagnostic::None;
+    auto loopFailure = PortalResolutionDiagnostic::None;
     if (!equalHeights) {
-      pairFailure = PortalResolutionDiagnostic::UnequalEndpointHeights;
+      loopFailure = PortalResolutionDiagnostic::UnequalEndpointHeights;
     } else if (width + PositionTolerance < 2.0f * BW_PLAYER_RADIUS) {
-      pairFailure = PortalResolutionDiagnostic::InsufficientPlayerWidth;
+      loopFailure = PortalResolutionDiagnostic::InsufficientPlayerWidth;
     } else if (firstHeight + ElevationTolerance < BW_PLAYER_HEIGHT) {
-      pairFailure = PortalResolutionDiagnostic::InsufficientPlayerHeight;
+      loopFailure = PortalResolutionDiagnostic::InsufficientPlayerHeight;
     }
-    if (pairFailure != PortalResolutionDiagnostic::None) {
-      resolved.diagnostic = pairFailure;
+    if (loopFailure != PortalResolutionDiagnostic::None) {
+      resolved.diagnostic = loopFailure;
       for (auto& endpoint : resolved.endpoints) {
-        endpoint.diagnostic = pairFailure;
+        endpoint.diagnostic = loopFailure;
       }
     } else if (std::ranges::all_of(
                    resolved.endpoints, &ResolvedPortalEndpoint::resolved)) {
@@ -684,7 +684,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
     std::vector<arr::HydraulicCell> const& cells,
-    std::vector<ResolvedPortalLoop> const& pairs) {
+    std::vector<ResolvedPortalLoop> const& loops) {
   PortalLiquidAdjacencyResult result;
   auto ordinaryLinks = arr::BuildHydraulicLinks(arrangement, cells);
   ElevationOffsetGraph offsets(cells.size());
@@ -718,31 +718,31 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     return found;
   };
 
-  std::vector<ResolvedPortalLoop const*> orderedPairs;
-  orderedPairs.reserve(pairs.size());
-  for (auto const& pair : pairs) {
-    if (pair.active) orderedPairs.push_back(&pair);
+  std::vector<ResolvedPortalLoop const*> orderedLoops;
+  orderedLoops.reserve(loops.size());
+  for (auto const& portalLoop : loops) {
+    if (portalLoop.active) orderedLoops.push_back(&portalLoop);
   }
   std::sort(
-      orderedPairs.begin(), orderedPairs.end(), [](auto* left, auto* right) {
+      orderedLoops.begin(), orderedLoops.end(), [](auto* left, auto* right) {
         return std::tie(left->layerId, left->loopId) <
                std::tie(right->layerId, right->loopId);
       });
 
-  for (auto const* pair : orderedPairs) {
+  for (auto const* portalLoop : orderedLoops) {
     // Stage the complete loop. Neither constraints nor hops escape a failed
     // trial, including failures discovered only at a later endpoint.
     auto trial = offsets;
     std::vector<PortalLiquidAdjacency> hops;
     auto missingCells = false;
     auto consistent = true;
-    for (auto const sourceEndpointId : pair->traversalOrder) {
+    for (auto const sourceEndpointId : portalLoop->traversalOrder) {
       auto const destinationEndpointId =
-          NextPortalEndpointId(pair->traversalOrder, sourceEndpointId);
+          NextPortalEndpointId(portalLoop->traversalOrder, sourceEndpointId);
       auto const* sourceEndpoint =
-          FindPortalEndpoint(*pair, sourceEndpointId);
+          FindPortalEndpoint(*portalLoop, sourceEndpointId);
       auto const* destinationEndpoint =
-          FindPortalEndpoint(*pair, destinationEndpointId);
+          FindPortalEndpoint(*portalLoop, destinationEndpointId);
       if (!sourceEndpoint || !destinationEndpoint) {
         missingCells = true;
         break;
@@ -765,8 +765,8 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
       for (auto cell0 : firstCells) {
         for (auto cell1 : secondCells) {
           hops.push_back(
-              {pair->layerId,
-               pair->loopId,
+              {portalLoop->layerId,
+               portalLoop->loopId,
                sourceEndpointId,
                destinationEndpointId,
                cell0,
@@ -782,7 +782,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     }
     if (missingCells || !consistent) {
       result.diagnostics.push_back(
-          {pair->layerId, pair->loopId,
+          {portalLoop->layerId, portalLoop->loopId,
            missingCells ? PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint
                         : PortalLiquidDiagnostic::ContradictoryElevationCycle});
       continue;

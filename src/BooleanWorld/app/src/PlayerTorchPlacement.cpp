@@ -24,12 +24,12 @@ PlayerTorchPlacement placePlayerTorch(
   }
   direction.normalise();
   for (uint32_t crossings = 0; ; ++crossings) {
-    core::ResolvedPortalLoop const* nearestPair = nullptr;
+    core::ResolvedPortalLoop const* nearestLoop = nullptr;
     core::ResolvedPortalEndpoint const* nearestEndpoint = nullptr;
     float nearestDistance = std::numeric_limits<float>::infinity();
-    for (auto const& pair : world.getPortalLoops()) {
-      if (!pair.active) continue;
-      for (auto const& endpoint : pair.endpoints) {
+    for (auto const& portalLoop : world.getPortalLoops()) {
+      if (!portalLoop.active) continue;
+      for (auto const& endpoint : portalLoop.endpoints) {
         auto const& aperture = endpoint.aperture;
         auto side = (position - aperture.centre).dot(aperture.front);
         auto approach = direction.dot(aperture.front);
@@ -40,7 +40,7 @@ PlayerTorchPlacement placePlayerTorch(
         auto intersection = position + direction * distance;
         if (std::abs((intersection - aperture.centre).dot(aperture.tangent)) >=
             aperture.width * 0.5f) continue;
-        nearestPair = &pair;
+        nearestLoop = &portalLoop;
         nearestEndpoint = &endpoint;
         nearestDistance = distance;
       }
@@ -50,7 +50,7 @@ PlayerTorchPlacement placePlayerTorch(
         position, position + direction * remaining, elevation);
     // An active aperture replaces its supporting wall at the same distance.
     // A nearer ordinary wall must still stop the Torch before that aperture.
-    if (!nearestPair || (wall && *wall < nearestDistance - exitEpsilon)) {
+    if (!nearestLoop || (wall && *wall < nearestDistance - exitEpsilon)) {
       auto distance = wall
           ? std::clamp(*wall - BW_PLAYER_TORCH_WALL_CLEARANCE, 0.0f, remaining)
           : remaining;
@@ -62,7 +62,7 @@ PlayerTorchPlacement placePlayerTorch(
     }
 
     auto const* destination = core::NextPortalEndpoint(
-        *nearestPair, nearestEndpoint->endpointId);
+        *nearestLoop, nearestEndpoint->endpointId);
     if (!destination) {
       return {position + direction * std::max(
           0.0f, nearestDistance - BW_PLAYER_TORCH_WALL_CLEARANCE), elevation};

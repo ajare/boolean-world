@@ -629,9 +629,9 @@ void StatePlayBooleanWorld::createWorldCollisions(
   // A crossing may move the remainder to a remote endpoint, and several
   // endpoints may chain in one update. Stage collision around every possible
   // emergence point before Willpower begins its recursive sweep.
-  for (auto const& pair : mWorldData->getPortalLoops()) {
-    if (!pair.active) continue;
-    for (auto const& endpoint : pair.endpoints) {
+  for (auto const& portalLoop : mWorldData->getPortalLoops()) {
+    if (!portalLoop.active) continue;
+    for (auto const& endpoint : portalLoop.endpoints) {
       auto emergence = endpoint.aperture.centre +
                        endpoint.aperture.front *
                            bw::app::PortalExitPlaneEpsilon;
@@ -690,9 +690,9 @@ void StatePlayBooleanWorld::createWorldCollisions(
   // The removed horizontal spans remain swept special planes. They pass a
   // vertically eligible front-to-back crossing into the canonical transform,
   // and otherwise use the ordinary wall response.
-  for (auto const& pair : mWorldData->getPortalLoops()) {
-    if (!pair.active) continue;
-    for (auto const& endpoint : pair.endpoints) {
+  for (auto const& portalLoop : mWorldData->getPortalLoops()) {
+    if (!portalLoop.active) continue;
+    for (auto const& endpoint : portalLoop.endpoints) {
       auto const& aperture = endpoint.aperture;
       auto half = aperture.tangent * (aperture.width * 0.5f);
       auto sourceWallBlocks = std::ranges::any_of(
@@ -701,7 +701,7 @@ void StatePlayBooleanWorld::createWorldCollisions(
                    addedWallIndices.end();
           });
       mPortalCollisionEndpoints.push_back(
-          {&pair, endpoint.endpointId, sourceWallBlocks});
+          {&portalLoop, endpoint.endpointId, sourceWallBlocks});
       mWorldCollisionSim->addPortalLine(
           aperture.centre - half, aperture.centre + half);
     }

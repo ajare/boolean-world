@@ -1756,7 +1756,7 @@ DetailGeometry BuildChipDetail(
     }
   }
 
-  // Vertical Arrises: pairs of visible walls meeting in a concave angle as
+  // Vertical Arrises: loops of visible walls meeting in a concave angle as
   // seen from their common front (navigable) side. Both walls must use the
   // same Sub-material, leaving one unambiguous material/configuration.
   for (auto const& [vertexIndex, incident] : wallsByVertex) {
@@ -2494,9 +2494,9 @@ void ApplyPortalApertures(
   };
   std::vector<Fallback> fallbacks;
 
-  for (auto const& pair : portalLoops) {
-    if (!pair.active) continue;
-    for (auto const& endpoint : pair.endpoints) {
+  for (auto const& portalLoop : portalLoops) {
+    if (!portalLoop.active) continue;
+    for (auto const& endpoint : portalLoop.endpoints) {
       auto const& aperture = endpoint.aperture;
       if (aperture.wallIndices.empty()) continue;
       fallbacks.push_back({aperture.wallIndices.front(), &aperture});
@@ -2550,9 +2550,9 @@ void ApplyPortalApertures(
   // opening. Other floor/ceiling detail remains untouched.
   detail.removeTrianglesIf([&](DetailTriangle const& triangle) {
     if (triangle.kind != DetailTriangleKind::WedgeFacet) return false;
-    for (auto const& pair : portalLoops) {
-      if (!pair.active) continue;
-      for (auto const& endpoint : pair.endpoints) {
+    for (auto const& portalLoop : portalLoops) {
+      if (!portalLoop.active) continue;
+      for (auto const& endpoint : portalLoop.endpoints) {
         auto const& aperture = endpoint.aperture;
         auto minimumTangent = std::numeric_limits<float>::infinity();
         auto maximumTangent = -std::numeric_limits<float>::infinity();

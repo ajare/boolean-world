@@ -420,11 +420,11 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   // so a resolved Image always has a bucket; Unset and Disabled intentionally
   // use the single existing unmapped bucket.
   for (auto const* layer : world->getLayers()) {
-    for (auto const& pair : layer->getPortalLoops()) {
-      for (auto const& endpoint : pair.getEndpoints()) {
+    for (auto const& portalLoop : layer->getPortalLoops()) {
+      for (auto const& endpoint : portalLoop.getEndpoints()) {
         mPortalEndpointBuckets.emplace(
             PortalEndpointKey{
-                layer->getId(), pair.getId(), endpoint.getId()},
+                layer->getId(), portalLoop.getId(), endpoint.getId()},
             static_cast<uint32_t>(mPortalEndpointBuckets.size()));
       }
     }
@@ -926,12 +926,12 @@ void WorldRenderer::updateWallDataProvider(
         if (triangle.kind == bw::core::arr::DetailTriangleKind::PortalFallback) {
           replacementMesh = backMesh;
           for (auto const& [key, bucket] : mPortalEndpointBuckets) {
-            auto const* pair = snapshot.findPortalLoop(key.layerId, key.loopId);
-            if (!pair || !pair->active) continue;
-            auto endpoint = std::ranges::find_if(pair->endpoints, [&](auto const& item) {
+            auto const* portalLoop = snapshot.findPortalLoop(key.layerId, key.loopId);
+            if (!portalLoop || !portalLoop->active) continue;
+            auto endpoint = std::ranges::find_if(portalLoop->endpoints, [&](auto const& item) {
               return item.endpointId == key.endpointId;
             });
-            if (endpoint == pair->endpoints.end() ||
+            if (endpoint == portalLoop->endpoints.end() ||
                 std::ranges::find(endpoint->aperture.wallIndices, wallIndex) == endpoint->aperture.wallIndices.end() ||
                 !portalFallbackBelongsTo(triangle, endpoint->aperture)) continue;
             replacementMesh = renderer->getMeshIndexForMaterialHash(hash, false,
