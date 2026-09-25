@@ -37,7 +37,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
     PlayerPortalUpdateState& updateState) {
   auto const* sourceEndpoint =
       core::FindPortalEndpoint(portalLoop, sourceEndpointId);
-  if (!portalLoop.active || portalLoop.endpoints.size() == 1 || !sourceEndpoint) {
+  if (!portalLoop.active || !sourceEndpoint) {
     return PlayerPortalCrossingResult::NotCrossing;
   }
   auto const* destinationEndpoint =

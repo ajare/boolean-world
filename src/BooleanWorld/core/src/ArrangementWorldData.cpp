@@ -670,10 +670,8 @@ ArrangementWorldData::getWallCollisionSegments(uint32_t wallIndex) const {
     float end;
   };
   std::vector<Interval> openings;
-  // Mirror views ship before reflected traversal: retain the supporting wall's
-  // collision until that subsequent slice handles reflected swept movement.
   for (auto const& portalLoop : mPortalLoops) {
-    if (!portalLoop.active || portalLoop.endpoints.size() == 1) continue;
+    if (!portalLoop.active) continue;
     for (auto const& endpoint : portalLoop.endpoints) {
       auto const& aperture = endpoint.aperture;
       if (std::find(
