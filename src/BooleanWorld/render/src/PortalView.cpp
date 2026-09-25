@@ -12,6 +12,7 @@
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 
@@ -112,21 +113,6 @@ ProjectedAperture projectAperture(
   }
   auto area = std::abs(twiceArea) * 0.5f;
   return {std::isfinite(area), std::isfinite(area) ? area : 0.0f};
-}
-
-glm::mat4 sourceToDestinationMatrix(
-    bw::core::PortalRigidTransform const& transform) {
-  auto x = transform.transformVector({1.0f, 0.0f});
-  auto y = transform.transformVector({0.0f, 1.0f});
-  auto origin = transform.transformPoint({0.0f, 0.0f});
-  auto elevationOffset = transform.transformElevation(0.0f);
-
-  glm::mat4 result{1.0f};
-  result[0] = {x.x, 0.0f, -x.y, 0.0f};
-  result[1] = {0.0f, 1.0f, 0.0f, 0.0f};
-  result[2] = {-y.x, 0.0f, y.y, 0.0f};
-  result[3] = {origin.x, elevationOffset, -origin.y, 1.0f};
-  return result;
 }
 
 glm::vec3 cameraPosition(glm::mat4 const& view) {
@@ -298,10 +284,10 @@ BuiltPortalView BuildPortalView(
         "A Portal view requires an active selection and non-zero dimensions");
   }
 
-  auto rigid = bw::core::BuildPortalRigidTransform(
+  auto rigid = bw::core::BuildPortalMapping(
       *selected.loop,
       selected.key.endpointId);
-  auto sourceToDestination = sourceToDestinationMatrix(rigid);
+  auto sourceToDestination = glm::make_mat4(rigid.rendererMatrix().data());
   auto destinationView = observingView * glm::inverse(sourceToDestination);
   auto const& destination = rigid.destination;
   auto destinationNormal = glm::vec3{
@@ -319,6 +305,7 @@ BuiltPortalView BuildPortalView(
 
   BuiltPortalView result;
   result.sourceToDestination = sourceToDestination;
+  result.reversesHandedness = rigid.reversesHandedness();
   result.sourceProjectiveTransform =
       clipped.projection * destinationView * sourceToDestination;
   result.auxiliary.slot = "Portal0";

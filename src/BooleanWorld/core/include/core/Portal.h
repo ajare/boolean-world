@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -181,14 +182,21 @@ struct PortalLiquidAdjacencyResult {
   std::vector<PortalLiquidAdjacencyDiagnostic> diagnostics;
 };
 
-// The canonical rigid mapping from a source to its next endpoint frame. The
-// local tangent and front axes are both reversed (a 180-degree turn around
-// world-up); elevation is translated by the difference between aperture
-// bottoms. Scale, handedness, and world-up are therefore preserved.
-struct PortalRigidTransform {
+enum class PortalMappingKind : uint8_t { Hop, Reflection };
+
+// Canonical generated isometry. Hops reverse both local axes and translate
+// aperture-bottom elevation; reflections preserve tangent and elevation and
+// reverse only front. Both preserve scale and World-up. No authored reflection
+// or reflection liquid-adjacency is implied by this value-only contract.
+struct BW_API PortalMapping {
   ResolvedAperture source{};
   ResolvedAperture destination{};
+  PortalMappingKind kind{PortalMappingKind::Hop};
 
+  [[nodiscard]] bool reversesHandedness() const;
+  [[nodiscard]] double elevationOffset() const;
+  // Column-major renderer coordinates (World x, elevation, -World y).
+  [[nodiscard]] std::array<float, 16> rendererMatrix() const;
   [[nodiscard]] wp::Vector2 transformPoint(
       wp::Vector2 const& point) const;
   [[nodiscard]] wp::Vector2 transformVector(
@@ -197,7 +205,10 @@ struct PortalRigidTransform {
   [[nodiscard]] float transformYaw(float yawDegrees) const;
 };
 
-[[nodiscard]] BW_API PortalRigidTransform BuildPortalRigidTransform(
+[[nodiscard]] BW_API PortalMapping BuildPortalReflection(
+    ResolvedAperture const& aperture);
+
+[[nodiscard]] BW_API PortalMapping BuildPortalMapping(
     ResolvedPortalLoop const& portalLoop, uint32_t sourceEndpointId);
 
 // A value-only copy made on the generation-requesting thread. It is safe to

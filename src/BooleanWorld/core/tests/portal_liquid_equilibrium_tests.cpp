@@ -465,7 +465,7 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
             }) == 2,
             "Liquid-only rejection removed Portal rendering geometry");
   }
-  auto transform = bw::core::BuildPortalRigidTransform(*loop, last);
+  auto transform = bw::core::BuildPortalMapping(*loop, last);
   requireNear(transform.transformElevation(6.0f), 15.0,
               "Liquid rejection changed player/render/Torch routing");
   requireNear(data->getLiquidDepth({100.0f, 0.0f}), 0.0,

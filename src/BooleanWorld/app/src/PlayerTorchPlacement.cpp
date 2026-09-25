@@ -67,8 +67,8 @@ PlayerTorchPlacement placePlayerTorch(
       return {position + direction * std::max(
           0.0f, nearestDistance - BW_PLAYER_TORCH_WALL_CLEARANCE), elevation};
     }
-    core::PortalRigidTransform transform{
-        nearestEndpoint->aperture, destination->aperture};
+    auto transform = core::BuildPortalMapping(
+        *nearestLoop, nearestEndpoint->endpointId);
     position = transform.transformPoint(position + direction * nearestDistance);
     direction = transform.transformVector(direction);
     elevation = transform.transformElevation(elevation);

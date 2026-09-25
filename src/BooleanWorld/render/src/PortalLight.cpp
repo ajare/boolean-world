@@ -10,6 +10,7 @@
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 namespace {
 constexpr float PlaneTolerance = 0.0001f;
@@ -25,20 +26,6 @@ glm::vec3 rendererPosition(
 
 glm::vec3 rendererVector(wp::Vector2 const& worldPlaneVector) {
   return {worldPlaneVector.x, 0.0f, -worldPlaneVector.y};
-}
-
-glm::mat4 rendererMatrix(
-    bw::core::PortalRigidTransform const& transform) {
-  auto x = transform.transformVector({1.0f, 0.0f});
-  auto y = transform.transformVector({0.0f, 1.0f});
-  auto origin = transform.transformPoint({0.0f, 0.0f});
-  glm::mat4 result{1.0f};
-  result[0] = {x.x, 0.0f, -x.y, 0.0f};
-  result[1] = {0.0f, 1.0f, 0.0f, 0.0f};
-  result[2] = {-y.x, 0.0f, y.y, 0.0f};
-  result[3] = {
-      origin.x, transform.transformElevation(0.0f), -origin.y, 1.0f};
-  return result;
 }
 
 bool validOptions(bw::app::PlayerTorchOptions const& playerTorch) {
@@ -90,7 +77,7 @@ std::optional<PortalLightPathHop> buildHop(
     return std::nullopt;
   }
 
-  auto const transform = bw::core::BuildPortalRigidTransform(
+  auto const transform = bw::core::BuildPortalMapping(
       portalLoop, source.endpointId);
   auto const virtualPlane = transform.transformPoint(lightPlane);
 
@@ -108,7 +95,8 @@ std::optional<PortalLightPathHop> buildHop(
   hop.destinationApertureTangent =
       rendererVector(destination.aperture.tangent);
   hop.destinationApertureFront = rendererVector(destination.aperture.front);
-  hop.destinationToSource = glm::inverse(rendererMatrix(transform));
+  hop.destinationToSource = glm::inverse(
+      glm::make_mat4(transform.rendererMatrix().data()));
   hop.apertureHalfWidth = destination.aperture.width * 0.5f;
   hop.sourceApertureBottom = source.aperture.bottom;
   hop.sourceApertureTop = source.aperture.top;

@@ -245,28 +245,55 @@ ResolvedPortalEndpoint resolveEndpoint(
 }
 }  // namespace
 
-wp::Vector2 PortalRigidTransform::transformPoint(
+wp::Vector2 PortalMapping::transformPoint(
     wp::Vector2 const& point) const {
   auto offset = point - source.centre;
   auto tangentCoordinate = offset.dot(source.tangent);
   auto frontCoordinate = offset.dot(source.front);
-  return destination.centre - destination.tangent * tangentCoordinate -
+  auto tangentSign = reversesHandedness() ? 1.0f : -1.0f;
+  return destination.centre +
+         destination.tangent * (tangentSign * tangentCoordinate) -
          destination.front * frontCoordinate;
 }
 
-wp::Vector2 PortalRigidTransform::transformVector(
+wp::Vector2 PortalMapping::transformVector(
     wp::Vector2 const& vector) const {
-  return -destination.tangent * vector.dot(source.tangent) -
+  auto tangentSign = reversesHandedness() ? 1.0f : -1.0f;
+  return destination.tangent * (tangentSign * vector.dot(source.tangent)) -
          destination.front * vector.dot(source.front);
 }
 
-float PortalRigidTransform::transformElevation(float elevation) const {
+float PortalMapping::transformElevation(float elevation) const {
+  if (reversesHandedness()) return elevation;
   return destination.bottom + elevation - source.bottom;
 }
 
-float PortalRigidTransform::transformYaw(float yawDegrees) const {
+float PortalMapping::transformYaw(float yawDegrees) const {
   auto forward = wp::Vector2::fromAngle(yawDegrees, wp::Clockwise);
   return transformVector(forward).clockwiseAngle();
+}
+
+bool PortalMapping::reversesHandedness() const {
+  return kind == PortalMappingKind::Reflection;
+}
+
+double PortalMapping::elevationOffset() const {
+  return reversesHandedness() ? 0.0 :
+      double(destination.bottom) - double(source.bottom);
+}
+
+std::array<float, 16> PortalMapping::rendererMatrix() const {
+  auto x = transformVector({1.0f, 0.0f});
+  auto y = transformVector({0.0f, 1.0f});
+  auto origin = transformPoint({0.0f, 0.0f});
+  return {x.x, 0.0f, -x.y, 0.0f,
+          0.0f, 1.0f, 0.0f, 0.0f,
+          -y.x, 0.0f, y.y, 0.0f,
+          origin.x, transformElevation(0.0f), -origin.y, 1.0f};
+}
+
+PortalMapping BuildPortalReflection(ResolvedAperture const& aperture) {
+  return {aperture, aperture, PortalMappingKind::Reflection};
 }
 
 uint32_t NextPortalEndpointId(
@@ -298,12 +325,12 @@ ResolvedPortalEndpoint const* NextPortalEndpoint(
       portalLoop, NextPortalEndpointId(portalLoop.traversalOrder, sourceEndpointId));
 }
 
-PortalRigidTransform BuildPortalRigidTransform(
+PortalMapping BuildPortalMapping(
     ResolvedPortalLoop const& portalLoop, uint32_t sourceEndpointId) {
   auto const* source = FindPortalEndpoint(portalLoop, sourceEndpointId);
   auto const* destination = NextPortalEndpoint(portalLoop, sourceEndpointId);
   if (!portalLoop.active || !source || !destination) {
-    throw CoreException("A Portal rigid transform requires an active loop and a valid source endpoint ID");
+    throw CoreException("A Portal mapping requires an active loop and a valid source endpoint ID");
   }
   return {source->aperture, destination->aperture};
 }
@@ -756,7 +783,9 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
 
       auto const& first = sourceEndpoint->aperture;
       auto const& second = destinationEndpoint->aperture;
-      auto const delta = double(second.bottom) - double(first.bottom);
+      // Only ordinary directed loops participate in hydraulics.
+      auto const delta = BuildPortalMapping(
+          *portalLoop, sourceEndpointId).elevationOffset();
       for (auto cell0 : firstCells) {
         for (auto cell1 : secondCells) {
           consistent &= trial.constrain(cell0, cell1, delta);

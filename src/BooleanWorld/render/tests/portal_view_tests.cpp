@@ -257,7 +257,7 @@ void threeEndpointViewsUseDirectedDestinations() {
         {loop.layerId, loop.loopId, sourceId}, &loop, 1.0f, 1.0f};
     auto built = BuildPortalView(
         selected, view, projection, 0.1f, 100.0f, 320, 240);
-    auto canonical = bw::core::BuildPortalRigidTransform(loop, sourceId);
+    auto canonical = bw::core::BuildPortalMapping(loop, sourceId);
     auto source = bw::core::FindPortalEndpoint(loop, sourceId)->aperture.centre;
     auto expected = canonical.transformPoint(source);
     auto transformed = built.sourceToDestination *
@@ -286,7 +286,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
   auto built = BuildPortalView(
       selected, view, projection, 0.2f, 300.0f, 130, 70);
 
-  auto canonical = bw::core::BuildPortalRigidTransform(portalLoop, 17);
+  auto canonical = bw::core::BuildPortalMapping(portalLoop, 17);
   auto expectedPlane = canonical.transformPoint({eye.x, -eye.z});
   auto transformedEye = built.sourceToDestination * glm::vec4(eye, 1.0f);
   require(

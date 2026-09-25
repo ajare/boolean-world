@@ -532,7 +532,7 @@ void canonicalRigidTransformPreservesScaleAndWorldUp() {
               bw::core::NextPortalEndpoint(*portalLoop, 0)->endpointId == 1 &&
               bw::core::NextPortalEndpoint(*portalLoop, 1)->endpointId == 0,
           "authored and resolved two-endpoint routes disagree");
-  auto reverse = bw::core::BuildPortalRigidTransform(*portalLoop, 1);
+  auto reverse = bw::core::BuildPortalMapping(*portalLoop, 1);
   require(reverse.source.centre ==
                   snapshot->findPortalEndpoint(layer->getId(), loopId, 1)
                       ->aperture.centre &&
@@ -540,7 +540,7 @@ void canonicalRigidTransformPreservesScaleAndWorldUp() {
                   snapshot->findPortalEndpoint(layer->getId(), loopId, 0)
                       ->aperture.centre,
           "reverse route did not exit through the first endpoint");
-  auto transform = bw::core::BuildPortalRigidTransform(*portalLoop, 0);
+  auto transform = bw::core::BuildPortalMapping(*portalLoop, 0);
   auto vector = transform.transformVector({3.0f, 4.0f});
   require(std::abs(vector.length() - 5.0f) < 0.001f &&
               std::abs(transform.transformElevation(7.0f) - 15.0f) < 0.001f,
@@ -562,6 +562,71 @@ void noPortalWorldKeepsItsKeyedSerializationShapeAndGeometry() {
               before->getWalls().size() == after->getWalls().size(),
           "a no-Portal World changed generated geometry after reload");
 }
+void reflectionMappingIsNotAHalfTurn() {
+  bw::core::ResolvedAperture frame;
+  frame.centre = {13.0f, -7.0f};
+  frame.tangent = {0.6f, 0.8f};
+  frame.front = {-0.8f, 0.6f};
+  frame.bottom = 9.0f;
+  frame.top = 33.0f;
+  auto reflection = bw::core::BuildPortalReflection(frame);
+  bw::core::PortalMapping hop{frame, frame};
+  auto near = [](float a, float b) { return std::abs(a - b) < 0.0001f; };
+  auto same = [&](wp::Vector2 a, wp::Vector2 b) {
+    return near(a.x, b.x) && near(a.y, b.y);
+  };
+  auto direction = frame.tangent * 3.0f + frame.front * 5.0f;
+  auto expected = frame.tangent * 3.0f - frame.front * 5.0f;
+  auto point = frame.centre + direction;
+  require(same(reflection.transformVector(direction), expected) &&
+              same(reflection.transformPoint(point), frame.centre + expected),
+          "reflection must preserve tangent and reverse front");
+  require(!same(hop.transformVector(direction), expected) &&
+              same(hop.transformVector(direction), -direction),
+          "reflection must differ from an ordinary half-turn hop");
+  require(same(reflection.transformPoint(reflection.transformPoint(point)), point) &&
+              same(reflection.transformVector(reflection.transformVector(direction)), direction),
+          "two reflections in one aperture must compose to identity");
+  require(same(wp::Vector2::fromAngle(
+                   reflection.transformYaw(direction.clockwiseAngle()), wp::Clockwise),
+               wp::Vector2::fromAngle(expected.clockwiseAngle(), wp::Clockwise)),
+          "reflected yaw must agree with reflected direction");
+  require(reflection.transformElevation(17.0f) == 17.0f &&
+              reflection.elevationOffset() == 0.0 &&
+              reflection.reversesHandedness() && !hop.reversesHandedness(),
+          "reflection elevation or parity is wrong");
+  auto destination = frame;
+  destination.centre = {-11.0f, 23.0f};
+  destination.tangent = {0.0f, 1.0f};
+  destination.front = {-1.0f, 0.0f};
+  destination.bottom = -4.0f;
+  bw::core::PortalMapping outbound{frame, destination};
+  bw::core::PortalMapping inbound{destination, frame};
+  require(same(inbound.transformPoint(outbound.transformPoint(point)), point) &&
+              near(inbound.transformElevation(outbound.transformElevation(17.0f)), 17.0f),
+          "ordinary inverse hops must preserve point and elevation");
+  auto destinationReflection = bw::core::BuildPortalReflection(destination);
+  require(same(destinationReflection.transformPoint(outbound.transformPoint(point)),
+               outbound.transformPoint(reflection.transformPoint(point))),
+          "reflection and hop composition must agree in endpoint frames");
+  for (auto const& mapping : {reflection, hop, outbound}) {
+    auto m = mapping.rendererMatrix();
+    auto mapped = mapping.transformPoint(point);
+    auto mappedDirection = mapping.transformVector(direction);
+    require(near(m[0] * direction.x - m[8] * direction.y, mappedDirection.x) &&
+                near(m[2] * direction.x - m[10] * direction.y, -mappedDirection.y) &&
+                near(mappedDirection.dot(mappedDirection), direction.dot(direction)),
+            "matrix direction or isometry scale is wrong");
+    require(near(m[0] * point.x - m[8] * point.y + m[12], mapped.x) &&
+                near(m[2] * point.x - m[10] * point.y + m[14], -mapped.y) &&
+                near(m[5] * 17.0f + m[13], mapping.transformElevation(17.0f)),
+            "matrix and point/elevation mapping disagree");
+    require(near(m[0] * m[10] - m[8] * m[2],
+                 mapping.reversesHandedness() ? -1.0f : 1.0f) &&
+                m[4] == 0.0f && m[5] == 1.0f && m[6] == 0.0f,
+            "matrix parity or World-up is wrong");
+  }
+}
 }  // namespace
 
 int main() {
@@ -577,6 +642,7 @@ int main() {
     portalCentresSnapOnlyToNearestLegalWallCoverage();
     canonicalNextEndpointRoutesByStableIdentity();
     canonicalRigidTransformPreservesScaleAndWorldUp();
+    reflectionMappingIsNotAHalfTurn();
     noPortalWorldKeepsItsKeyedSerializationShapeAndGeometry();
     std::cout << "Portal loop authoring and resolution passed\n";
     return 0;

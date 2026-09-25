@@ -91,7 +91,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
     return PlayerPortalCrossingResult::Blocked;
   }
 
-  core::PortalRigidTransform transform{source, destination};
+  auto transform = core::BuildPortalMapping(portalLoop, sourceEndpointId);
   auto transformedCrossing = transform.transformPoint(crossing);
   auto destinationPosition =
       transformedCrossing + destination.front * PortalExitPlaneEpsilon;

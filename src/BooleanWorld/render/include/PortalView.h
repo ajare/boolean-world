@@ -45,9 +45,10 @@ struct BuiltPortalView {
   // image. Sampling divides by W; local aperture UVs are never involved.
   glm::mat4 sourceProjectiveTransform{1.0f};
   glm::mat4 sourceToDestination{1.0f};
+  bool reversesHandedness{false};
 };
 
-// Transforms the observing camera through BuildPortalRigidTransform, preserving
+// Transforms the observing camera through BuildPortalMapping, preserving
 // its exact projection/aspect. The destination plane keeps its front half-space
 // and receives MPP's world-unit oblique-clipping seam bias.
 [[nodiscard]] BuiltPortalView BuildPortalView(

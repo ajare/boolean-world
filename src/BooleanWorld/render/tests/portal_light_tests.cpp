@@ -46,7 +46,7 @@ void canonicalTransformPreservesThePlayerTorch() {
   require(attachment.has_value(),
           "a clear one-hop path produced no virtual Player Torch");
 
-  auto canonical = bw::core::BuildPortalRigidTransform(portalLoop, 0);
+  auto canonical = bw::core::BuildPortalMapping(portalLoop, 0);
   auto expectedPlane = canonical.transformPoint({0.0f, 2.0f});
   require(near(attachment->position.x, expectedPlane.x) &&
               near(attachment->position.y,
