@@ -484,7 +484,9 @@ bool createPortalPair(
     bw::core::AuthoredAperture const& first,
     bw::core::AuthoredAperture const& second) {
   auto const pairId = layer->addPortalPair(first, second);
-  doc->setSelectedPortalEndpoint(layer->getId(), pairId, 0);
+  auto const* pair = layer->getPortalPair(pairId);
+  doc->setSelectedPortalEndpoint(
+      layer->getId(), pairId, pair->getTraversalOrder().front());
   return true;
 }
 
@@ -500,59 +502,62 @@ bool deletePortalPair(
 
 bool selectPortalEndpoint(
     Document* doc, uint32_t layerId, uint32_t pairId,
-    uint32_t endpointIndex) {
+    uint32_t endpointId) {
   auto const* layer = doc->getWorld()->getLayer(layerId);
-  if (!layer || endpointIndex >= 2 || !layer->getPortalPair(pairId)) {
-    return false;
-  }
-  doc->setSelectedPortalEndpoint(layerId, pairId, endpointIndex);
+  auto const* pair = layer ? layer->getPortalPair(pairId) : nullptr;
+  if (!pair || !pair->findEndpoint(endpointId)) return false;
+  doc->setSelectedPortalEndpoint(layerId, pairId, endpointId);
   return false;
 }
 
 bool setPortalEndpointPosition(
     Document*, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, wp::Vector2 const& position) {
+    uint32_t endpointId, wp::Vector2 const& position) {
   auto const* pair = layer->getPortalPair(pairId);
-  if (!pair || endpointIndex >= 2) return false;
-  auto aperture = pair->getEndpoint(endpointIndex).getAperture();
+  auto const* endpoint = pair ? pair->findEndpoint(endpointId) : nullptr;
+  if (!endpoint) return false;
+  auto aperture = endpoint->getAperture();
   if (aperture.centre == position) return false;
   aperture.centre = position;
-  layer->setPortalEndpointAperture(pairId, endpointIndex, aperture);
+  layer->setPortalEndpointAperture(pairId, endpointId, aperture);
   return true;
 }
 
 bool movePortalEndpoint(
     Document* doc, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, wp::Vector2 const& delta) {
+    uint32_t endpointId, wp::Vector2 const& delta) {
   auto const* pair = layer->getPortalPair(pairId);
-  if (!pair || endpointIndex >= 2 || delta == wp::Vector2::ZERO) return false;
+  auto const* endpoint = pair ? pair->findEndpoint(endpointId) : nullptr;
+  if (!endpoint || delta == wp::Vector2::ZERO) return false;
   return setPortalEndpointPosition(
-      doc, layer, pairId, endpointIndex,
-      pair->getEndpoint(endpointIndex).getAperture().centre + delta);
+      doc, layer, pairId, endpointId,
+      endpoint->getAperture().centre + delta);
 }
 
 bool setPortalEndpointWidth(
     Document*, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, float width) {
+    uint32_t endpointId, float width) {
   auto const* pair = layer->getPortalPair(pairId);
-  if (!pair || endpointIndex >= 2) return false;
-  auto aperture = pair->getEndpoint(endpointIndex).getAperture();
+  auto const* endpoint = pair ? pair->findEndpoint(endpointId) : nullptr;
+  if (!endpoint) return false;
+  auto aperture = endpoint->getAperture();
   if (aperture.width == width) return false;
   aperture.width = width;
-  layer->setPortalEndpointAperture(pairId, endpointIndex, aperture);
+  layer->setPortalEndpointAperture(pairId, endpointId, aperture);
   return true;
 }
 
 bool setPortalEndpointVerticalBounds(
     Document*, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, float bottom, float top) {
+    uint32_t endpointId, float bottom, float top) {
   auto const* pair = layer->getPortalPair(pairId);
-  if (!pair || endpointIndex >= 2) return false;
-  auto aperture = pair->getEndpoint(endpointIndex).getAperture();
+  auto const* endpoint = pair ? pair->findEndpoint(endpointId) : nullptr;
+  if (!endpoint) return false;
+  auto aperture = endpoint->getAperture();
   if (aperture.bottom == bottom && aperture.top == top) return false;
   aperture.bottom = bottom;
   aperture.top = top;
-  layer->setPortalEndpointAperture(pairId, endpointIndex, aperture);
+  layer->setPortalEndpointAperture(pairId, endpointId, aperture);
   return true;
 }
 

@@ -130,6 +130,8 @@ public:
   getPortalPairs() const;
   [[nodiscard]] ResolvedPortalPair const* findPortalPair(
       uint32_t layerId, uint32_t pairId) const;
+  [[nodiscard]] ResolvedPortalEndpoint const* findPortalEndpoint(
+      uint32_t layerId, uint32_t pairId, uint32_t endpointId) const;
 
   [[nodiscard]] std::vector<PortalLiquidAdjacency> const&
   getPortalLiquidAdjacency() const;

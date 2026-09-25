@@ -310,17 +310,20 @@ void renderPortalOverlays(
   for (auto const& pair : layer->getPortalPairs()) {
     auto const* generated =
         worldData.findPortalPair(layer->getId(), pair.getId());
-    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
-      auto const& authored = pair.getEndpoint(endpointIndex).getAperture();
-      auto const* endpoint = generated ? &generated->endpoints[endpointIndex]
-                                       : nullptr;
+    for (auto endpointId : pair.getTraversalOrder()) {
+      auto const& authored =
+          pair.findEndpoint(endpointId)->getAperture();
+      auto const* endpoint = generated
+                                 ? worldData.findPortalEndpoint(
+                                       layer->getId(), pair.getId(), endpointId)
+                                 : nullptr;
       auto tangent = endpoint && endpoint->resolved
                          ? endpoint->aperture.tangent
                          : wp::Vector2{1.0f, 0.0f};
       auto const selected =
           doc->getSelectedPortalLayerId() == layer->getId() &&
           doc->getSelectedPortalPairId() == pair.getId() &&
-          doc->getSelectedPortalEndpointIndex() == endpointIndex;
+          doc->getSelectedPortalEndpointId() == endpointId;
       auto const authoredHalf = tangent * (authored.width * 0.5f);
       drawList->AddLine(
           worldToScreen(authored.centre - authoredHalf),
@@ -358,7 +361,7 @@ void renderPortalOverlays(
         char label[256];
         std::snprintf(
             label, sizeof(label), "Portal %u.%u [%.1f, %.1f]  %.*s",
-            pair.getId(), endpointIndex, authored.bottom, authored.top,
+            pair.getId(), endpointId, authored.bottom, authored.top,
             static_cast<int>(diagnostic.size()), diagnostic.data());
         drawList->AddText(
             {centre.x + 9.0f, centre.y + 7.0f},

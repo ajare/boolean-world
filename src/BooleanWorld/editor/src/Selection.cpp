@@ -19,11 +19,11 @@ void Selection::setSelectedTriggerLineIndex(uint32_t index) {
 }
 
 void Selection::setSelectedPortalEndpoint(
-    uint32_t layerId, uint32_t pairId, uint32_t endpointIndex) {
+    uint32_t layerId, uint32_t pairId, uint32_t endpointId) {
   clearSelections();
   mSelectedPortalLayerId = layerId;
   mSelectedPortalPairId = pairId;
-  mSelectedPortalEndpointIndex = endpointIndex;
+  mSelectedPortalEndpointId = endpointId;
 }
 
 void Selection::setSelectedPrimitiveIndices(set<uint32_t> const& indices) {
@@ -53,7 +53,7 @@ void Selection::clearSelections() {
   mSelectedTriggerLineIndex = ~0u;
   mSelectedPortalLayerId = ~0u;
   mSelectedPortalPairId = ~0u;
-  mSelectedPortalEndpointIndex = ~0u;
+  mSelectedPortalEndpointId = ~0u;
   clearMeshSelections();
 }
 
@@ -79,11 +79,13 @@ void Selection::revalidateSelection() {
   }
   if (mSelectedPortalPairId != ~0u) {
     auto const* layer = world->getLayer(mSelectedPortalLayerId);
-    if (!layer || mSelectedPortalEndpointIndex >= 2 ||
-        !layer->getPortalPair(mSelectedPortalPairId)) {
+    auto const* pair = layer
+                           ? layer->getPortalPair(mSelectedPortalPairId)
+                           : nullptr;
+    if (!pair || !pair->findEndpoint(mSelectedPortalEndpointId)) {
       mSelectedPortalLayerId = ~0u;
       mSelectedPortalPairId = ~0u;
-      mSelectedPortalEndpointIndex = ~0u;
+      mSelectedPortalEndpointId = ~0u;
     }
   }
   // World vertices are regenerated asynchronously and have no synchronous
@@ -119,8 +121,8 @@ uint32_t Selection::getSelectedPortalPairId() const {
   return mSelectedPortalPairId;
 }
 
-uint32_t Selection::getSelectedPortalEndpointIndex() const {
-  return mSelectedPortalEndpointIndex;
+uint32_t Selection::getSelectedPortalEndpointId() const {
+  return mSelectedPortalEndpointId;
 }
 
 bool Selection::hasSelectedPortalEndpoint() const {

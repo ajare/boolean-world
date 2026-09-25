@@ -301,7 +301,8 @@ BuiltPortalView BuildPortalView(
   }
 
   auto rigid = bw::core::BuildPortalRigidTransform(
-      *selected.pair, selected.sourceEndpoint);
+      *selected.pair,
+      selected.pair->endpoints[selected.sourceEndpoint].endpointId);
   auto sourceToDestination = sourceToDestinationMatrix(rigid);
   auto destinationView = observingView * glm::inverse(sourceToDestination);
   auto const& destination = rigid.destination;

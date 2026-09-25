@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include "Actions.h"
 #include "TileMapLayout.h"
@@ -697,12 +698,14 @@ void EditorInteraction::updateDrag(
       auto const* portalPair =
           portalLayer ? portalLayer->getPortalPair(selectedPortalPairId)
                       : nullptr;
-      auto const endpointIndex = doc->getSelectedPortalEndpointIndex();
-      if (portalPair && endpointIndex < 2) {
+      auto const endpointId = doc->getSelectedPortalEndpointId();
+      auto const* portalEndpoint =
+          portalPair ? portalPair->findEndpoint(endpointId) : nullptr;
+      if (portalEndpoint) {
         if (!mMovingSelectedPortalEndpoint) {
           mMovingSelectedPortalEndpoint = true;
           mPortalDragStartPosition =
-              portalPair->getEndpoint(endpointIndex).getAperture().centre;
+              portalEndpoint->getAperture().centre;
           mPortalDragCumulativeDelta = {};
           if (!undoableActionInProgress()) {
             beginTransaction(
@@ -719,12 +722,12 @@ void EditorInteraction::updateDrag(
         // once the pointer moves more than the three-unit capture distance.
         std::optional<wp::Vector2> wallSnap;
         if (worldData) {
-          auto const& aperture =
-              portalPair->getEndpoint(endpointIndex).getAperture();
-          auto const otherIndex = 1u - endpointIndex;
-          auto const resolvedWidth = std::min(
-              aperture.width,
-              portalPair->getEndpoint(otherIndex).getAperture().width);
+          auto const& aperture = portalEndpoint->getAperture();
+          auto resolvedWidth = std::numeric_limits<float>::infinity();
+          for (auto const& endpoint : portalPair->getEndpoints()) {
+            resolvedWidth = std::min(
+                resolvedWidth, endpoint.getAperture().width);
+          }
           wallSnap = bw::core::FindNearestLegalPortalCentre(
               worldData->getArrangement(), worldData->getWalls(), aperture,
               resolvedWidth, target, 3.0f);
@@ -737,7 +740,7 @@ void EditorInteraction::updateDrag(
               round(target.y / settings.gridSize) * settings.gridSize};
         }
         setPortalEndpointPosition(
-            doc, portalLayer, selectedPortalPairId, endpointIndex, target);
+            doc, portalLayer, selectedPortalPairId, endpointId, target);
       }
     }
     return;

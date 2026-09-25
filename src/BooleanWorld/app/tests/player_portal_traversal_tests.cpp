@@ -186,6 +186,7 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   auto routedPair = *fixture.pair;
   routedPair.endpoints[0].endpointId = 41;
   routedPair.endpoints[1].endpointId = 9;
+  routedPair.traversalOrder = {41, 9};
   struct Endpoint {
     bw::core::ResolvedPortalPair const* pair;
     uint32_t endpointId;

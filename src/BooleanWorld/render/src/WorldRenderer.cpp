@@ -421,9 +421,10 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   // use the single existing unmapped bucket.
   for (auto const* layer : world->getLayers()) {
     for (auto const& pair : layer->getPortalPairs()) {
-      for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
+      for (auto const& endpoint : pair.getEndpoints()) {
         mPortalEndpointBuckets.emplace(
-            PortalEndpointKey{layer->getId(), pair.getId(), pair.getEndpoint(endpoint).getId()},
+            PortalEndpointKey{
+                layer->getId(), pair.getId(), endpoint.getId()},
             static_cast<uint32_t>(mPortalEndpointBuckets.size()));
       }
     }

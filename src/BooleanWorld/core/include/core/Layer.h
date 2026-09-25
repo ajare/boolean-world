@@ -347,7 +347,7 @@ public:
       AuthoredAperture const& first, AuthoredAperture const& second);
   void removePortalPair(uint32_t pairId);
   void setPortalEndpointAperture(
-      uint32_t pairId, uint32_t endpointIndex,
+      uint32_t pairId, uint32_t endpointId,
       AuthoredAperture const& aperture);
   [[nodiscard]] PortalPair* getPortalPair(uint32_t pairId);
   [[nodiscard]] PortalPair const* getPortalPair(uint32_t pairId) const;

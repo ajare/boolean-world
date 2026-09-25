@@ -116,7 +116,7 @@ UndoData captureUndoData(Document* doc) {
       doc->getSelectedTriggerLineIndex(),
       doc->getSelectedPortalLayerId(),
       doc->getSelectedPortalPairId(),
-      doc->getSelectedPortalEndpointIndex(),
+      doc->getSelectedPortalEndpointId(),
       doc->getActiveMeshPrimitiveIndex(),
       doc->getSelectedMeshVertexIndices(),
       doc->getSelectedMeshEdgeIndices(),

@@ -90,9 +90,11 @@ void portalAdjacencyIsSeparateAndWaitsForItsSill() {
   require(below.data->getPortalLiquidAdjacency().size() == 1,
           "an active resolved aperture did not expose portal liquid-adjacency");
   auto const& link = below.data->getPortalLiquidAdjacency().front();
-  require(link.pairId == below.pairId && link.face0 != link.face1 &&
-              link.sill0 == 5.0 && link.sill1 == 15.0 &&
-              link.elevationOffset == 10.0,
+  require(link.pairId == below.pairId &&
+              link.sourceEndpointId == 0 &&
+              link.destinationEndpointId == 1 &&
+              link.face0 != link.face1 && link.sill0 == 5.0 &&
+              link.sill1 == 15.0 && link.elevationOffset == 10.0,
           "portal liquid-adjacency lost its faces, Sills, or elevation mapping");
 
   auto ordinary = bw::core::arr::BuildLiquidAdjacency(

@@ -88,20 +88,24 @@ void equalAndUnequalWidthsResolveWithoutChangingAuthoredState() {
   auto const* resolved = snapshot->findPortalPair(layer->getId(), pairId);
   require(resolved && resolved->active,
           "a fully covered Portal pair did not become active");
-  require(
-      std::abs(resolved->endpoints[0].aperture.width - 16.0f) < 0.001f &&
-          std::abs(resolved->endpoints[1].aperture.width - 16.0f) < 0.001f,
-      "unequal Portal widths did not resolve to the smaller width");
-  require(
-      resolved->endpoints[0].aperture.centre == wp::Vector2{-50.0f, 0.0f} &&
-          resolved->endpoints[1].aperture.centre == wp::Vector2{50.0f, 0.0f},
-      "normalizing Portal widths moved an endpoint centre");
-  require(
-      layer->getPortalPair(pairId)->getEndpoint(1).getAperture().width ==
-          28.0f,
-      "Portal resolution mutated the wider authored aperture");
-  require(!resolved->endpoints[0].aperture.wallIndices.empty() &&
-              !resolved->endpoints[1].aperture.wallIndices.empty(),
+  auto const* first = snapshot->findPortalEndpoint(
+      layer->getId(), pairId, 0);
+  auto const* second = snapshot->findPortalEndpoint(
+      layer->getId(), pairId, 1);
+  require(first && second &&
+              std::abs(first->aperture.width - 16.0f) < 0.001f &&
+              std::abs(second->aperture.width - 16.0f) < 0.001f,
+          "stable endpoint lookup did not expose normalized Portal widths");
+  require(first->aperture.centre == wp::Vector2{-50.0f, 0.0f} &&
+              second->aperture.centre == wp::Vector2{50.0f, 0.0f},
+          "normalizing Portal widths moved an endpoint centre");
+  require(layer->getPortalPair(pairId)
+                  ->findEndpoint(1)
+                  ->getAperture()
+                  .width == 28.0f,
+          "Portal resolution mutated the wider authored aperture");
+  require(!first->aperture.wallIndices.empty() &&
+              !second->aperture.wallIndices.empty(),
           "a resolved aperture did not retain its snapshot wall coverage");
 }
 
@@ -120,8 +124,9 @@ void invalidPairsStayWholeAndDiagnosable() {
   auto mismatch = resolve(
       aperture(-50.0f, 0.0f, 16.0f, 0.0f, 24.0f),
       aperture(50.0f, 0.0f, 16.0f, 0.0f, 25.0f));
-  require(!mismatch.active && mismatch.endpoints[0].resolved &&
-              mismatch.endpoints[1].resolved &&
+  require(!mismatch.active &&
+              bw::core::FindPortalEndpoint(mismatch, 0)->resolved &&
+              bw::core::FindPortalEndpoint(mismatch, 1)->resolved &&
               mismatch.diagnostic ==
                   PortalResolutionDiagnostic::UnequalEndpointHeights,
           "unequal endpoint heights did not retain resolved bounds and a diagnostic");
@@ -129,9 +134,9 @@ void invalidPairsStayWholeAndDiagnosable() {
   auto missing = resolve(
       aperture(-50.0f, 0.0f), aperture(0.0f, 0.0f));
   require(!missing.active &&
-              missing.endpoints[1].diagnostic ==
+              bw::core::FindPortalEndpoint(missing, 1)->diagnostic ==
                   PortalResolutionDiagnostic::MissingRenderedWall &&
-              missing.endpoints[0].diagnostic ==
+              bw::core::FindPortalEndpoint(missing, 0)->diagnostic ==
                   PortalResolutionDiagnostic::OtherEndpointUnresolved,
           "a missing partner wall did not deactivate and diagnose the pair");
 
@@ -217,8 +222,8 @@ void identityAndEndpointStateRoundTripCopyAndAssignment() {
     auto const* pair = candidate->getActiveLayer()->getPortalPair(pairId);
     require(pair && pair->getId() == pairId,
             "Portal pair identity did not survive a value operation");
-    auto const& first = pair->getEndpoint(0).getAperture();
-    auto const& second = pair->getEndpoint(1).getAperture();
+    auto const& first = pair->findEndpoint(0)->getAperture();
+    auto const& second = pair->findEndpoint(1)->getAperture();
     require(first.centre == wp::Vector2{-50.0f, 7.0f} &&
                 first.width == 18.0f && first.bottom == 3.0f &&
                 first.top == 27.0f &&
@@ -245,6 +250,65 @@ void identityAndEndpointStateRoundTripCopyAndAssignment() {
               binaryAfterDelete.getActiveLayer()->addPortalPair(
                   aperture(-50.0f, 0.0f), aperture(50.0f, 0.0f)) == 1,
           "reload reused a deleted Portal pair's stable id");
+
+  auto generationInput = bw::core::snapshotPortalPairs(
+      source, bw::core::SelectAllLayers());
+  auto changed = layer->getPortalPair(pairId)
+                     ->findEndpoint(0)
+                     ->getAperture();
+  changed.centre = {-25.0f, 25.0f};
+  layer->setPortalEndpointAperture(pairId, 0, changed);
+  require(generationInput.size() == 1 &&
+              generationInput.front().pair.getTraversalOrder()[0] == 0 &&
+              generationInput.front().pair.findEndpoint(0)
+                      ->getAperture()
+                      .centre == wp::Vector2{-50.0f, 7.0f},
+          "asynchronous generation input did not retain endpoint identity and state");
+}
+
+void serializedEndpointSequenceCarriesExplicitTraversalOrder() {
+  bw::core::World source(200.0f, 10.0f);
+  addRoom(source);
+  auto* layer = source.getActiveLayer();
+  auto const pairId = layer->addPortalPair(
+      aperture(-50.0f, 7.0f), aperture(50.0f, -9.0f));
+
+  auto yaml = serializeWorld(source);
+  auto const endpoints = yaml.find("endpoints:", yaml.find("portalPairs:"));
+  auto const firstId = yaml.find("- id: 0", endpoints);
+  auto const secondId = yaml.find("- id: 1", firstId);
+  require(endpoints != std::string::npos && firstId != std::string::npos &&
+              secondId != std::string::npos,
+          "Portal pair serialization shape changed during identity migration");
+  yaml[firstId + 6] = '1';
+  yaml[secondId + 6] = '0';
+
+  auto loaded = deserializeWorld(yaml);
+  auto const* loadedPair = loaded.getActiveLayer()->getPortalPair(pairId);
+  require(loadedPair && loadedPair->getTraversalOrder()[0] == 1 &&
+              loadedPair->getTraversalOrder()[1] == 0 &&
+              loadedPair->findEndpoint(1)->getAperture().centre ==
+                  wp::Vector2{-50.0f, 7.0f} &&
+              loadedPair->findEndpoint(0)->getAperture().centre ==
+                  wp::Vector2{50.0f, -9.0f},
+          "deserialization confused explicit traversal order with endpoint identity");
+
+  auto snapshot = loaded.getWorldData();
+  auto const* resolved = snapshot->findPortalPair(
+      loaded.getActiveLayer()->getId(), pairId);
+  require(resolved && resolved->traversalOrder ==
+                          std::array<uint32_t, 2>{1, 0} &&
+              snapshot->findPortalEndpoint(
+                  loaded.getActiveLayer()->getId(), pairId, 1)
+                      ->authored.centre == wp::Vector2{-50.0f, 7.0f},
+          "generation did not preserve serialized endpoint identity and order");
+
+  auto const saved = serializeWorld(loaded);
+  auto const savedEndpoints =
+      saved.find("endpoints:", saved.find("portalPairs:"));
+  require(saved.find("- id: 1", savedEndpoints) <
+              saved.find("- id: 0", savedEndpoints),
+          "saving changed the explicit pair traversal order or its format");
 }
 
 void activeAperturesCutWallRenderingCollisionAndExposeFallback() {
@@ -258,11 +322,13 @@ void activeAperturesCutWallRenderingCollisionAndExposeFallback() {
   auto const* pair = snapshot->findPortalPair(layer->getId(), pairId);
   require(pair && pair->active, "Portal aperture fixture did not resolve");
 
-  auto wallIndex = pair->endpoints[0].aperture.wallIndices.front();
+  auto const* endpoint = snapshot->findPortalEndpoint(
+      layer->getId(), pairId, 0);
+  auto wallIndex = endpoint->aperture.wallIndices.front();
   auto segments = snapshot->getWallCollisionSegments(wallIndex);
   require(segments.size() == 2,
           "active aperture did not split its source wall collision span");
-  auto const& opening = pair->endpoints[0].aperture;
+  auto const& opening = endpoint->aperture;
   auto midpoint = opening.centre;
   require(std::ranges::none_of(segments, [&](auto const& segment) {
             return midpoint.distanceToLine(segment.v0, segment.v1) < 0.01f;
@@ -353,6 +419,7 @@ void canonicalNextEndpointRoutesByStableIdentity() {
   bw::core::ResolvedPortalPair pair;
   pair.endpoints[0].endpointId = 17;
   pair.endpoints[1].endpointId = 42;
+  pair.traversalOrder = {17, 42};
   require(bw::core::FindPortalEndpoint(pair, 42) == &pair.endpoints[1] &&
               bw::core::NextPortalEndpoint(pair, 17) == &pair.endpoints[1] &&
               bw::core::NextPortalEndpoint(pair, 42) == &pair.endpoints[0] &&
@@ -391,12 +458,16 @@ void canonicalRigidTransformPreservesScaleAndWorldUp() {
   require(pair && pair->active, "rigid Portal transform fixture did not resolve");
   require(layer->getPortalPair(pairId)->getNextEndpointId(0) == 1 &&
               layer->getPortalPair(pairId)->getNextEndpointId(1) == 0 &&
-              bw::core::NextPortalEndpointIndex(*pair, 0) == 1 &&
-              bw::core::NextPortalEndpointIndex(*pair, 1) == 0,
+              bw::core::NextPortalEndpoint(*pair, 0)->endpointId == 1 &&
+              bw::core::NextPortalEndpoint(*pair, 1)->endpointId == 0,
           "authored and resolved two-endpoint routes disagree");
   auto reverse = bw::core::BuildPortalRigidTransform(*pair, 1);
-  require(reverse.source.centre == pair->endpoints[1].aperture.centre &&
-              reverse.destination.centre == pair->endpoints[0].aperture.centre,
+  require(reverse.source.centre ==
+                  snapshot->findPortalEndpoint(layer->getId(), pairId, 1)
+                      ->aperture.centre &&
+              reverse.destination.centre ==
+                  snapshot->findPortalEndpoint(layer->getId(), pairId, 0)
+                      ->aperture.centre,
           "reverse route did not exit through the first endpoint");
   auto transform = bw::core::BuildPortalRigidTransform(*pair, 0);
   auto vector = transform.transformVector({3.0f, 4.0f});
@@ -429,6 +500,7 @@ int main() {
     invalidPairsStayWholeAndDiagnosable();
     layerSelectionIncludesCompletePairsOnly();
     identityAndEndpointStateRoundTripCopyAndAssignment();
+    serializedEndpointSequenceCarriesExplicitTraversalOrder();
     activeAperturesCutWallRenderingCollisionAndExposeFallback();
     portalCentresSnapOnlyToNearestLegalWallCoverage();
     canonicalNextEndpointRoutesByStableIdentity();

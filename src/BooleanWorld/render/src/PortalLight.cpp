@@ -90,8 +90,8 @@ std::optional<PortalLightPathHop> buildHop(
     return std::nullopt;
   }
 
-  auto const transform =
-      bw::core::BuildPortalRigidTransform(pair, sourceEndpoint);
+  auto const transform = bw::core::BuildPortalRigidTransform(
+      pair, source.endpointId);
   auto const virtualPlane = transform.transformPoint(lightPlane);
 
   PortalLightPathHop hop;

@@ -804,7 +804,7 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
       });
   auto const pairId = document.getSelectedPortalPairId();
   require(pairId != ~0u &&
-              document.getSelectedPortalEndpointIndex() == 0,
+              document.getSelectedPortalEndpointId() == 0,
           "creating a Portal pair did not select its first stable endpoint");
   editor::Settings settings;
   auto hover = document.getHover(first.centre, settings, nullptr);
@@ -817,13 +817,13 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
         return editor::selectPortalEndpoint(
             doc, layer->getId(), pairId, 1);
       });
-  require(document.getSelectedPortalEndpointIndex() == 1,
+  require(document.getSelectedPortalEndpointId() == 1,
           "transactional Portal endpoint selection did not apply");
   editor::undo(&document);
-  require(document.getSelectedPortalEndpointIndex() == 0,
+  require(document.getSelectedPortalEndpointId() == 0,
           "undo did not restore the previous Portal endpoint selection");
   editor::redo(&document);
-  require(document.getSelectedPortalEndpointIndex() == 1,
+  require(document.getSelectedPortalEndpointId() == 1,
           "redo did not restore the selected Portal endpoint");
   editor::undo(&document);
   layer = document.getWorld()->getActiveLayer();
@@ -849,8 +849,8 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
   auto aperture = document.getWorld()
                       ->getActiveLayer()
                       ->getPortalPair(pairId)
-                      ->getEndpoint(0)
-                      .getAperture();
+                      ->findEndpoint(0)
+                      ->getAperture();
   require(aperture.centre == wp::Vector2{-20.0f, 7.0f} &&
               aperture.width == 30.0f && aperture.bottom == 3.0f &&
               aperture.top == 31.0f,
@@ -860,18 +860,19 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
   auto const* restored =
       document.getWorld()->getActiveLayer()->getPortalPair(pairId);
   require(restored &&
-              restored->getEndpoint(0).getAperture().centre == first.centre &&
-              restored->getEndpoint(0).getAperture().width == first.width &&
-              restored->getEndpoint(0).getAperture().bottom == first.bottom &&
-              restored->getEndpoint(0).getAperture().top == first.top &&
-              document.getSelectedPortalPairId() == pairId,
+              restored->findEndpoint(0)->getAperture().centre == first.centre &&
+              restored->findEndpoint(0)->getAperture().width == first.width &&
+              restored->findEndpoint(0)->getAperture().bottom == first.bottom &&
+              restored->findEndpoint(0)->getAperture().top == first.top &&
+              document.getSelectedPortalPairId() == pairId &&
+              document.getSelectedPortalEndpointId() == 0,
           "undo did not restore Portal endpoint state and selection");
   editor::redo(&document, 3);
   require(document.getWorld()
                   ->getActiveLayer()
                   ->getPortalPair(pairId)
-                  ->getEndpoint(0)
-                  .getAperture()
+                  ->findEndpoint(0)
+                  ->getAperture()
                   .width == 30.0f,
           "redo did not restore Portal endpoint edits");
 

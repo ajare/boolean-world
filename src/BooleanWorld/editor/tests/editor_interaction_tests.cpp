@@ -1737,8 +1737,8 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   drag.dragDelta = {-8.0f, 0.0f};
   interaction.updateDrag(&document, settings, drag, snapshot.get());
   require(layer->getPortalPair(pairId)
-                  ->getEndpoint(0)
-                  .getAperture()
+                  ->findEndpoint(0)
+                  ->getAperture()
                   .centre == wp::Vector2{-50.0f, 0.0f},
           "a dragged Portal endpoint did not snap to a legal wall within three units");
 
@@ -1748,8 +1748,8 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   drag.dragDelta = {4.0f, 0.0f};
   interaction.updateDrag(&document, settings, drag, snapshot.get());
   require(layer->getPortalPair(pairId)
-                  ->getEndpoint(0)
-                  .getAperture()
+                  ->findEndpoint(0)
+                  ->getAperture()
                   .centre == wp::Vector2{-44.0f, 0.0f},
           "a wall-snapped Portal endpoint did not detach from cumulative drag motion");
 

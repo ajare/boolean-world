@@ -25,22 +25,24 @@ void renderPortalsView(ViewContext& context) {
     ImGui::PushID(static_cast<int>(pair.getId()));
     ImGui::Text("Pair %u", pair.getId());
     ImGui::SameLine();
-    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
-      if (endpointIndex != 0) ImGui::SameLine();
+    auto firstEndpoint = true;
+    for (auto endpointId : pair.getTraversalOrder()) {
+      if (!firstEndpoint) ImGui::SameLine();
+      firstEndpoint = false;
       auto const selected =
           doc->getSelectedPortalLayerId() == layer->getId() &&
           doc->getSelectedPortalPairId() == pair.getId() &&
-          doc->getSelectedPortalEndpointIndex() == endpointIndex;
+          doc->getSelectedPortalEndpointId() == endpointId;
       if (selected) ImGui::PushStyleColor(
           ImGuiCol_Button, ImVec4{0.85f, 0.55f, 0.12f, 1.0f});
-      auto label = format("Endpoint {}", endpointIndex + 1);
+      auto label = format("Endpoint {}", endpointId);
       if (ImGui::Button(label.c_str())) {
         transactUndoableAction(
             doc, CommandId::SelectPortalEndpoint,
-            [layerId = layer->getId(), pairId = pair.getId(), endpointIndex](
+            [layerId = layer->getId(), pairId = pair.getId(), endpointId](
                 Document* transactionDocument) {
               return selectPortalEndpoint(
-                  transactionDocument, layerId, pairId, endpointIndex);
+                  transactionDocument, layerId, pairId, endpointId);
             });
       }
       if (selected) ImGui::PopStyleColor();
@@ -50,12 +52,14 @@ void renderPortalsView(ViewContext& context) {
 
   if (doc->getSelectedPortalLayerId() != layer->getId()) return;
   auto const pairId = doc->getSelectedPortalPairId();
-  auto const endpointIndex = doc->getSelectedPortalEndpointIndex();
+  auto const endpointId = doc->getSelectedPortalEndpointId();
   auto const* pair = layer->getPortalPair(pairId);
-  if (!pair || endpointIndex >= 2) return;
+  auto const* selectedEndpoint =
+      pair ? pair->findEndpoint(endpointId) : nullptr;
+  if (!selectedEndpoint) return;
 
   ImGui::SeparatorText("Selected Portal endpoint");
-  auto const aperture = pair->getEndpoint(endpointIndex).getAperture();
+  auto const aperture = selectedEndpoint->getAperture();
   float centre[2]{aperture.centre.x, aperture.centre.y};
   if (ImGui::InputFloat2("Centre", centre)) {
     auto position = wp::Vector2{centre[0], centre[1]};
@@ -63,7 +67,7 @@ void renderPortalsView(ViewContext& context) {
         doc, CommandId::SetPortalEndpointPosition,
         [=](Document* document) {
           return setPortalEndpointPosition(
-              document, layer, pairId, endpointIndex, position);
+              document, layer, pairId, endpointId, position);
         });
   }
   auto width = aperture.width;
@@ -72,7 +76,7 @@ void renderPortalsView(ViewContext& context) {
         doc, CommandId::SetPortalEndpointWidth,
         [=](Document* document) {
           return setPortalEndpointWidth(
-              document, layer, pairId, endpointIndex, width);
+              document, layer, pairId, endpointId, width);
         });
   }
   float vertical[2]{aperture.bottom, aperture.top};
@@ -82,7 +86,7 @@ void renderPortalsView(ViewContext& context) {
         doc, CommandId::SetPortalEndpointVerticalBounds,
         [=](Document* document) {
           return setPortalEndpointVerticalBounds(
-              document, layer, pairId, endpointIndex, vertical[0],
+              document, layer, pairId, endpointId, vertical[0],
               vertical[1]);
         });
   }
@@ -94,18 +98,23 @@ void renderPortalsView(ViewContext& context) {
   if (!resolved) {
     ImGui::TextDisabled("Waiting for this Layer's generation.");
   } else {
-    auto const& endpoint = resolved->endpoints[endpointIndex];
-    auto const diagnostic = endpoint.diagnostic;
+    auto const* endpoint = context.worldData->findPortalEndpoint(
+        layer->getId(), pairId, endpointId);
+    if (!endpoint) {
+      ImGui::TextDisabled("Waiting for endpoint generation.");
+      return;
+    }
+    auto const diagnostic = endpoint->diagnostic;
     auto const colour = resolved->active
                             ? ImVec4{0.3f, 0.9f, 0.9f, 1.0f}
                             : ImVec4{1.0f, 0.3f, 0.25f, 1.0f};
     ImGui::TextColored(
         colour, "%s",
         bw::core::PortalResolutionDiagnosticText(diagnostic).data());
-    if (endpoint.resolved) {
+    if (endpoint->resolved) {
       ImGui::Text(
-          "Resolved width %.3f; walls %zu", endpoint.aperture.width,
-          endpoint.aperture.wallIndices.size());
+          "Resolved width %.3f; walls %zu", endpoint->aperture.width,
+          endpoint->aperture.wallIndices.size());
     }
   }
 

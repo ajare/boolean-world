@@ -304,11 +304,14 @@ void Layer::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
         serializer->beginMap("portalPair");
         serializer->writeUint32("id", pair.getId());
         serializer->beginArray("endpoints");
-        for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
-          auto const& endpoint = pair.getEndpoint(endpointIndex);
-          auto const& aperture = endpoint.getAperture();
+        for (auto endpointId : pair.getTraversalOrder()) {
+          auto const* endpoint = pair.findEndpoint(endpointId);
+          if (!endpoint || endpointId > std::numeric_limits<uint8_t>::max()) {
+            throw CoreException("Portal pair contains an unserializable endpoint ID");
+          }
+          auto const& aperture = endpoint->getAperture();
           serializer->beginMap("endpoint");
-          serializer->writeUint8("id", endpoint.getId());
+          serializer->writeUint8("id", static_cast<uint8_t>(endpointId));
           serializer->writeVector2("centre", aperture.centre);
           serializer->writeFloat("width", aperture.width);
           serializer->writeFloat("bottom", aperture.bottom);
@@ -421,30 +424,40 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
               pairId >= nextPortalPairId) {
             throw CoreException("Invalid or duplicate Portal pair id in Layer");
           }
-          array<AuthoredAperture, 2> apertures;
+          array<PortalEndpoint, 2> endpoints;
+          array<uint32_t, 2> traversalOrder{};
           array<bool, 2> endpointSeen{};
+          size_t endpointCount = 0;
           serializer->beginArray("endpoints");
           while (serializer->nextArrayItem()) {
+            if (endpointCount >= endpoints.size()) {
+              throw CoreException("A Portal pair must contain exactly two endpoints");
+            }
             serializer->beginMap("endpoint");
             auto const endpointId = serializer->readUint8("id");
             if (endpointId >= 2 || endpointSeen[endpointId]) {
               throw CoreException("A Portal pair must contain endpoints 0 and 1 exactly once");
             }
             endpointSeen[endpointId] = true;
-            apertures[endpointId].centre = serializer->readVector2("centre");
-            apertures[endpointId].width = serializer->readFloat("width");
-            apertures[endpointId].bottom = serializer->readFloat("bottom");
-            apertures[endpointId].top = serializer->readFloat("top");
-            if (!AuthoredApertureIsValid(apertures[endpointId])) {
+            AuthoredAperture aperture;
+            aperture.centre = serializer->readVector2("centre");
+            aperture.width = serializer->readFloat("width");
+            aperture.bottom = serializer->readFloat("bottom");
+            aperture.top = serializer->readFloat("top");
+            if (!AuthoredApertureIsValid(aperture)) {
               throw CoreException("Invalid authored Portal aperture");
             }
+            endpoints[endpointCount] = PortalEndpoint{endpointId, aperture};
+            traversalOrder[endpointCount++] = endpointId;
             serializer->endMap();
           }
           serializer->endArray();
-          if (!endpointSeen[0] || !endpointSeen[1]) {
+          if (endpointCount != endpoints.size() ||
+              !endpointSeen[0] || !endpointSeen[1]) {
             throw CoreException("A Portal pair must contain exactly two endpoints");
           }
-          portalPairs.emplace_back(pairId, apertures[0], apertures[1]);
+          portalPairs.emplace_back(
+              pairId, std::move(endpoints), traversalOrder);
           serializer->endMap();
         }
         serializer->endArray();
@@ -1583,13 +1596,18 @@ void Layer::removePortalPair(uint32_t pairId) {
 }
 
 void Layer::setPortalEndpointAperture(
-    uint32_t pairId, uint32_t endpointIndex,
+    uint32_t pairId, uint32_t endpointId,
     AuthoredAperture const& aperture) {
   auto* pair = getPortalPair(pairId);
   if (!pair) {
     throw CoreException(format("Portal pair {} not found in Layer", pairId));
   }
-  pair->endpoint(endpointIndex).setAperture(aperture);
+  auto* endpoint = pair->findEndpointMutable(endpointId);
+  if (!endpoint) {
+    throw CoreException(format(
+        "Portal endpoint {} not found in pair {}", endpointId, pairId));
+  }
+  endpoint->setAperture(aperture);
   modify();
 }
 

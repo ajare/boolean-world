@@ -2346,13 +2346,13 @@ vector<uint32_t> Document::getHoveredPortalEndpoint(
   auto bestDistance = numeric_limits<float>::max();
   vector<uint32_t> result;
   for (auto const& pair : layer->getPortalPairs()) {
-    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
-      auto const distance = pair.getEndpoint(endpointIndex)
-                                .getAperture()
-                                .centre.distanceToSq(mouseWorldPos);
+    for (auto endpointId : pair.getTraversalOrder()) {
+      auto const* endpoint = pair.findEndpoint(endpointId);
+      auto const distance = endpoint->getAperture().centre.distanceToSq(
+          mouseWorldPos);
       if (distance <= radiusSquared && distance < bestDistance) {
         bestDistance = distance;
-        result = {pair.getId(), endpointIndex};
+        result = {pair.getId(), endpointId};
       }
     }
   }

@@ -373,6 +373,12 @@ ResolvedPortalPair const* ArrangementWorldData::findPortalPair(
   return found == mPortalPairs.end() ? nullptr : &*found;
 }
 
+ResolvedPortalEndpoint const* ArrangementWorldData::findPortalEndpoint(
+    uint32_t layerId, uint32_t pairId, uint32_t endpointId) const {
+  auto const* pair = findPortalPair(layerId, pairId);
+  return pair ? FindPortalEndpoint(*pair, endpointId) : nullptr;
+}
+
 std::vector<PortalLiquidAdjacency> const&
 ArrangementWorldData::getPortalLiquidAdjacency() const {
   return mPortalLiquidAdjacency;

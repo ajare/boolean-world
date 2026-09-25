@@ -30,14 +30,14 @@ struct AuthoredAperture {
 };
 
 class BW_API PortalEndpoint {
-  uint8_t mId{};
+  uint32_t mId{};
   AuthoredAperture mAperture{};
 
 public:
   PortalEndpoint() = default;
-  PortalEndpoint(uint8_t id, AuthoredAperture aperture);
+  PortalEndpoint(uint32_t id, AuthoredAperture aperture);
 
-  [[nodiscard]] uint8_t getId() const;
+  [[nodiscard]] uint32_t getId() const;
   [[nodiscard]] AuthoredAperture const& getAperture() const;
 
 private:
@@ -46,25 +46,33 @@ private:
   void setAperture(AuthoredAperture const& aperture);
 };
 
-// A permanently Layer-owned link with exactly two stable endpoint slots.
+// A permanently Layer-owned link with exactly two stable endpoint identities.
+// Endpoint storage is independent of its explicit directed traversal order.
 class BW_API PortalPair {
   uint32_t mId{};
   std::array<PortalEndpoint, 2> mEndpoints{
       PortalEndpoint{0, {}}, PortalEndpoint{1, {}}};
+  // Stable endpoint IDs in directed traversal order. Keeping this separate
+  // from storage prevents authored identity from becoming a container index.
+  std::array<uint32_t, 2> mTraversalOrder{0, 1};
 
 public:
   PortalPair() = default;
   PortalPair(
       uint32_t id, AuthoredAperture first, AuthoredAperture second);
+  PortalPair(
+      uint32_t id, std::array<PortalEndpoint, 2> endpoints,
+      std::array<uint32_t, 2> traversalOrder);
 
   [[nodiscard]] uint32_t getId() const;
-  [[nodiscard]] PortalEndpoint const& getEndpoint(uint32_t index) const;
-  // Stable identity, independent of the endpoint's position in traversal order.
+  [[nodiscard]] std::array<PortalEndpoint, 2> const& getEndpoints() const;
+  [[nodiscard]] PortalEndpoint const* findEndpoint(uint32_t endpointId) const;
+  [[nodiscard]] std::span<uint32_t const> getTraversalOrder() const;
   [[nodiscard]] uint32_t getNextEndpointId(uint32_t endpointId) const;
 
 private:
   friend class Layer;
-  [[nodiscard]] PortalEndpoint& endpoint(uint32_t index);
+  [[nodiscard]] PortalEndpoint* findEndpointMutable(uint32_t endpointId);
 };
 
 // First reason an authored endpoint or its pair cannot participate in this
@@ -121,14 +129,15 @@ struct ResolvedPortalPair {
   bool active{false};
   PortalResolutionDiagnostic diagnostic{PortalResolutionDiagnostic::None};
   std::array<ResolvedPortalEndpoint, 2> endpoints{};
+  std::array<uint32_t, 2> traversalOrder{0, 1};
 };
 
 // Canonical directed routing seam. Order contains stable endpoint IDs, not
 // vector indices; missing sources and cycles shorter than two are invalid.
 [[nodiscard]] BW_API uint32_t NextPortalEndpointId(
     std::span<uint32_t const> order, uint32_t sourceId);
-// Pair-facing adapter for existing consumers. The next position is obtained
-// via stable IDs rather than by assuming the other slot is 1 - index.
+// Pair-facing adapter retained for render consumers during migration. The
+// next position is obtained from stable traversal identity.
 [[nodiscard]] BW_API uint32_t NextPortalEndpointIndex(
     ResolvedPortalPair const& pair, uint32_t sourceIndex);
 // Stable-identity adapters for consumers migrating away from endpoint
@@ -146,6 +155,8 @@ struct ResolvedPortalPair {
 struct PortalLiquidAdjacency {
   uint32_t layerId{};
   uint32_t pairId{};
+  uint32_t sourceEndpointId{};
+  uint32_t destinationEndpointId{};
   uint32_t cell0{};
   uint32_t cell1{};
   uint32_t face0{};
@@ -185,7 +196,7 @@ struct PortalRigidTransform {
 };
 
 [[nodiscard]] BW_API PortalRigidTransform BuildPortalRigidTransform(
-    ResolvedPortalPair const& pair, uint32_t sourceEndpoint);
+    ResolvedPortalPair const& pair, uint32_t sourceEndpointId);
 
 // A value-only copy made on the generation-requesting thread. It is safe to
 // carry to the asynchronous arrangement worker with the other generation

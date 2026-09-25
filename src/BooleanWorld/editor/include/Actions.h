@@ -303,19 +303,19 @@ bool deletePortalPair(
     Document* doc, bw::core::Layer* layer, uint32_t pairId);
 bool selectPortalEndpoint(
     Document* doc, uint32_t layerId, uint32_t pairId,
-    uint32_t endpointIndex);
+    uint32_t endpointId);
 bool setPortalEndpointPosition(
     Document* doc, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, wp::Vector2 const& position);
+    uint32_t endpointId, wp::Vector2 const& position);
 bool movePortalEndpoint(
     Document* doc, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, wp::Vector2 const& delta);
+    uint32_t endpointId, wp::Vector2 const& delta);
 bool setPortalEndpointWidth(
     Document* doc, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, float width);
+    uint32_t endpointId, float width);
 bool setPortalEndpointVerticalBounds(
     Document* doc, bw::core::Layer* layer, uint32_t pairId,
-    uint32_t endpointIndex, float bottom, float top);
+    uint32_t endpointId, float bottom, float top);
 
 bool selectPrimitive(Document* doc, uint32_t primitiveIndex);
 
