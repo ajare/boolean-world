@@ -104,8 +104,22 @@ private:
   bool moveEndpointLater(uint32_t endpointId);
 };
 
-// First reason an authored endpoint or its loop cannot participate in this
-// generation. Diagnostics are snapshot data, not authored state.
+// Target-graph validity is independent of aperture resolution. Every Portal
+// still has exactly one outgoing target, but an editable component is active
+// only when every member has exactly one incoming reference.
+enum class PortalTargetGraphDiagnostic : uint8_t {
+  None,
+  MissingIncomingReference,
+  MultipleIncomingReferences,
+  OtherPortalInvalid
+};
+
+[[nodiscard]] BW_API std::string_view PortalTargetGraphDiagnosticText(
+    PortalTargetGraphDiagnostic diagnostic);
+
+// First aperture-resolution reason an authored endpoint or its loop cannot
+// participate in this generation. Diagnostics are snapshot data, not authored
+// state, and remain available even when the target graph is invalid.
 enum class PortalResolutionDiagnostic : uint8_t {
   None,
   UnequalEndpointHeights,
@@ -147,6 +161,8 @@ struct ResolvedPortalEndpoint {
   uint32_t endpointId{};
   AuthoredAperture authored{};
   bool resolved{false};
+  PortalTargetGraphDiagnostic targetGraphDiagnostic{
+      PortalTargetGraphDiagnostic::None};
   PortalResolutionDiagnostic diagnostic{
       PortalResolutionDiagnostic::MissingRenderedWall};
   ResolvedAperture aperture{};
@@ -154,18 +170,22 @@ struct ResolvedPortalEndpoint {
 
 struct ResolvedPortalLoop {
   uint32_t layerId{};
-  // Independent named cycles use IndependentPortalLoopId here and the
-  // authored Layer-local Portal ID in endpointId/traversalOrder. The first
-  // traversal ID is the smallest member and identifies the generated cycle.
+  // Independent named components use IndependentPortalLoopId here and the
+  // authored Layer-local Portal ID in endpointId/traversalOrder. Active
+  // components follow targets from their smallest member; inactive components
+  // list members by ID. The first ID identifies either deterministically.
   uint32_t loopId{};
   bool active{false};
+  PortalTargetGraphDiagnostic targetGraphDiagnostic{
+      PortalTargetGraphDiagnostic::None};
   PortalResolutionDiagnostic diagnostic{PortalResolutionDiagnostic::None};
   std::vector<ResolvedPortalEndpoint> endpoints;
   std::vector<uint32_t> traversalOrder;
 };
 
-// Canonical directed routing seam. Order contains stable endpoint IDs, not
-// vector indices; missing sources and empty cycles are invalid.
+// Canonical directed routing seam for an active component. Order contains
+// stable endpoint IDs, not vector indices; missing sources and empty cycles
+// are invalid.
 [[nodiscard]] BW_API uint32_t NextPortalEndpointId(
     std::span<uint32_t const> order, uint32_t sourceId);
 // Stable-identity lookup used by every generated Portal consumer.

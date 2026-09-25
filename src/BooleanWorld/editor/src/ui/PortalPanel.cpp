@@ -183,11 +183,20 @@ void renderPortalsView(ViewContext& context) {
       return;
     }
     auto const diagnostic = endpoint->diagnostic;
-    auto const colour = resolved->active
-                            ? ImVec4{0.3f, 0.9f, 0.9f, 1.0f}
-                            : ImVec4{1.0f, 0.3f, 0.25f, 1.0f};
+    if (!portalLoop) {
+      auto const graphValid = endpoint->targetGraphDiagnostic ==
+                              bw::core::PortalTargetGraphDiagnostic::None;
+      ImGui::TextColored(
+          graphValid ? ImVec4{0.3f, 0.9f, 0.9f, 1.0f}
+                     : ImVec4{1.0f, 0.3f, 0.25f, 1.0f},
+          "%s", bw::core::PortalTargetGraphDiagnosticText(
+                    endpoint->targetGraphDiagnostic).data());
+    }
     ImGui::TextColored(
-        colour, "%s",
+        diagnostic == bw::core::PortalResolutionDiagnostic::None
+            ? ImVec4{0.3f, 0.9f, 0.9f, 1.0f}
+            : ImVec4{1.0f, 0.3f, 0.25f, 1.0f},
+        "Aperture: %s",
         bw::core::PortalResolutionDiagnosticText(diagnostic).data());
     if (endpoint->resolved) {
       ImGui::Text(

@@ -324,10 +324,15 @@ void renderPortalOverlays(
     auto centre = worldToScreen(aperture.centre);
     drawList->AddCircle(centre, 6.0f, colour, 12, 2.0f);
     auto active = generated && generated->active;
-    auto diagnostic = endpoint ? bw::core::PortalResolutionDiagnosticText(endpoint->diagnostic)
-                               : std::string_view{"Not in a closed target cycle"};
-    auto label = std::format("{}{} — {}", portal.getName(),
-        portal.getTargetId() == portal.getId() ? " (Mirror)" : "", diagnostic);
+    auto graphDiagnostic = endpoint
+        ? bw::core::PortalTargetGraphDiagnosticText(endpoint->targetGraphDiagnostic)
+        : std::string_view{"Target graph: waiting for generation"};
+    auto apertureDiagnostic = endpoint
+        ? bw::core::PortalResolutionDiagnosticText(endpoint->diagnostic)
+        : std::string_view{"waiting for generation"};
+    auto label = std::format("{}{} — {}; Aperture: {}", portal.getName(),
+        portal.getTargetId() == portal.getId() ? " (Mirror)" : "",
+        graphDiagnostic, apertureDiagnostic);
     drawList->AddText({centre.x + 9.0f, centre.y + 7.0f},
                      active ? colour : inactiveColour, label.c_str());
   }

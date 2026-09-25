@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -104,6 +105,8 @@ void namedCyclesFollowStableTargets() {
     auto* loop = data->findPortalLoop(owner->getId(), bw::core::IndependentPortalLoopId, b);
     require(loop != nullptr, "named cycle missing");
     require(loop->active, stage + ": named cycle inactive: " +
+        std::string(bw::core::PortalTargetGraphDiagnosticText(
+            loop->targetGraphDiagnostic)) + "; " +
         std::string(bw::core::PortalResolutionDiagnosticText(loop->diagnostic)));
     require(loop->traversalOrder == std::vector<uint32_t>{a, c, b},
             "named directed cycle not inferred canonically");
@@ -158,6 +161,116 @@ void namedCyclesFollowStableTargets() {
   layer->removePortal(b);
   require(layer->getPortal(a)->getTargetId() == a && layer->getPortal(c)->getTargetId() == c,
           "destination deletion left dangling targets");
+}
+
+void incompleteNamedTargetGraphsRemainAuthoredAndInactive() {
+  bw::core::World world(200.0f, 10.0f);
+  auto* room = addRoom(world);
+  {
+    auto mutation = room->mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance)
+        .setPoints({{0, 0}, {1, 0}});
+  }
+  auto* layer = world.getActiveLayer();
+  auto const a = layer->addPortal(aperture(-50.0f, 17.0f));
+  auto const b = layer->addPortal(aperture(50.0f, 17.0f));
+  auto const unrelated = layer->addPortal(aperture(-50.0f, -25.0f));
+  auto const cycleFirst = layer->addPortal(aperture(15.0f, 50.0f));
+  auto const cycleSecond = layer->addPortal(aperture(15.0f, -50.0f));
+  layer->setPortalTarget(a, b); // A -> B, B -> B: one tail into a cycle.
+  layer->setPortalTarget(cycleFirst, cycleSecond);
+  layer->setPortalTarget(cycleSecond, cycleFirst);
+
+  auto verifyAuthored = [&](bw::core::World& candidate) {
+    auto* owner = candidate.getActiveLayer();
+    require(owner->getPortal(a)->getTargetId() == b &&
+                owner->getPortal(b)->getTargetId() == b &&
+                owner->getPortal(unrelated)->getTargetId() == unrelated &&
+                owner->getPortal(cycleFirst)->getTargetId() == cycleSecond &&
+                owner->getPortal(cycleSecond)->getTargetId() == cycleFirst,
+            "an incomplete target graph was normalized during a value operation");
+    auto data = candidate.getWorldData();
+    auto const* invalid = data->findPortalLoop(
+        owner->getId(), bw::core::IndependentPortalLoopId, a);
+    require(invalid && !invalid->active && invalid->endpoints.size() == 2 &&
+                invalid->traversalOrder == std::vector<uint32_t>{a, b},
+            "tail-plus-cycle component was omitted, split, or activated");
+    auto const* aEndpoint = bw::core::FindPortalEndpoint(*invalid, a);
+    auto const* bEndpoint = bw::core::FindPortalEndpoint(*invalid, b);
+    require(aEndpoint && bEndpoint && aEndpoint->resolved && bEndpoint->resolved &&
+                aEndpoint->diagnostic == PortalResolutionDiagnostic::None &&
+                bEndpoint->diagnostic == PortalResolutionDiagnostic::None &&
+                aEndpoint->targetGraphDiagnostic ==
+                    bw::core::PortalTargetGraphDiagnostic::MissingIncomingReference &&
+                bEndpoint->targetGraphDiagnostic ==
+                    bw::core::PortalTargetGraphDiagnostic::MultipleIncomingReferences,
+            std::format("invalid graph diagnostics were not distinct from aperture resolution: A resolved={} aperture={} graph={}; B resolved={} aperture={} graph={}",
+                aEndpoint ? aEndpoint->resolved : false,
+                aEndpoint ? static_cast<int>(aEndpoint->diagnostic) : -1,
+                aEndpoint ? static_cast<int>(aEndpoint->targetGraphDiagnostic) : -1,
+                bEndpoint ? bEndpoint->resolved : false,
+                bEndpoint ? static_cast<int>(bEndpoint->diagnostic) : -1,
+                bEndpoint ? static_cast<int>(bEndpoint->targetGraphDiagnostic) : -1));
+    require(data->circleIntersectsWall(aEndpoint->authored.centre, 2.0f) >= 0 &&
+                data->circleIntersectsWall(bEndpoint->authored.centre, 2.0f) >= 0,
+            "an invalid target component cut collision apertures");
+    auto const* mirror = data->findPortalLoop(
+        owner->getId(), bw::core::IndependentPortalLoopId, unrelated);
+    require(mirror && mirror->active &&
+                data->circleIntersectsWall(
+                    mirror->endpoints.front().aperture.centre, 2.0f) < 0,
+            "an invalid component deactivated an unrelated Mirror Portal");
+    auto const* otherCycle = data->findPortalLoop(
+        owner->getId(), bw::core::IndependentPortalLoopId, cycleFirst);
+    require(otherCycle && otherCycle->active && otherCycle->endpoints.size() == 2 &&
+                bw::core::NextPortalEndpoint(*otherCycle, cycleFirst)->endpointId ==
+                    cycleSecond,
+            "an invalid component deactivated an unrelated multi-Portal cycle");
+  };
+
+  verifyAuthored(world);
+  auto yamlCopy = deserializeWorld(serializeWorld(world));
+  verifyAuthored(yamlCopy);
+  auto binaryCopy = binaryRoundTrip(world);
+  verifyAuthored(binaryCopy);
+  bw::core::World copied(world);
+  verifyAuthored(copied);
+
+  auto data = world.getWorldData();
+  std::vector<bw::core::PortalLoopSnapshot> snapshots;
+  for (auto const& portal : layer->getPortals())
+    snapshots.push_back({layer->getId(), {}, portal});
+  auto first = bw::core::ResolvePortalLoops(
+      data->getArrangement(), data->getWalls(), snapshots);
+  std::reverse(snapshots.begin(), snapshots.end());
+  auto second = bw::core::ResolvePortalLoops(
+      data->getArrangement(), data->getWalls(), snapshots);
+  require(first.size() == second.size(),
+          "snapshot storage order changed target-component count");
+  for (size_t index = 0; index < first.size(); ++index) {
+    require(first[index].traversalOrder == second[index].traversalOrder &&
+                first[index].targetGraphDiagnostic ==
+                    second[index].targetGraphDiagnostic,
+            "snapshot storage order changed component order or diagnostics");
+    for (auto endpointId : first[index].traversalOrder) {
+      require(bw::core::FindPortalEndpoint(first[index], endpointId)
+                      ->targetGraphDiagnostic ==
+                  bw::core::FindPortalEndpoint(second[index], endpointId)
+                      ->targetGraphDiagnostic,
+              "snapshot storage order changed a Portal graph diagnostic");
+    }
+  }
+
+  layer->setPortalTarget(b, a);
+  auto completed = world.getWorldData();
+  auto const* cycle = completed->findPortalLoop(
+      layer->getId(), bw::core::IndependentPortalLoopId, a);
+  require(cycle && cycle->active && cycle->endpoints.size() == 2 &&
+              bw::core::NextPortalEndpoint(*cycle, a)->endpointId == b &&
+              bw::core::NextPortalEndpoint(*cycle, b)->endpointId == a &&
+              layer->getPortal(a)->getAperture().centre ==
+                  wp::Vector2{-50.0f, 17.0f},
+          "completing the final target did not activate the same Portals and apertures");
 }
 
 void namedMirrorsRoundTripAndResolveIndependently() {
@@ -806,6 +919,7 @@ int main() {
     bw::core::LayerBuildStep::registerCoreTypes();
     namedMirrorsRoundTripAndResolveIndependently();
     namedCyclesFollowStableTargets();
+    incompleteNamedTargetGraphsRemainAuthoredAndInactive();
     equalAndUnequalWidthsResolveWithoutChangingAuthoredState();
     invalidLoopsStayWholeAndDiagnosable();
     layerSelectionIncludesCompleteLoopsOnly();

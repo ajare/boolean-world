@@ -477,6 +477,21 @@ bool PortalLoop::moveEndpointLater(uint32_t endpointId) {
   return true;
 }
 
+std::string_view PortalTargetGraphDiagnosticText(
+    PortalTargetGraphDiagnostic diagnostic) {
+  switch (diagnostic) {
+    case PortalTargetGraphDiagnostic::None:
+      return "Target graph: complete cycle";
+    case PortalTargetGraphDiagnostic::MissingIncomingReference:
+      return "Target graph inactive: no Portal targets this Portal";
+    case PortalTargetGraphDiagnostic::MultipleIncomingReferences:
+      return "Target graph inactive: multiple Portals target this Portal";
+    case PortalTargetGraphDiagnostic::OtherPortalInvalid:
+      return "Target graph inactive: another Portal in this component has invalid incoming references";
+  }
+  return "Target graph inactive: unknown failure";
+}
+
 std::string_view PortalResolutionDiagnosticText(
     PortalResolutionDiagnostic diagnostic) {
   switch (diagnostic) {
@@ -655,6 +670,7 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     uint32_t layerId, loopId;
     std::vector<uint32_t> order;
     std::vector<PortalEndpoint> endpoints;
+    std::map<uint32_t, PortalTargetGraphDiagnostic> graphDiagnostics;
   };
   std::vector<Input> inputs;
   std::map<uint32_t, std::map<uint32_t, Portal const*>> named;
@@ -664,28 +680,82 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     } else {
       auto order = snapshot.loop.getTraversalOrder();
       inputs.push_back({snapshot.layerId, snapshot.loop.getId(),
-          {order.begin(), order.end()}, snapshot.loop.getEndpoints()});
+          {order.begin(), order.end()}, snapshot.loop.getEndpoints(), {}});
     }
   }
-  // A functional graph may contain tails as well as cycles. Only closed
-  // cycles participate. Start each at its smallest stable ID, never storage
-  // order; the endpoint key retains the independent-Portal namespace.
+
+  // Partition each Layer's functional target graph into weakly connected
+  // components. Invalid tails and branches stay present as one generated,
+  // inactive component instead of allowing an embedded cycle to activate.
   for (auto const& [layerId, portals] : named) {
+    std::map<uint32_t, std::vector<uint32_t>> neighbours;
+    std::map<uint32_t, uint32_t> incoming;
+    for (auto const& [id, portal] : portals) {
+      neighbours[id];
+      incoming[id] = 0;
+    }
+    for (auto const& [id, portal] : portals) {
+      auto const target = portal->getTargetId();
+      if (!portals.contains(target)) continue;
+      neighbours[id].push_back(target);
+      neighbours[target].push_back(id);
+      ++incoming[target];
+    }
+    for (auto& [id, adjacent] : neighbours) {
+      std::ranges::sort(adjacent);
+      adjacent.erase(std::unique(adjacent.begin(), adjacent.end()), adjacent.end());
+    }
+
     std::set<uint32_t> visited;
     for (auto const& [start, unused] : portals) {
-      std::vector<uint32_t> path;
-      auto id = start;
-      while (portals.contains(id) && visited.insert(id).second) {
-        path.push_back(id);
-        id = portals.at(id)->getTargetId();
+      if (visited.contains(start)) continue;
+      std::vector<uint32_t> pending{start};
+      std::vector<uint32_t> component;
+      visited.insert(start);
+      while (!pending.empty()) {
+        auto const id = pending.back();
+        pending.pop_back();
+        component.push_back(id);
+        for (auto adjacent : neighbours[id]) {
+          if (visited.insert(adjacent).second) pending.push_back(adjacent);
+        }
       }
-      auto begin = std::ranges::find(path, id);
-      if (begin == path.end()) continue;
-      std::vector<uint32_t> order(begin, path.end());
-      std::rotate(order.begin(), std::ranges::min_element(order), order.end());
-      Input input{layerId, IndependentPortalLoopId, order, {}};
-      for (auto endpointId : order)
-        input.endpoints.emplace_back(endpointId, portals.at(endpointId)->getAperture());
+      std::ranges::sort(component);
+
+      Input input{layerId, IndependentPortalLoopId, component, {}, {}};
+      auto graphValid = true;
+      for (auto id : component) {
+        auto diagnostic = PortalTargetGraphDiagnostic::None;
+        if (incoming[id] == 0) {
+          diagnostic = PortalTargetGraphDiagnostic::MissingIncomingReference;
+        } else if (incoming[id] > 1) {
+          diagnostic = PortalTargetGraphDiagnostic::MultipleIncomingReferences;
+        }
+        input.graphDiagnostics[id] = diagnostic;
+        graphValid &= diagnostic == PortalTargetGraphDiagnostic::None;
+        input.endpoints.emplace_back(id, portals.at(id)->getAperture());
+      }
+
+      // A valid component's canonical route starts at its smallest ID and
+      // follows authored targets. Invalid traversal order is the sorted member
+      // list, used only for deterministic identity and diagnostics.
+      if (graphValid) {
+        input.order.clear();
+        auto id = component.front();
+        do {
+          input.order.push_back(id);
+          id = portals.at(id)->getTargetId();
+        } while (id != component.front() && input.order.size() <= component.size());
+        graphValid = id == component.front() &&
+                     input.order.size() == component.size();
+      }
+      if (!graphValid) {
+        input.order = component;
+        for (auto id : component) {
+          if (input.graphDiagnostics[id] == PortalTargetGraphDiagnostic::None)
+            input.graphDiagnostics[id] = PortalTargetGraphDiagnostic::OtherPortalInvalid;
+        }
+      }
       inputs.push_back(std::move(input));
     }
   }
@@ -715,12 +785,23 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     std::ranges::transform(
         authoredEndpoints, std::back_inserter(resolved.endpoints),
         [&](auto const& endpoint) {
-          return resolveEndpoint(arrangement, walls, endpoint, width);
+          auto result = resolveEndpoint(arrangement, walls, endpoint, width);
+          if (auto found = input.graphDiagnostics.find(endpoint.getId());
+              found != input.graphDiagnostics.end()) {
+            result.targetGraphDiagnostic = found->second;
+          }
+          return result;
         });
+    for (auto const& endpoint : resolved.endpoints) {
+      if (endpoint.targetGraphDiagnostic != PortalTargetGraphDiagnostic::None) {
+        resolved.targetGraphDiagnostic = endpoint.targetGraphDiagnostic;
+        break;
+      }
+    }
 
     // Loop-wide validation does not discard successful geometric resolution:
     // the editor still needs the generated tangent and narrowed bounds to
-    // distinguish resolved geometry from the reason the loop is inactive.
+    // distinguish aperture failures from target-graph failures.
     auto loopFailure = PortalResolutionDiagnostic::None;
     if (!equalHeights) {
       loopFailure = PortalResolutionDiagnostic::UnequalEndpointHeights;
@@ -731,14 +812,9 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     }
     if (loopFailure != PortalResolutionDiagnostic::None) {
       resolved.diagnostic = loopFailure;
-      for (auto& endpoint : resolved.endpoints) {
-        endpoint.diagnostic = loopFailure;
-      }
-    } else if (std::ranges::all_of(
+      for (auto& endpoint : resolved.endpoints) endpoint.diagnostic = loopFailure;
+    } else if (!std::ranges::all_of(
                    resolved.endpoints, &ResolvedPortalEndpoint::resolved)) {
-      resolved.active = true;
-      resolved.diagnostic = PortalResolutionDiagnostic::None;
-    } else {
       for (auto endpointId : resolved.traversalOrder) {
         auto const* endpoint = FindPortalEndpoint(resolved, endpointId);
         if (endpoint && !endpoint->resolved) {
@@ -747,12 +823,14 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
         }
       }
       for (auto& endpoint : resolved.endpoints) {
-        if (endpoint.resolved) {
-          endpoint.diagnostic =
-              PortalResolutionDiagnostic::OtherEndpointUnresolved;
-        }
+        if (endpoint.resolved)
+          endpoint.diagnostic = PortalResolutionDiagnostic::OtherEndpointUnresolved;
       }
     }
+    resolved.active =
+        resolved.targetGraphDiagnostic == PortalTargetGraphDiagnostic::None &&
+        resolved.diagnostic == PortalResolutionDiagnostic::None &&
+        std::ranges::all_of(resolved.endpoints, &ResolvedPortalEndpoint::resolved);
     result.push_back(std::move(resolved));
   }
   return result;
