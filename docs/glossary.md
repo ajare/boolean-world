@@ -88,12 +88,37 @@ authored World content and required before that World can be deserialized and
 activated. The serialized list is the exact, sorted projection of all such
 references, including disabled LayerBuildSteps and Prefab definitions.
 
+**Portal loop** — A stably identified, ordered cycle permanently owned by one
+Layer and containing at least two stable Portal endpoints. Entering endpoint
+`i` exits endpoint `(i + 1) mod N`; the complete loop participates only when
+its owning Layer is selected and every endpoint resolves. A two-endpoint Portal
+loop preserves the former Portal pair's traversal mapping.
+
+**Portal endpoint** — One stable member of a Portal loop, holding one authored
+aperture and occupying one mutable position in the loop's traversal order. Its
+id is stable and never reused within the loop, independently of insertion,
+removal, or reordering. It accepts traversal only from its resolved front side
+and sends it to the next endpoint. It is not a WorldTriggerLine or an
+ArrangementWall property, and it never stores generated wall or edge identity.
+
+**Authored aperture** — A Portal endpoint's persistent requested rectangle: a
+World-plane centre and width plus bottom and top elevations. Every endpoint in
+one Portal loop must have the same height; generation narrows resolved
+apertures to the loop's smallest authored width but never mutates authored
+dimensions.
+
 ## Geometry — after the rewrite
 
 **Arrangement** — The planar subdivision induced by *all* primitive edges at
 once. Its defining property: every **face** is wholly inside or wholly outside
 every primitive, so membership is a property of the face rather than something
 recomputed per boolean operation.
+
+**Resolved aperture** — An immutable generation-side Portal rectangle whose
+wall plane, tangent, front, normalized width, elevations, and rendered-wall
+coverage were resolved in one Arrangement snapshot. Every endpoint uses the
+loop's smallest authored width around its own centre; resolved wall indices
+never enter World serialization.
 
 **Face** — A maximal connected region of the arrangement. Has one outer
 boundary and zero or more explicit inner boundaries (**holes**). Carries a
@@ -138,8 +163,19 @@ including an artificial triangulation edge within one Arrangement face, or an
 explicitly open edge from a cell to the exterior drain. A link exists only over
 positive-clearance portions of the edge and becomes reachable at its Sill.
 
+**Portal liquid-adjacency** — The generated directed relation from each
+resolved Portal endpoint's Hydraulic cell to the next endpoint's cell in an
+active Portal loop, separate from ordinary shared-edge Liquid-adjacency and
+wall collision. Liquid settles at generation time to a deterministic fixed
+point, spilling only in traversal order after reaching each source Sill and
+mapping its surface by the same height above the source and destination lower
+edges. Loops are accepted atomically in stable Layer-id/loop-id order; a
+contradictory accumulated elevation offset omits that loop from Liquid without
+deactivating its other Portal behaviour.
+
 **Pool** — One set of Hydraulic cells holding Liquid at a single shared
-horizontal surface elevation. Two Pools merge when their combined equilibrium
+horizontal surface elevation, or at endpoint-relative elevations when joined
+by Portal liquid-adjacency. Two Pools merge when their combined equilibrium
 reaches the Sill between them; below it, only Liquid above the Sill spills and
 the donor remains brim-full.
 
@@ -210,6 +246,41 @@ two primitive indices per edge and an `is2Sided()` test. Superseded by the
 arrangement's native edge–face incidence.
 
 ## Gameplay
+
+**Zone** — The player's current interaction mode for World rendering and
+collision. A player occupies exactly one World-owned Zone at a time, regardless
+of which Arrangement face contains their position.
+
+**Euclidean Zone** — The built-in default Zone: front-facing solid World
+surfaces use their authored treatment, back-facing solid surfaces are not
+rendered, and Liquid remains two-sided. It normally describes play inside
+bounded geometry but is an explicit player mode, not a containment test.
+
+**Negative Space Zone** — The built-in Zone normally entered through a
+Zone-bearing Border whose non-solid side names it, into either the unbounded
+exterior or a bounded Hole. Front-facing World surfaces retain their authored
+treatment and back-facing surfaces render matte white; all non-solid spaces
+share this one mode.
+
+**Phantom Zone** — The Zone in which the World is physically absent and visible
+only through Phantom apertures against black. Walking preserves entry feet
+elevation; valid inward aperture crossings return the player to Euclidean.
+
+**Phantom aperture** — The unchipped outline of a hidden, non-colliding Border
+linking Phantom and Euclidean, visible only from its non-solid side as a window
+into Euclidean space. It is not a Portal endpoint and does not relocate the view.
+
+**Zone-bearing Border wall** — A generated non-colliding Border wall whose
+solid side is always the Euclidean Zone and whose non-solid side is the other
+Zone selected on its contributing authored External edge; the other side may
+also be Euclidean. The other-Zone value persists while the edge is colliding
+or does not currently generate a Border.
+
+**Zone crossing** — Assignment of the destination side's Zone when the centre
+of the player crosses a Zone-bearing Border wall during ordinary swept
+movement; equal side Zones leave the player unchanged. Crossings are applied
+in travel order, while containment, Portals, teleports, rebuild recovery, and
+other relocation never infer one.
 
 **Player feet elevation** — The simulated elevation of the player's feet. It
 matches the authoritative floor sample while grounded, but remains distinct

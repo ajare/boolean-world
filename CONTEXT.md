@@ -13,8 +13,24 @@ A structural Primitive that participates fully in the boolean fold but can never
 _Avoid_: material-less Primitive (an authored Primitive with a missing material is still property-contributing), invisible Primitive (property transparency does not affect geometry or visibility)
 
 **Layer**:
-A named, owned collection of Primitives and WorldTriggerLines within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: neither a Primitive nor a WorldTriggerLine ever moves between Layers.
+A named, owned collection of Primitives, WorldTriggerLines, and Portal loops within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: no owned object ever moves between Layers.
 _Avoid_: Layer tag, layer id (as a primitive attribute)
+
+**Portal loop**:
+A stably identified, ordered cycle permanently owned by one Layer and containing at least two stable Portal endpoints. Entering endpoint `i` exits endpoint `(i + 1) mod N`; the complete loop participates only when its owning Layer is selected and every endpoint resolves. A two-endpoint Portal loop has the same traversal mapping as the former Portal pair.
+_Avoid_: Portal pair, Portal link, teleporter, independent portals
+
+**Portal endpoint**:
+One stable member of a Portal loop, owning one authored aperture and occupying one mutable position in the loop's traversal order but no generated wall identity. Its id is stable and never reused within the loop; it accepts traversal only from its resolved front side and sends it to the next endpoint. It is neither a WorldTriggerLine nor an ArrangementWall property.
+_Avoid_: Portal wall, TriggerLine, wall flag, endpoint index
+
+**Authored aperture**:
+A Portal endpoint's persistent requested rectangle: a World-plane centre and width plus bottom and top elevations. Every endpoint in one Portal loop must have the same height; generation may narrow resolved apertures to the loop's smallest authored width without changing authored dimensions.
+_Avoid_: Portal bounds (ambiguous between authored and resolved), wall opening
+
+**Resolved aperture**:
+The immutable generation-side Portal rectangle resolved against rendered ArrangementWall coverage in one World snapshot. It records its wall frame, loop-normalized width, elevations, and snapshot-local coverage, none of which is serialized as authored identity.
+_Avoid_: Authored aperture, serialized wall edge
 
 **Contour**:
 A closed sequence of fixed-point vertices forming one boundary of a primitive. A primitive may contribute multiple contours whose combined interior is determined by its fill rule. The generation-side form of a Ring.
@@ -153,8 +169,8 @@ A per-edge tri-state on a MeshPrimitive's Ring: Unset, Collides, or Doesn't coll
 _Avoid_: wall property, collision flag (ambiguous with the runtime collision system), border flag (border here is local mesh-topology "one polygon", not the Arrangement's cross-primitive Border edge — the two usually but not always coincide)
 
 **Wall visibility override**:
-The same per-edge, External-only mechanism as Wall collision override, for a second independent flag: whether that edge's ArrangementWall renders. Also defaults on. Unlike collision, resolving it needs no world-level parameter (there is no threshold to fall back to), so it is settled directly when ArrangementWalls are built rather than deferred to ArrangementWorldData; like collision, it never creates a wall where the fold produces none — it can only hide a wall that already exists.
-_Avoid_: render flag, hidden flag
+The per-External-edge choice of whether a generated wall has a visible surface, independent of its collision override. Hidden walls have no surface in Euclidean or Negative Space; a hidden Phantom-linked Border instead bounds a one-sided Phantom aperture.
+_Avoid_: render flag, hidden flag, Zone visibility
 
 **Wall normal-map override**:
 A per-External-edge choice that is Unset, Disabled, or an ImageResource normal map, inherited by the uncut ArrangementWall surface that edge contributes to; Chip facets expose new surfaces and do not inherit it. Higher-precedence explicit choices dominate lower contributors; it varies wall-surface detail independently of the wall's Surface material reference and never changes geometry or collision.
@@ -171,6 +187,34 @@ _Avoid_: asset path, normal-map dependency
 **Player proxy**:
 A position and facing angle stored on the Document, representing where the in-game player currently would be. Independent of any Primitive or Layer; used to render the editor's player-view overlay and to seed a flythrough's starting pose.
 _Avoid_: player start, spawn point
+
+**Zone**:
+The player's current interaction mode for World rendering and collision; a player occupies exactly one World-owned Zone at a time, regardless of which Arrangement face contains their position.
+_Avoid_: area, region, Layer, face, containment state
+
+**Euclidean Zone**:
+The built-in default Zone: front-facing solid World surfaces use their authored treatment, back-facing solid surfaces are not rendered, and Liquid remains two-sided. It normally describes play inside bounded geometry but is an explicit player mode, not a containment test.
+_Avoid_: World (the World owns every Zone), normal Zone
+
+**Negative Space Zone**:
+The built-in Zone normally entered through a Zone-bearing Border whose non-solid side names it, into either the unbounded exterior or a bounded Hole. Front-facing World surfaces retain their authored treatment and back-facing surfaces render matte white; all non-solid spaces share this one mode.
+_Avoid_: exterior face, void, outside Zone
+
+**Phantom Zone**:
+The Zone in which the World is physically absent and visible only through Phantom apertures against black. Walking preserves entry feet elevation, and only a valid inward crossing through a Phantom aperture returns the player to Euclidean.
+_Avoid_: ghost mode, noclip, portal dimension
+
+**Phantom aperture**:
+The unchipped outline of a hidden, non-colliding Border linking Phantom and Euclidean, visible only from its non-solid side as a window into Euclidean space. It is not a Portal endpoint and has no relocation transform.
+_Avoid_: Phantom Portal, visible hidden wall
+
+**Zone-bearing Border wall**:
+A generated non-colliding Border wall whose solid side is always the Euclidean Zone and whose non-solid side is the other Zone selected on its contributing authored External edge; the other side may also be Euclidean. The other-Zone value persists while the edge is colliding or does not currently generate a Border.
+_Avoid_: Zone portal, Zone edge, exterior wall
+
+**Zone crossing**:
+Assignment of the destination side's Zone when the centre of the player crosses a Zone-bearing Border wall during ordinary swept movement; equal side Zones leave the player unchanged. Crossings are applied in travel order, while containment, Portals, teleports, rebuild recovery, and other relocation never infer one.
+_Avoid_: Zone detection, exterior detection, face transition
 
 **Player feet elevation**:
 The simulated elevation of the player's feet. It equals the sampled floor elevation while grounded, but differs while the player steps, falls, floats, or swims.
@@ -265,8 +309,12 @@ The per-dimension fraction of the active 3D world target used by Planar water-re
 _Avoid_: reflection render scale (Render scale already names the resolution of the 3D world)
 
 **Liquid-adjacency**:
-The relation between two solid Arrangement faces across whose shared edge Hydraulic cells may link: both faces must be solid and some positive-clearance part of the shared opening must exist. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face only where the Border wall is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where reached, an open exterior link acts as a permanent drain.
-_Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when no traversable opening exists)
+The relation between two solid Arrangement faces across whose shared edge Hydraulic cells may link: both faces must be solid and some positive-clearance part of the shared opening must exist. The Arrangement's outer, unbounded face is liquid-adjacent to a bordering solid face only where the Border wall is explicitly authored not to collide — a solid wall there blocks liquid exactly as it blocks the player, so an ordinary outer wall is not an opening just because nothing is authored beyond it. Where reached, an open exterior link acts as a permanent drain. Distinct from Portal liquid-adjacency, which joins faces that share no Arrangement edge.
+_Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when no traversable opening exists), Portal liquid-adjacency
+
+**Portal liquid-adjacency**:
+The generated directed relation from each resolved Portal endpoint's Hydraulic cell to the next endpoint's cell in an active Portal loop. Liquid settles at generation time to a deterministic fixed point, spilling only in traversal order after reaching each source Sill and mapping its surface by the same height above the source and destination lower edges. Loops are accepted atomically in stable Layer-id/loop-id order; a contradictory accumulated elevation offset omits that loop from Liquid without deactivating its other Portal behaviour.
+_Avoid_: Liquid-adjacency (the ordinary shared-edge relation), Hydraulic link (which crosses a shared edge), bidirectional Portal adjacency, Portal flow rate (equilibrium is instantaneous)
 
 **Hydraulic cell**:
 One generated Arrangement triangle together with its affine floor and ceiling functions and derived Liquid state. It is the unit whose integrated capacity determines how much of a horizontal Pool it can hold and whose wet portion is clipped to produce visible Liquid geometry; its World-plane triangle remains ordinary derived triangulation, never new Arrangement topology.
@@ -281,7 +329,7 @@ A maximal set of Hydraulic cells connected by Hydraulic links. Its liquid settle
 _Avoid_: lake, basin, pond, Pool (a Wet component may hold several)
 
 **Pool**:
-One set of Hydraulic cells within a Wet component holding Liquid at a single shared surface elevation. Two Pools become one the moment their combined equilibrium would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
+One set of Hydraulic cells within a Wet component holding Liquid at a single shared surface elevation, or at endpoint-relative elevations when joined by Portal liquid-adjacency. Two Pools become one the moment their combined equilibrium would stand at or above the Sill between them; below it they stay two, and the higher one spills only what stands above the Sill into the lower, ending exactly brim-full at the Sill rather than emptying into it.
 _Avoid_: Wet component (the connectivity, not the body of Liquid), lake, pond
 
 **Sill**:

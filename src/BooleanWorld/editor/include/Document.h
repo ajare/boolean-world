@@ -211,6 +211,8 @@ public:
   [[nodiscard]] bool getActiveMeshEdgeVisible(uint32_t edgeIndex) const;
   [[nodiscard]] bool isActiveMeshEdgeVisibilityEditable(uint32_t edgeIndex) const;
   bool setActiveMeshEdgeVisible(uint32_t edgeIndex, bool visible);
+  [[nodiscard]] std::optional<bw::core::ZoneId> getActiveMeshEdgeOtherZone(uint32_t edgeIndex) const;
+  bool setActiveMeshEdgeOtherZone(uint32_t edgeIndex, bw::core::ZoneId zone);
 
   [[nodiscard]] bw::core::WallNormalMapOverride
   getActiveMeshEdgeNormalMapOverride(uint32_t edgeIndex) const;
@@ -405,6 +407,11 @@ public:
   bool fillMeshHole(uint32_t holeRingIndex);
 
   uint32_t getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
+
+  // Returns {pair id, endpoint index} for the nearest endpoint centre on the
+  // active Layer, or an empty vector when no endpoint is in handle range.
+  [[nodiscard]] std::vector<uint32_t> getHoveredPortalEndpoint(
+      wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
   void setPlayerProxyPosition(wp::Vector2 const& pos);
 

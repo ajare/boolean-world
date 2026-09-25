@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "core/BuildVariables.h"
 #include "core/LayerBuildStep.h"
 #include "core/Platform.h"
 #include "core/Primitive.h"
@@ -57,6 +58,7 @@ private:
   std::string mName;
   PrefabTileSize mTileSize;
   std::set<std::string> mTags;
+  BuildVariables mBuildVariables;
   std::vector<Primitive*> mPrimitives;
 
   Prefab(uint32_t id, std::string const& name,
@@ -82,6 +84,7 @@ public:
   [[nodiscard]] std::string const& getName() const;
   [[nodiscard]] PrefabTileSize getTileSize() const;
   [[nodiscard]] std::set<std::string> const& getTags() const;
+  [[nodiscard]] BuildVariables const& getBuildVariables() const;
   [[nodiscard]] uint32_t getNumPrimitives() const;
   [[nodiscard]] Primitive* getPrimitive(uint32_t index) const;
   [[nodiscard]] std::vector<Primitive*> const& getPrimitives() const;
@@ -130,6 +133,11 @@ public:
   void setPrefabName(Prefab* prefab, std::string const& name);
   void setPrefabTileSize(Prefab* prefab, PrefabTileSize size);
   void setPrefabTags(Prefab* prefab, std::set<std::string> const& tags);
+  void setPrefabBuildVariable(
+      Prefab* prefab, std::string const& name, BuildVariableValue value);
+  void removePrefabBuildVariable(Prefab* prefab, std::string const& name);
+  void renamePrefabBuildVariable(
+      Prefab* prefab, std::string const& oldName, std::string const& newName);
 
   [[nodiscard]] uint32_t getNumPrefabs() const;
   [[nodiscard]] Prefab* getPrefab(uint32_t index) const;

@@ -15,6 +15,8 @@ add_library(BooleanWorld SHARED
     src/MapBooleanWorldDefinitionFactory.cpp
     src/PeriodicSnapshotWorker.cpp
     src/PlayerLocation.cpp
+    src/PlayerPortalTraversal.cpp
+    src/PlayerTorchPlacement.cpp
     src/ProtoEntity.cpp
     src/ProtoEntityDefinitionFactory.cpp
     src/ReactiveCamera.cpp
@@ -288,6 +290,17 @@ if(BUILD_TESTING)
     bw_deploy_runtime_dlls(boolean_world_collision_tests)
     add_test(NAME boolean_world_collision COMMAND boolean_world_collision_tests)
 
+    add_executable(boolean_world_phantom_zone_tests
+        tests/phantom_zone_tests.cpp src/WorldCollisionSim.cpp)
+    target_include_directories(boolean_world_phantom_zone_tests PRIVATE include)
+    target_link_libraries(boolean_world_phantom_zone_tests PRIVATE
+        core Willpower.Collide Willpower.Common)
+    target_compile_features(boolean_world_phantom_zone_tests PRIVATE cxx_std_23)
+    bw_target_defaults(boolean_world_phantom_zone_tests)
+    bw_output_dirs(boolean_world_phantom_zone_tests)
+    bw_deploy_runtime_dlls(boolean_world_phantom_zone_tests)
+    add_test(NAME boolean_world_phantom_zone COMMAND boolean_world_phantom_zone_tests)
+
     add_executable(boolean_world_player_pool_fall_tests
         tests/player_pool_fall_tests.cpp
         src/WorldCollisionSim.cpp)
@@ -331,6 +344,23 @@ if(BUILD_TESTING)
     add_test(NAME boolean_world_player_liquid_traversal
              COMMAND boolean_world_player_liquid_traversal_tests)
 
+    add_executable(boolean_world_player_portal_traversal_tests
+        tests/player_portal_traversal_tests.cpp
+        src/PlayerPortalTraversal.cpp
+        src/PlayerTorchPlacement.cpp
+        src/WorldCollisionSim.cpp)
+    target_include_directories(boolean_world_player_portal_traversal_tests
+        PRIVATE include)
+    target_link_libraries(boolean_world_player_portal_traversal_tests PRIVATE
+        core Willpower.Collide Willpower.Common)
+    target_compile_features(boolean_world_player_portal_traversal_tests PRIVATE
+        cxx_std_23)
+    bw_target_defaults(boolean_world_player_portal_traversal_tests)
+    bw_output_dirs(boolean_world_player_portal_traversal_tests)
+    bw_deploy_runtime_dlls(boolean_world_player_portal_traversal_tests)
+    add_test(NAME boolean_world_player_portal_traversal
+             COMMAND boolean_world_player_portal_traversal_tests)
+
     add_executable(boolean_world_player_view_tests
         tests/player_view_tests.cpp
         src/ReactiveCamera.cpp)
@@ -365,24 +395,28 @@ if(BUILD_TESTING)
         ext::mpp ext::mpp-data ext::mpp-helper ext::mpp-mesh ext::mpp-program
         ext::Utils)
     target_compile_features(boolean_world_triangle_data_provider_tests PRIVATE cxx_std_23)
-    target_compile_options(boolean_world_triangle_data_provider_tests PRIVATE
-        /fsanitize=address /Zi)
-    target_link_options(boolean_world_triangle_data_provider_tests PRIVATE
-        /INFERASANLIBS /DEBUG)
+    if(MSVC)
+        target_compile_options(boolean_world_triangle_data_provider_tests PRIVATE
+            /fsanitize=address /Zi)
+        target_link_options(boolean_world_triangle_data_provider_tests PRIVATE
+            /INFERASANLIBS /DEBUG)
+        get_filename_component(msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        add_custom_command(TARGET boolean_world_triangle_data_provider_tests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${msvc_bin_dir}/clang_rt.asan_dynamic-x86_64.dll"
+                    "$<TARGET_FILE_DIR:boolean_world_triangle_data_provider_tests>")
+    endif()
     bw_target_defaults(boolean_world_triangle_data_provider_tests)
     bw_output_dirs(boolean_world_triangle_data_provider_tests)
     bw_deploy_runtime_dlls(boolean_world_triangle_data_provider_tests)
-    get_filename_component(msvc_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
-    add_custom_command(TARGET boolean_world_triangle_data_provider_tests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${msvc_bin_dir}/clang_rt.asan_dynamic-x86_64.dll"
-                "$<TARGET_FILE_DIR:boolean_world_triangle_data_provider_tests>")
     add_test(NAME boolean_world_triangle_data_provider
              COMMAND boolean_world_triangle_data_provider_tests)
 
     add_executable(boolean_world_map_load_tests
         tests/map_load_tests.cpp
-        src/Map.cpp)
+        src/Map.cpp
+        src/PlayerPortalTraversal.cpp
+        src/PlayerTorchPlacement.cpp)
     target_include_directories(boolean_world_map_load_tests PRIVATE include)
     target_link_libraries(boolean_world_map_load_tests PRIVATE
         core core-lua AppLib BooleanWorldRender Willpower.Application Willpower.Common)

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -9,10 +10,13 @@
 
 #include <core/ArrangementWorldData.h>
 #include <core/ArrangementWorldDataGenerator.h>
+#include <core/Defines.h>
 #include <core/RectanglePolygon.h>
 #include <core/RegularPolygon.h>
 #include <core/World.h>
 
+#include <core/MeshPrimitive.h>
+#include "PlayerZone.h"
 #include "PlayerLocation.h"
 #include "WorldCollisionSim.h"
 
@@ -81,6 +85,162 @@ void requireNear(float actual, float expected, float tolerance, std::string cons
         message + ": expected " + std::to_string(expected) +
         ", got " + std::to_string(actual));
   }
+}
+
+void generatedBorderZonesFollowResolvedMovement() {
+  using namespace bw::core;
+  for (auto other : {ZoneId::Euclidean, ZoneId::NegativeSpace}) {
+    for (bool collides : {false, true}) {
+      for (bool visible : {false, true}) {
+        auto mesh = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+            Primitive::Operation::Union,
+            {{{{{-10, -10}}, {{10, -10}}, {{10, 10}}, {{-10, 10}}}, {}}}));
+        auto proxy = mesh->createEditingProxy();
+        for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+             edge = proxy->getNextEdgeIndex(edge)) {
+          proxy->setEdgeOtherZone(edge, other);
+          proxy->setEdgeCollisionOverride(edge, collides);
+          proxy->setEdgeVisible(edge, visible);
+        }
+        proxy->commitTo(*mesh);
+        auto build = [&] {
+          return ArrangementWorldData(arr::BuildArrangement(SnapshotPrimitives({mesh.get()})),
+              wp::BoundingBox({-30, -30}, {30, 30}), 4.0f);
+        };
+        auto data = build();
+        for (auto initial : {ZoneId::Euclidean, ZoneId::NegativeSpace}) {
+          for (bool outward : {false, true}) {
+            WorldCollisionSim sim;
+            for (auto i : data.getWallsNearForTraversal({10, 0}, 30, {outward ? 5.0f : 15.0f, 0}, false))
+              for (auto const& segment : data.getWallCollisionSegments(i))
+                sim.addLine(segment.v0, segment.v1, i);
+            wp::Vector2 start{outward ? 5.0f : 15.0f, 0};
+            auto owner = std::make_unique<wp::collide::ColliderCircle>(start, 0.5f);
+            auto player = owner.get();
+            sim.addSlidingCollider(std::move(owner));
+            bw::app::PlayerZone zone;
+            require(zone.current() == ZoneId::Euclidean, "new player must start Euclidean");
+            zone.set(initial);
+            player->setMovement({outward ? 10.0f : -10.0f, 0});
+            zone.resolveMovement(sim, 1.0f);
+            zone.applyResolvedMovement(data, sim.getPlayerMovementTrace());
+            require(zone.current() == (collides ? initial : outward ? other : ZoneId::Euclidean),
+                    "generated Border assigned wrong resolved Zone");
+            require(collides ? std::abs(player->getCentre().x - 10) >= 0.499f
+                             : std::abs(player->getCentre().x - (outward ? 15 : 5)) < 0.001f,
+                    "Zone changed two-sided collision behavior");
+            auto rebuilt = build();
+            auto before = zone.current();
+            zone.applyResolvedMovement(rebuilt, {{{0, 0}, {20, 0},
+                WorldCollisionSim::PlayerMovementSegmentType::PortalRelocation}});
+            require(zone.current() == before, "snapshot/relocation changed Zone");
+            zone.initialize();
+            require(zone.current() == ZoneId::Euclidean, "respawn/map entry must reset Zone");
+          }
+        }
+        require(bw::app::queryPlayerZoneCrossings(data, {5, 0}, {10, 0}).empty(),
+                "touching Border changed Zone");
+        require(bw::app::queryPlayerZoneCrossings(data, {10, -5}, {10, 5}).empty(),
+                "travelling along Border changed Zone");
+        require(bw::app::queryPlayerZoneCrossings(data, {5, 5}, {15, 15}).empty(),
+                "endpoint-only contact changed Zone");
+      }
+    }
+  }
+}
+
+void orderedZoneCrossingsAndFrameBoundaries() {
+  using namespace bw::core;
+  using bw::app::PlayerZone;
+  auto mesh = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{{{{-10, -10}}, {{10, -10}}, {{10, 0}}, {{10, 10}}, {{-10, 10}}}, {}}}));
+  auto proxy = mesh->createEditingProxy();
+  for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge))
+    proxy->setEdgeCollisionOverride(edge, false);
+  proxy->commitTo(*mesh);
+  ArrangementWorldData data(arr::BuildArrangement(SnapshotPrimitives({mesh.get()})),
+      wp::BoundingBox({-50, -50}, {50, 50}), 4.0f);
+  auto crossings = bw::app::queryPlayerZoneCrossings(data, {-20, 0}, {20, 0});
+  require(crossings.size() == 2 && crossings[0].fraction < crossings[1].fraction &&
+              crossings[0].destination == ZoneId::Euclidean &&
+              crossings[1].destination == ZoneId::NegativeSpace,
+          "connected Borders did not cross once each in travel order");
+  for (float dt : {1.0f, 0.25f, 0.125f}) {
+    WorldCollisionSim sim;
+    auto owner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-20, 0}, 0.5f);
+    auto player = owner.get();
+    sim.addSlidingCollider(std::move(owner));
+    PlayerZone zone;
+    zone.set(ZoneId::NegativeSpace);
+    for (int frame = 0; frame < int(1 / dt); ++frame) {
+      player->setMovement({40, 0});
+      zone.resolveMovement(sim, dt);
+      zone.applyResolvedMovement(data, sim.getPlayerMovementTrace());
+      if (player->getCentre().x > -10 && player->getCentre().x < 10)
+        require(zone.current() == ZoneId::Euclidean, "split-frame entry did not repair Zone");
+    }
+    require(zone.current() == ZoneId::NegativeSpace,
+            "high-speed and split-frame crossings disagree");
+  }
+  PlayerZone zone;
+  zone.applyResolvedMovement(data, {{{0, 1}, {10, 1}}});
+  require(zone.current() == ZoneId::Euclidean, "endpoint contact assigned Zone");
+  zone.applyResolvedMovement(data, {{{10, 1}, {15, 1}}});
+  require(zone.current() == ZoneId::NegativeSpace, "split crossing lost its approach side");
+  zone.set(ZoneId::NegativeSpace);
+  zone.applyResolvedMovement(data, {{{15, 1}, {10, 1}}, {{10, 1}, {15, 1}}});
+  require(zone.current() == ZoneId::NegativeSpace, "touch and retreat assigned Zone");
+  zone.set(ZoneId::Euclidean);
+  zone.applyResolvedMovement(data, {{{0, 0}, {20, 0}},
+      {{20, 0}, {-20, 0}, WorldCollisionSim::PlayerMovementSegmentType::PortalRelocation}});
+  require(zone.current() == ZoneId::NegativeSpace, "relocation erased pre-Portal crossing");
+  zone.applyResolvedMovement(data, {{{-20, 0}, {0, 0}}});
+  require(zone.current() == ZoneId::Euclidean, "post-Portal crossing was skipped");
+
+  for (bool rejectedExit : {false, true}) {
+    WorldCollisionSim portalSim;
+    auto owner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{0, 1}, 0.5f);
+    auto player = owner.get();
+    portalSim.addSlidingCollider(std::move(owner));
+    portalSim.addPortalLine({5, -5}, {5, 5});
+    if (rejectedExit) portalSim.addLine({20, -5}, {20, 5}, 0);
+    portalSim.setPortalHitCallback([&](wp::collide::SweepResult* sweep, uint32_t) {
+      if (!rejectedExit) return WorldCollisionSim::PortalLineResponse::Block;
+      sweep->newPosition = {20, 1}; // Overlapping exit is rejected by the simulation.
+      sweep->movementDone = sweep->newPosition - sweep->oldPosition;
+      sweep->distanceMoved = 5;
+      sweep->movementLeft = {0, 0};
+      return WorldCollisionSim::PortalLineResponse::Traverse;
+    });
+    zone.set(ZoneId::Euclidean);
+    player->setMovement({15, 0});
+    zone.resolveMovement(portalSim, 1);
+    zone.applyResolvedMovement(data, portalSim.getPlayerMovementTrace());
+    require(zone.current() == ZoneId::Euclidean, "failed Portal created phantom Zone crossing");
+    if (rejectedExit)
+      require(player->getCentre().distanceTo({0, 1}) < 0.001f &&
+                  portalSim.getPlayerMovementTrace().empty(),
+              "rejected Portal leaked a movement trace");
+  }
+
+  // A real slide skirts the top-left corner without entering. Its chord
+  // cuts through the solid and must not substitute for the two sweeps.
+  WorldCollisionSim sim;
+  sim.addLine({-30, 12}, {30, 12}, 0);
+  auto owner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-20, 0}, 0.5f);
+  auto player = owner.get();
+  sim.addSlidingCollider(std::move(owner));
+  zone.set(ZoneId::Euclidean);
+  player->setMovement({20, 40});
+  zone.resolveMovement(sim, 1);
+  auto const& trace = sim.getPlayerMovementTrace();
+  require(trace.size() >= 2, "slide fixture did not produce multiple sweeps");
+  zone.applyResolvedMovement(data, trace);
+  require(zone.current() == ZoneId::Euclidean, "slide used the start/end chord");
+  require(!bw::app::queryPlayerZoneCrossings(data, {-20, 0}, player->getCentre()).empty(),
+          "slide fixture chord did not cross Borders");
 }
 
 void playerLocationUsesResolvedPosition() {
@@ -159,6 +319,130 @@ void callerCulledWorldLinesDoNotCreateASecondSpatialGrid() {
               "Caller-culled wall outside the old grid extents was ignored");
 }
 
+void negativeSpaceIsBoundedByTheEngineWorldExtent() {
+  using bw::app::PlayerZone;
+  using bw::core::ZoneId;
+  constexpr float halfExtent = float(BW_WORLD_SIZE) * 0.5f;
+  constexpr float radius = 0.5f;
+
+  struct Side {
+    wp::Vector2 start;
+    wp::Vector2 movement;
+    wp::Vector2 expected;
+  };
+  for (auto const& side : std::vector<Side>{
+           {{halfExtent - 10, 0}, {20000, 0}, {halfExtent - radius - 0.001f, 0}},
+           {{-halfExtent + 10, 0}, {-20000, 0}, {-halfExtent + radius + 0.001f, 0}},
+           {{0, halfExtent - 10}, {0, 20000}, {0, halfExtent - radius - 0.001f}},
+           {{0, -halfExtent + 10}, {0, -20000}, {0, -halfExtent + radius + 0.001f}},
+       }) {
+    WorldCollisionSim simulation;
+    auto owner = std::make_unique<wp::collide::ColliderCircle>(side.start, radius);
+    auto player = owner.get();
+    simulation.addSlidingCollider(std::move(owner));
+    PlayerZone zone;
+    zone.set(ZoneId::NegativeSpace);
+    player->setMovement(side.movement);
+    zone.resolveMovement(simulation, 1.0f);
+    require(player->getCentre().distanceTo(side.expected) < 0.003f,
+            "Negative Space player crossed an engine extent side");
+    require(simulation.getLines().empty(),
+            "engine extent leaked into persistent collision geometry");
+  }
+
+  WorldCollisionSim sliding;
+  auto slidingOwner = std::make_unique<wp::collide::ColliderCircle>(
+      wp::Vector2{halfExtent - 10, 0}, radius);
+  auto slidingPlayer = slidingOwner.get();
+  sliding.addSlidingCollider(std::move(slidingOwner));
+  PlayerZone negative;
+  negative.set(ZoneId::NegativeSpace);
+  slidingPlayer->setMovement({1000, 50});
+  negative.resolveMovement(sliding, 1.0f);
+  requireNear(slidingPlayer->getCentre().x,
+              halfExtent - radius - 0.001f, 0.03f,
+              "diagonal movement tunnelled through the engine extent");
+  requireNear(slidingPlayer->getCentre().y, 50.0f, 0.25f,
+              "engine extent did not preserve stable sliding movement");
+
+  WorldCollisionSim euclidean;
+  auto euclideanOwner = std::make_unique<wp::collide::ColliderCircle>(
+      wp::Vector2{halfExtent - 1, 0}, radius);
+  auto euclideanPlayer = euclideanOwner.get();
+  euclidean.addSlidingCollider(std::move(euclideanOwner));
+  PlayerZone ordinary;
+  euclideanPlayer->setMovement({10, 0});
+  ordinary.resolveMovement(euclidean, 1.0f);
+  require(euclideanPlayer->getCentre().x > halfExtent,
+          "Negative Space extent changed Euclidean collision");
+}
+
+void negativeSpaceRelocationsStayWithinTheWorldExtent() {
+  using bw::app::PlayerZone;
+  using bw::core::ZoneId;
+  constexpr float halfExtent = float(BW_WORLD_SIZE) * 0.5f;
+  constexpr float radius = 0.5f;
+
+  WorldCollisionSim simulation;
+  auto owner = std::make_unique<wp::collide::ColliderCircle>(
+      wp::Vector2{halfExtent - 30, 0}, radius);
+  auto player = owner.get();
+  simulation.addSlidingCollider(std::move(owner));
+  simulation.addPortalLine({halfExtent - 20, -5}, {halfExtent - 20, 5});
+  simulation.setPortalHitCallback(
+      [](wp::collide::SweepResult* result, uint32_t) {
+        result->newPosition = {float(BW_WORLD_SIZE), 0};
+        result->movementDone = result->newPosition - result->oldPosition;
+        result->distanceMoved = 10;
+        result->movementLeft = {0, 0};
+        return WorldCollisionSim::PortalLineResponse::Traverse;
+      });
+  PlayerZone zone;
+  zone.set(ZoneId::NegativeSpace);
+  player->setMovement({20, 0});
+  zone.resolveMovement(simulation, 1.0f);
+  require(player->getCentre().x <= halfExtent - radius,
+          "Portal relocation left Negative Space outside the World extent");
+  require(std::ranges::any_of(
+              simulation.getPlayerMovementTrace(), [](auto const& segment) {
+                return segment.type == WorldCollisionSim::
+                                           PlayerMovementSegmentType::PortalRelocation;
+              }),
+          "extent constraint rejected rather than bounded Portal relocation");
+  require(zone.current() == ZoneId::NegativeSpace,
+          "Portal relocation changed the player Zone");
+
+  // Rebuild/debug recovery is relocation, not a crossing. The next collision
+  // resolution constrains it without assigning a Zone.
+  player->_setPosition({halfExtent + 100, -halfExtent - 100});
+  player->setMovement({0, 0});
+  zone.resolveMovement(simulation, 1.0f);
+  require(player->getCentre().x <= halfExtent - radius &&
+              player->getCentre().y >= -halfExtent + radius,
+          "relocation recovery left Negative Space outside the World extent");
+  require(zone.current() == ZoneId::NegativeSpace,
+          "relocation recovery changed the player Zone");
+}
+
+void directMovementProducesOneResolvedSegment() {
+  WorldCollisionSim simulation;
+  auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(
+      wp::Vector2{-2.0f, 1.0f}, 0.5f);
+  auto player = playerOwner.get();
+  simulation.addSlidingCollider(std::move(playerOwner));
+
+  player->setMovement({3.0f, 2.0f});
+  simulation.update(1.0f);
+
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 1 &&
+              trace.front().type ==
+                  WorldCollisionSim::PlayerMovementSegmentType::Swept &&
+              trace.front().from.distanceTo({-2.0f, 1.0f}) < 0.0001f &&
+              trace.front().to.distanceTo({1.0f, 3.0f}) < 0.0001f,
+          "direct movement did not expose one resolved segment");
+}
+
 void diagonalMovementSlidesAlongWall() {
   WorldCollisionSim simulation;
   auto playerOwner = std::make_unique<wp::collide::ColliderCircle>(wp::Vector2{-2.0f, 0.0f}, 0.5f);
@@ -173,6 +457,20 @@ void diagonalMovementSlidesAlongWall() {
               "Player did not stop at the wall");
   requireNear(player->getCentre().y, 2.0f, 0.002f,
               "Player did not preserve upward movement along the wall");
+
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 2 &&
+              trace[0].type ==
+                  WorldCollisionSim::PlayerMovementSegmentType::Swept &&
+              trace[1].type ==
+                  WorldCollisionSim::PlayerMovementSegmentType::Swept,
+          "Diagonal slide did not expose both ordered swept segments");
+  require(trace[0].from.distanceTo({-2.0f, 0.0f}) < 0.002f &&
+              trace[0].to.distanceTo(trace[1].from) < 0.0001f &&
+              trace[1].to.distanceTo(player->getCentre()) < 0.0001f,
+          "Diagonal slide trace is not a continuous resolved path");
+  requireNear(trace[0].to.y, 1.0f, 0.002f,
+              "Diagonal slide trace collapsed to its start-to-end chord");
 }
 
 void perpendicularMovementStopsAtWall() {
@@ -189,6 +487,11 @@ void perpendicularMovementStopsAtWall() {
               "Player did not stop at the wall");
   requireNear(player->getCentre().y, 1.0f, 0.002f,
               "Perpendicular impact introduced tangential movement");
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 1 &&
+              trace.front().from.distanceTo({-2.0f, 1.0f}) < 0.0001f &&
+              trace.front().to.distanceTo(player->getCentre()) < 0.0001f,
+          "Perpendicular collision did not expose its resolved movement");
 }
 
 void smallMovementStillSlidesAlongWall() {
@@ -205,6 +508,11 @@ void smallMovementStillSlidesAlongWall() {
               "Player did not stop at the wall");
   requireNear(player->getCentre().y, 0.05f, 0.002f,
               "Small tangential movement was discarded");
+  auto const& trace = simulation.getPlayerMovementTrace();
+  require(trace.size() == 2 &&
+              trace.front().from.distanceTo({-0.55f, 0.0f}) < 0.0001f &&
+              trace.back().to.distanceTo(player->getCentre()) < 0.0001f,
+          "Small collision step did not retain its ordered slide trace");
 }
 
 void straightWallSlidingIsRotationInvariant() {
@@ -464,9 +772,14 @@ void nearZeroContactUsesWallNormal() {
 
 int main() {
   try {
+    generatedBorderZonesFollowResolvedMovement();
+    orderedZoneCrossingsAndFrameBoundaries();
     playerLocationUsesResolvedPosition();
     generatedWallsSlideFromThePlayableSide();
     callerCulledWorldLinesDoNotCreateASecondSpatialGrid();
+    negativeSpaceIsBoundedByTheEngineWorldExtent();
+    negativeSpaceRelocationsStayWithinTheWorldExtent();
+    directMovementProducesOneResolvedSegment();
     diagonalMovementSlidesAlongWall();
     perpendicularMovementStopsAtWall();
     smallMovementStillSlidesAlongWall();

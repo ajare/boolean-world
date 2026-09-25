@@ -38,6 +38,11 @@ Assignments and rebinding `world`, `layer`, or `step` fail. Names are
 case-sensitive Lua identifiers, excluding Lua keywords, and an override must
 retain its inherited type.
 
+Each Prefab may also define its own variables. They are available through the
+read-only `prefab.vars` table and use the same value types and identifier rules,
+but are independent authored values: they neither inherit World or Layer
+variables nor participate in the World–Layer–Step cascade.
+
 A LuaScript resource may declare Step build variables. Types are the lowercase
 strings `string`, `integer`, `float`, and `boolean`; every declaration requires
 a `default`. A string with no `Choices` is free text. A string with `Choices`
@@ -252,6 +257,23 @@ end
 DefineTileMaps step, the step is disabled or does not precede this RunScript,
 or `index` is outside that step's TileMaps.
 
+### `context:get_tile_map_count(step_name)`
+
+Returns the number of TileMaps in the enabled `DefineTileMaps` step named
+`step_name`. The step must precede the current `RunScript`, following the same
+lookup and validation rules as `context:find_tile_map`.
+
+```lua
+local index = math.random(0, context:get_tile_map_count("layouts") - 1)
+local layout = context:find_tile_map("layouts", index)
+```
+
+**Returns:** integer TileMap count.
+
+**Errors:** fails if no step has that name, the first match is not a
+DefineTileMaps step, or the step is disabled or does not precede this
+RunScript.
+
 ### `context:get_tile(grid_size, x, y)`
 
 Returns the integer coordinates of the Tile containing World position `(x, y)` on the requested grid. `grid_size` must be `32`, `64`, `128`, or `256`. All grids use the World origin as an intersection and half-open Tiles, matching `PrefabField`.
@@ -264,20 +286,20 @@ local tile_x, tile_y = context:get_tile(64, world_x, world_y)
 
 **Errors:** fails for an unsupported grid size, a non-finite World position, or coordinates outside the supported integer range.
 
-### `context:place_prefab_instance(prefab, tile_x, tile_y, angle)`
+### `context:place_prefab_instance(prefab, tile_x, tile_y, angle [, elevation_offset])`
 
-Copies every Primitive in a `Prefab` into the current step's output and places the copies at the centre of Tile `(tile_x, tile_y)`. The Prefab's tile size automatically selects the 32, 64, 128, or 256 grid.
+Copies every Primitive in a `Prefab` into the current step's output and places the copies at the centre of Tile `(tile_x, tile_y)`. The Prefab's tile size automatically selects the 32, 64, 128, or 256 grid. When supplied, `elevation_offset` is added uniformly to every copied Primitive's authored floor and ceiling elevations; it defaults to zero.
 
 ```lua
 local definitions = context:find_define_prefabs("environment prefabs")
 local arch = definitions:get_prefab("arch")
 local tile_x, tile_y = context:get_tile(arch:get_tile_size(), 128, 64)
-context:place_prefab_instance(arch, tile_x, tile_y, 90)
+context:place_prefab_instance(arch, tile_x, tile_y, 90, -32)
 ```
 
 Tile coordinates must be integers. `angle` is a clockwise angle in degrees and must be exactly `0`, `90`, `180`, or `270`. Each call makes independent copies, rotates them about the Prefab origin, and leaves the source Prefab unchanged. Parent relationships between copied Prefab Primitives are preserved.
 
-**Errors:** fails if the value is not a valid Prefab handle, either Tile coordinate is not an integer, or the angle is not an allowed quarter turn.
+**Errors:** fails if the value is not a valid Prefab handle, either Tile coordinate is not an integer, the angle is not an allowed quarter turn, or `elevation_offset` is not finite.
 
 ### `include(resource_name)`
 
@@ -389,6 +411,7 @@ Returned only by `context:create_primitive`.
 | `get_floor_elevation()` | Returns the floor `angle, lower, upper`. |
 | `set_ceiling_elevation(angle, lower, upper)` | Sets the ceiling Elevation span with the same local-space semantics. All values must be finite. |
 | `get_ceiling_elevation()` | Returns the ceiling `angle, lower, upper`. |
+| `set_liquid_level(level)` | Sets the non-negative amount of Water contributed by this Primitive. |
 | `set_floor_material(material_id)` | Sets the floor Sub-material id. Horizontal surfaces use the catalog's 2D material program when that rendering mode is active. |
 | `get_floor_material()` | Returns the floor Sub-material id. |
 | `set_ceiling_material(material_id)` | Sets the ceiling Sub-material id. Horizontal surfaces use the catalog's 2D material program when that rendering mode is active. |
@@ -416,7 +439,6 @@ Every operation validates the complete Ring and containment hierarchy. A refused
 | `slice_polygon(polygon_id, first_vertex_id, second_vertex_id)` | Divides a Shell or Island along a valid chord between two non-adjacent vertices. Returns whether accepted. |
 | `slice_at(x1, y1, x2, y2)` | Divides the filled polygon whose boundary contains both points and returns the new internal Edge id, or `nil`. Boundary Edges are split as needed. |
 | `contains_point(x, y)` | Returns whether the World-plane point lies inside the filled mesh. |
-| `set_liquid_level(level)` | Sets the non-negative amount of Water contributed by this mesh. |
 | `remove_vertex(vertex_id)` | Removes a Vertex and heals its Ring. Returns whether accepted. |
 | `remove_edge(edge_id)` | Welds a one-sided Edge's endpoints or merges compatible sibling Rings across a two-sided Edge. Returns whether accepted. |
 | `remove_polygon(polygon_id)` | Removes a Ring and its structurally contained descendants. Returns whether accepted. |
@@ -531,6 +553,19 @@ Returns the Prefab's canonical lowercase tags as a sorted array.
 local tags = prefab:get_tags()
 ```
 
+### `vars`
+
+A read-only table containing only the Prefab's authored variables. It supports
+lexicographically ordered `pairs()` iteration. Missing names return `nil` and
+assignments fail.
+
+```lua
+local weight = prefab.vars.weight
+```
+
+Prefab variables do not inherit variables with the same name from the World or
+Layer.
+
 ### `get_metadata_vertices()`
 
 Returns every annotated Prefab vertex as an array of read-only `PrefabVertex`
@@ -572,8 +607,8 @@ as `get_vertices_with_metadata`.
 local entrances = prefab:get_edges_with_metadata({kind = "entrance"})
 ```
 
-A script cannot inspect or mutate the Prefab's source Primitives, tags, or
-vertex or edge metadata. It can pass the handle to
+A script cannot inspect or mutate the Prefab's source Primitives, variables,
+tags, or vertex or edge metadata. It can pass the handle to
 `context:place_prefab_instance`.
 
 ## `PrefabVertex`

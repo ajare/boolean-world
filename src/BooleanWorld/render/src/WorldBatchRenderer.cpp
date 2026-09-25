@@ -44,6 +44,10 @@ void WorldBatchRenderer::create() {
 size_t WorldBatchRenderer::update() {
   auto worldDataProvider = static_pointer_cast<WorldTriangle3dDataProvider>(mDataProvider);
 
+  if (mUploadedRevision == worldDataProvider->revision()) {
+    return mBatch->getCount(0);
+  }
+
   auto numVertices = worldDataProvider->getNumVertices();
   auto numPrimitives = worldDataProvider->getNumPrimitives();
 
@@ -67,6 +71,8 @@ size_t WorldBatchRenderer::update() {
     mBatch->finishUpdate(meshIndex, meshData.numTriangles, meshData.numVertices, true);
   }
 
+  mUploadedRevision = worldDataProvider->revision();
+  ++mGeometryUploadCount;
   return mBatch->getCount(0);
 }
 

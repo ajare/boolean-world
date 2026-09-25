@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <iomanip>
@@ -7,14 +8,17 @@
 #include <common/GameDefines.h>
 
 #include <core/Defines.h>
+#include <core/Phantom.h>
 #include <core/LiquidProperties.h>
 #include <core/LiquidType.h>
 #include <core/MaterialDefinition.h>
 #include <core/World.h>
 
+#include <mpp/RenderTexture.h>
 #include <willpower/application/resourcesystem/ImageResource.h>
 
 #include "WorldRenderer.h"
+#include "PortalLight.h"
 #include "TriplanarWallRenderData.h"
 #include "WallMaskRenderData.h"
 #include "WallNormalMapRenderData.h"
@@ -55,6 +59,24 @@ struct NormalMapPayload {
   float aspectRatio{1.0f};
 };
 
+bool portalFallbackBelongsTo(
+    bw::core::arr::DetailTriangle const& triangle,
+    bw::core::ResolvedAperture const& aperture) {
+  wp::Vector2 centre{};
+  float elevation{};
+  for (auto const& vertex : triangle.v) {
+    centre += {vertex.position[0], vertex.position[1]};
+    elevation += vertex.position[2];
+  }
+  centre /= 3.0f;
+  elevation /= 3.0f;
+  auto offset = centre - aperture.centre;
+  return std::abs(offset.dot(aperture.front)) <= 0.01f &&
+         std::abs(offset.dot(aperture.tangent)) <= aperture.width * 0.5f + 0.01f &&
+         elevation >= aperture.bottom - 0.01f &&
+         elevation <= aperture.top + 0.01f;
+}
+
 struct MaskPayload {
   mpp::ResourcePtr texture;
   uint8_t channel{0};
@@ -70,7 +92,39 @@ class WorldRenderer::PreparedWorldRenderData {
 
   bw::core::WorldDataPtr worldData;
   std::array<DataProvider, 3> providers;
-  std::vector<uint8_t> wallFacingNormalSides;
+};
+
+// The primary Phantom scene contains only apertures, but retains the real
+// world's shadow casters. Child views execute the complete Euclidean pipeline
+// (including water/reflections/AO), rather than the reduced Portal colour pass.
+class WorldRenderer::PhantomRenderState {
+public:
+  struct ApertureScene : mpp::Scene {
+    mpp::ScenePtr world;
+    ApertureScene(mpp::RenderSystem* system, mpp::ScenePtr source)
+        : mpp::Scene(system), world(std::move(source)) {}
+    std::vector<mpp::SceneModel3dPtr> get3dModelsInSphere(
+        glm::vec3 const& centre, float radius) override {
+      return world->get3dModelsInSphere(centre, radius);
+    }
+  };
+  mpp::RenderSystem* system{};
+  mpp::ScenePtr scene;
+  Renderer renderer;
+  DataProvider provider;
+  std::vector<uint32_t> walls;
+  std::map<uint32_t, mpp::RenderPipelinePtr> pipelines;
+  std::weak_ptr<mpp::RenderPipeline> hostPipeline;
+  void clearPipelines() {
+    for (auto const& [wall, pipeline] : pipelines)
+      system->removeRenderPipeline(pipeline->getName());
+    pipelines.clear();
+  }
+  ~PhantomRenderState() {
+    // Pipelines retain their last submitted models; release them before batches.
+    clearPipelines();
+    renderer.reset();
+  }
 };
 
 WorldRenderer::WorldRenderer(
@@ -78,7 +132,6 @@ WorldRenderer::WorldRenderer(
     wp::Logger* logger,
     bw::app::RenderTextureFilter renderTextureFilter,
     bw::app::HorizontalMaterials horizontalMaterials,
-    WallUpdatePolicy wallUpdatePolicy,
     vector<WallRenderSurface> wallRenderSurfaces,
     WallRenderVariantResolver wallRenderVariantResolver,
     string worldResourceNamespace,
@@ -95,7 +148,6 @@ WorldRenderer::WorldRenderer(
       mBatchNamePrefix(move(batchNamePrefix)),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
       mWallRenderVariantResolver(move(wallRenderVariantResolver)),
-      mWallUpdatePolicy(wallUpdatePolicy),
       mWorldHasChanged(true),
       mwLogger(logger),
       mRenderTextureFilter(renderTextureFilter) {
@@ -173,8 +225,7 @@ WorldRenderer::RenderTargets WorldRenderer::detachRenderTargets() {
 
 WorldRenderer::PreparedWorldRenderDataPtr
 WorldRenderer::prepareWorldRenderData(
-    bw::core::WorldDataPtr worldData,
-    glm::vec3 const& viewerPosition) {
+    bw::core::WorldDataPtr worldData) {
   if (!worldData) {
     throw std::invalid_argument("world render data requires a World snapshot");
   }
@@ -191,11 +242,7 @@ WorldRenderer::prepareWorldRenderData(
   updateHorizontalDataProvider(
       *prepared->worldData, -1, false, prepared->providers[0]);
   updateLiquidDataProvider(*prepared->worldData, prepared->providers[1]);
-  prepared->wallFacingNormalSides =
-      wallFacingNormalSides(*prepared->worldData, viewerPosition);
-  updateWallDataProvider(
-      *prepared->worldData, prepared->wallFacingNormalSides, -1,
-      prepared->providers[2]);
+  updateWallDataProvider(*prepared->worldData, prepared->providers[2]);
   return prepared;
 }
 
@@ -208,14 +255,18 @@ void WorldRenderer::publishWorldRenderData(
     mMaterialRenderers[index].dataProvider->replaceData(
         *prepared->providers[index]);
   }
-  mWallFacingNormalSides = prepared->wallFacingNormalSides;
+  // All camera-dependent choices are uniforms; published buffers are final.
   mWorldHasChanged = false;
+  mPhantomGeometryDirty = true;
   mHighlightedTriangle = -1;
   mHighlightedCeiling = false;
 }
 
 void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) {
   mwWorld = world;
+  mScene = scene;
+  mRenderSystem = renderSystem;
+  mRenderResourceMgr = resourceMgr;
 
   // Turn authored ImageResource references into stable variant buckets before
   // the wall batch is created. Disabled and Unset intentionally seed nothing.
@@ -368,11 +419,29 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   // different Primitives in the fold. Predeclare their complete cross-product
   // so a resolved Image always has a bucket; Unset and Disabled intentionally
   // use the single existing unmapped bucket.
+  for (auto const* layer : world->getLayers()) {
+    for (auto const& pair : layer->getPortalPairs()) {
+      for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
+        mPortalEndpointBuckets.emplace(
+            PortalEndpointKey{layer->getId(), pair.getId(), pair.getEndpoint(endpoint).getId()},
+            static_cast<uint32_t>(mPortalEndpointBuckets.size()));
+      }
+    }
+  }
   for (auto const& [material, embossPresetId] : wallSurfaceMaterials) {
     for (auto const& [identity, variant] : mWallImageVariants) {
       BW_UNUSED(identity);
       mWallRenderSurfaces.push_back(
           {material, variant, embossPresetId});
+    }
+    // Buckets belong to stable endpoints, not temporary recursive-view slots.
+    // Visibility changes texture bindings only, never triangle membership.
+    for (uint32_t bucket = 0; bucket < mPortalEndpointBuckets.size(); ++bucket) {
+      mWallRenderSurfaces.push_back(
+          {material,
+           WallRenderVariant{
+               .identity = portalWallRenderVariantIdentity(bucket)},
+           embossPresetId});
     }
   }
   auto fallbackResolver = move(mWallRenderVariantResolver);
@@ -411,6 +480,7 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
 
 void WorldRenderer::setWorldChanged() {
   mWorldHasChanged = true;
+  mPhantomGeometryDirty = true;
 }
 
 uint32_t WorldRenderer::getSurfaceTriangleCount(
@@ -537,7 +607,9 @@ uint32_t WorldRenderer::addVertexToDataProvider(
   auto projection = projectionNormal.value_or(
       array<float, 3>{surfaceUpX, surfaceUpY, surfaceUpZ});
   WorldTriangle3dDataProvider::DrawVert vertex{
-      {px, py, pz}, {nx, ny, nz}, {u, v}, c, {projection[0], projection[1], projection[2]}, liquidSurfaceHeight};
+      {px, py, pz}, {nx, ny, nz},
+      {u, v, 0.0f, WorldTriangle3dDataProvider::dryLiquidSurfaceHeight}, c,
+      {projection[0], projection[1], projection[2]}, liquidSurfaceHeight};
   return dataProvider->addVertex(meshIndex, vertex);
 }
 
@@ -555,11 +627,9 @@ void WorldRenderer::addDetailTriangleToDataProvider(
   // mapping (x, y, z) to (x, z, -y) - a rotation, not a reflection, so a
   // triangle wound counter-clockwise about its normal there stays wound
   // counter-clockwise about the mapped normal here and the indices pass
-  // through in order. The world draws unculled either way (which is why each
-  // wall picks one surface per frame rather than emitting both sides); what
-  // carries the surface is the explicit normal, so mirroring a wall remainder
-  // for its back face has to flip that as well as the winding. Chip facets are
-  // never passed here as mirrored surfaces.
+  // through in order. Walls now carry both-side metadata and select their
+  // normal/material in the shader. This helper also serves horizontal detail,
+  // where an explicitly mirrored surface still flips normal and winding.
   auto sign = mirrored ? -1.0f : 1.0f;
   uint32_t indices[3];
   for (int i = 0; i < 3; ++i) {
@@ -798,271 +868,499 @@ void WorldRenderer::updateLiquidDataProvider(
   liquid.dataProvider->setNumPrimitives(liquid.dataProvider->getNumTriangles());
 }
 
-std::vector<uint8_t> WorldRenderer::wallFacingNormalSides(
-    bw::core::WorldData const& snapshot,
-    glm::vec3 const& viewerPosition) const {
-  auto const& worldData = snapshot.getArrangement();
-  auto const& walls = snapshot.getWalls();
-  wp::Vector2 viewerPositionXZ{viewerPosition.x, -viewerPosition.z};
-  std::vector<uint8_t> result;
-  result.reserve(walls.size());
-  for (auto const& wall : walls) {
-    auto orientation =
-        bw::core::arr::OrientArrangementWall(worldData, wall);
-    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
-    result.push_back(
-        orientation.normal.dot(viewerPositionXZ - midpoint) > 0.0f);
-  }
-  return result;
-}
-
 void WorldRenderer::updateWallDataProvider(
-    bw::core::WorldData const& snapshot,
-    std::vector<uint8_t> const& facingNormalSides,
-    int32_t highlightedWall, DataProvider const& dataProvider) {
-  auto const& worldData = snapshot.getArrangement();
+    bw::core::WorldData const& snapshot, DataProvider const& dataProvider) {
+  auto const& arrangement = snapshot.getArrangement();
   auto const& walls = snapshot.getWalls();
-  if (facingNormalSides.size() != walls.size()) {
-    throw std::invalid_argument(
-        "wall-facing choices do not match the World snapshot");
-  }
-  auto projectionData = BuildTriplanarWallProjectionData(worldData, walls);
-  auto wallRenderer = mMaterialRenderers[2];
-  wallRenderer.dataProvider = dataProvider;
-
-  // Walls render two-sided, but only ever as one triangular or quadrilateral
-  // surface: whichever side currently faces the player keeps the wall's
-  // authored material. The reserved, plain-white material - see
-  // WorldBatch::createModelStream (which guarantees this mesh bucket exists)
-  // and BW_WALL_BACK_FACE_MATERIAL_INDEX - renders on the far side instead.
-  // Emitting both sides' quads at once (an earlier version of this) put two
-  // coplanar, oppositely-wound quads in the same mesh's material bucket,
-  // which is exactly what backface culling exists to prevent overdraw of -
-  // so both ended up depth-fighting for the same pixels instead of only
-  // one ever being visible.
-  auto backHash =
-      bw::core::MaterialDefinition{}.data.hash(BW_WALL_BACK_FACE_MATERIAL_INDEX);
-  auto variantFor = [&](bw::core::arr::ArrangementWall const& wall) {
-    return mWallRenderVariantResolver ? mWallRenderVariantResolver(wall)
-                                      : optional<WallRenderVariant>{};
-  };
-  auto liquidSurfaceHeightFor =
-      [&](bw::core::arr::ArrangementWallOrientation const& orientation,
-          bool drawsNormalSide) {
-        // This follows the per-frame facing decision: a wall can bound wet
-        // and dry faces, so only the side currently being drawn contributes
-        // its liquid surface to the wall vertices.
-        auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
-        auto position = midpoint +
-                        (drawsNormalSide ? orientation.normal
-                                         : -orientation.normal) *
-                            0.01f;
-        auto height = snapshot.getLiquidSurfaceHeight(position);
-        return std::isfinite(height)
-                   ? height
-                   : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
-      };
-
-  // A chipped wall draws its remainder plus the chamfer facets instead of its
-  // plain surface. Only the coplanar wall remainder follows the player-facing
-  // material decision above. A facet is an outward-facing surface in its own
-  // right: mirroring it with the vertical wall would invert its face normal
-  // when viewed from the horizontal side and make overhead lighting black.
   auto const& detail = snapshot.getDetail();
   using bw::core::arr::DetailSurfaceKind;
+  using DrawVert = WorldTriangle3dDataProvider::DrawVert;
+  if (walls.size() > 16777215u) {
+    throw std::runtime_error("wall IDs exceed the exact float vertex encoding");
+  }
+  auto projectionData = BuildTriplanarWallProjectionData(arrangement, walls);
+  auto const& renderer = mMaterialRenderers[2].renderer;
+  auto backHash = bw::core::MaterialDefinition{}.data.hash(
+      BW_WALL_BACK_FACE_MATERIAL_INDEX);
+  auto backMesh = renderer->getMeshIndexForMaterialHash(backHash, false);
 
-  std::vector<uint32_t> wallCounts(wallRenderer.dataProvider->getNumMeshes());
-  for (uint32_t wallIndex = 0; wallIndex < uint32_t(walls.size());
-       ++wallIndex) {
+  // Build only at snapshot publication. Staging triangles lets us calculate
+  // exact per-bucket capacities without evaluating geometry/materials twice.
+  std::vector<std::vector<DrawVert>> meshes(dataProvider->getNumMeshes());
+  for (uint32_t wallIndex = 0; wallIndex < walls.size(); ++wallIndex) {
     auto const& wall = walls[wallIndex];
-    if (!wall.visible) {
-      continue;
-    }
-    auto suppressed = detail.isSuppressed(DetailSurfaceKind::Wall, wallIndex);
-    auto replacements =
-        suppressed
-            ? detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex)
-            : std::span<bw::core::arr::DetailTriangle const>{};
-    auto const& properties = worldData.palette[wall.paletteIndex];
+    if (!wall.visible) continue;
+    auto orientation = bw::core::arr::OrientArrangementWall(arrangement, wall);
+    auto midpoint = (orientation.v0 + orientation.v1) * 0.5f;
+    auto liquidHeight = [&](float side) {
+      auto height = snapshot.getLiquidSurfaceHeight(
+          midpoint + orientation.normal * (side * 0.01f));
+      return std::isfinite(height) ? height
+          : WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
+    };
+    auto frontLiquid = liquidHeight(1.0f);
+    auto backLiquid = liquidHeight(-1.0f);
+    auto const& properties = arrangement.palette[wall.paletteIndex];
     auto resolved = mBakedSurfaceMaterialResolver.resolve(
         properties.wallMaterial, properties.wallEmbossPresetId);
     auto hash = resolved.hash();
-    auto variant = variantFor(wall);
-    auto authoredMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
-        hash, false, variant);
-    auto unmappedAuthoredMesh =
-        wallRenderer.renderer->getMeshIndexForMaterialHash(hash, false);
-    auto backMesh =
-        wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
-    auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
-    if (facingNormalSides[wallIndex]) {
-      if (suppressed) {
-        for (auto const& replacement : replacements) {
-          ++wallCounts[replacement.kind ==
-                               bw::core::arr::DetailTriangleKind::SurfaceRemainder
-                           ? authoredMesh
-                           : unmappedAuthoredMesh];
-        }
-      } else if (projectionData[wallIndex].usesTriplanar) {
-        wallCounts[authoredMesh] += static_cast<uint32_t>(
-            BuildTriplanarWallRenderTriangles(
-                worldData, wall, projectionData[wallIndex])
-                .size());
-      } else {
-        auto surface =
-            bw::core::arr::BuildArrangementWallSurface(worldData, wall);
-        wallCounts[authoredMesh] += surface.vertexCount >= 3
-                                        ? surface.vertexCount - 2u
-                                        : 0u;
-      }
-    } else if (suppressed) {
-      for (auto const& replacement : replacements) {
-        ++wallCounts[replacement.followsWallFacing ? backMesh
-                                                   : unmappedAuthoredMesh];
-      }
-    } else {
-      auto surface =
-          bw::core::arr::BuildArrangementWallSurface(worldData, wall);
-      wallCounts[backMesh] += surface.vertexCount >= 3
-                                  ? surface.vertexCount - 2u
-                                  : 0u;
-    }
-  }
-  wallRenderer.dataProvider->updateInternals(wallCounts);
-
-  for (size_t wallIndex = 0; wallIndex < walls.size(); ++wallIndex) {
-    auto const& wall = walls[wallIndex];
-    if (!wall.visible) {
-      continue;
-    }
-    auto orientation = bw::core::arr::OrientArrangementWall(worldData, wall);
-    auto replacements =
-        detail.isSuppressed(DetailSurfaceKind::Wall, uint32_t(wallIndex))
-            ? detail.replacementsFor(
-                  DetailSurfaceKind::Wall, uint32_t(wallIndex))
-            : std::span<bw::core::arr::DetailTriangle const>{};
-
-    auto drawsNormalSide = facingNormalSides[wallIndex] != 0;
-    auto liquidSurfaceHeight =
-        liquidSurfaceHeightFor(orientation, drawsNormalSide);
-
-    if (drawsNormalSide) {
-      auto const& properties = worldData.palette[wall.paletteIndex];
-      auto resolved = mBakedSurfaceMaterialResolver.resolve(
-          properties.wallMaterial, properties.wallEmbossPresetId);
-      auto hash = resolved.hash();
-      auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
-          hash, false, variantFor(wall));
-      auto unmappedMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
-          hash, false);
-      auto colour = int32_t(wallIndex) == highlightedWall
-                        ? lookedAtVertexColour
-                        : untintedVertexColour;
-      if (!replacements.empty()) {
-        for (auto const& replacement : replacements) {
-          auto rendered = replacement;
-          ApplyWallPhysicalUvToRemainder(orientation, wall, rendered);
-          addDetailTriangleToDataProvider(
-              wallRenderer.dataProvider,
-              replacement.kind ==
-                      bw::core::arr::DetailTriangleKind::SurfaceRemainder
-                  ? mesh
-                  : unmappedMesh,
-              rendered, false, colour, liquidSurfaceHeight, orientation.normal.x,
-              0.0f, -orientation.normal.y);
-        }
-        continue;
-      }
-      auto const& normal = orientation.normal;
-      if (projectionData[wallIndex].usesTriplanar) {
-        auto triangles = BuildTriplanarWallRenderTriangles(
-            worldData, wall, projectionData[wallIndex]);
-        for (auto const& triangle : triangles) {
-          uint32_t indices[3];
-          for (size_t corner = 0; corner < 3; ++corner) {
-            auto const& vertex = triangle.vertices[corner];
-            indices[corner] = addVertexToDataProvider(
-                wallRenderer.dataProvider, mesh, vertex.position.x,
-                vertex.elevation, -vertex.position.y, normal.x, 0, -normal.y,
-                vertex.u, vertex.v, colour, liquidSurfaceHeight, normal.x,
-                0.0f, -normal.y,
-                array<float, 3>{vertex.projectionNormal.x, 0.0f,
-                                -vertex.projectionNormal.y});
+    auto variant = mWallRenderVariantResolver
+        ? mWallRenderVariantResolver(wall) : optional<WallRenderVariant>{};
+    auto mesh = renderer->getMeshIndexForMaterialHash(hash, false, variant);
+    auto unmappedMesh = renderer->getMeshIndexForMaterialHash(hash, false);
+    auto vertex = [&](float x, float y, float z, float nx, float ny, float nz,
+                      float u, float v, bool followsWall,
+                      std::array<float, 3> projection) -> DrawVert {
+      return {{x, y, z}, {nx, ny, nz},
+              {u, v, float(wallIndex + 1) * (followsWall ? 1.0f : -1.0f), backLiquid},
+              untintedVertexColour, {projection[0], projection[1], projection[2]}, frontLiquid};
+    };
+    std::array<float, 3> normal{orientation.normal.x, 0.0f, -orientation.normal.y};
+    if (detail.isSuppressed(DetailSurfaceKind::Wall, wallIndex)) {
+      for (auto const& original : detail.replacementsFor(DetailSurfaceKind::Wall, wallIndex)) {
+        auto triangle = original;
+        ApplyWallPhysicalUvToRemainder(orientation, wall, triangle);
+        auto replacementMesh = triangle.kind == bw::core::arr::DetailTriangleKind::SurfaceRemainder
+            ? mesh : unmappedMesh;
+        if (triangle.kind == bw::core::arr::DetailTriangleKind::PortalFallback) {
+          replacementMesh = backMesh;
+          for (auto const& [key, bucket] : mPortalEndpointBuckets) {
+            auto const* pair = snapshot.findPortalPair(key.layerId, key.pairId);
+            if (!pair || !pair->active) continue;
+            auto endpoint = std::ranges::find_if(pair->endpoints, [&](auto const& item) {
+              return item.endpointId == key.endpointId;
+            });
+            if (endpoint == pair->endpoints.end() ||
+                std::ranges::find(endpoint->aperture.wallIndices, wallIndex) == endpoint->aperture.wallIndices.end() ||
+                !portalFallbackBelongsTo(triangle, endpoint->aperture)) continue;
+            replacementMesh = renderer->getMeshIndexForMaterialHash(hash, false,
+                WallRenderVariant{.identity = portalWallRenderVariantIdentity(bucket)});
+            break;
           }
-          wallRenderer.dataProvider->addTriangle(
-              mesh, indices[0], indices[1], indices[2]);
         }
-        continue;
+        for (auto const& v : triangle.v) {
+          meshes[replacementMesh].push_back(vertex(
+              v.position[0], v.position[2], -v.position[1],
+              v.normal[0], v.normal[2], -v.normal[1], v.uv[0], v.uv[1],
+              triangle.followsWallFacing, normal));
+        }
       }
-      auto uv = CalculateWallPhysicalUv(orientation, wall);
-      auto surface =
-          bw::core::arr::BuildArrangementWallSurface(worldData, wall);
-      auto addSurfaceVertex = [&](size_t index) {
-        auto const& vertex = surface.vertices[index];
-        auto u = vertex.endpoint == 0 ? uv.u0 : uv.u1;
-        auto v = vertex.topBoundary ? uv.topV[vertex.endpoint]
-                                    : uv.bottomV[vertex.endpoint];
-        return addVertexToDataProvider(
-            wallRenderer.dataProvider, mesh, vertex.position.x,
-            vertex.elevation, -vertex.position.y, normal.x, 0, -normal.y, u,
-            v, colour, liquidSurfaceHeight, normal.x, 0.0f, -normal.y);
-      };
-      for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
-        auto first = addSurfaceVertex(0);
-        auto second = addSurfaceVertex(corner);
-        auto third = addSurfaceVertex(corner + 1);
-        wallRenderer.dataProvider->addTriangle(mesh, first, second, third);
+    } else if (projectionData[wallIndex].usesTriplanar) {
+      for (auto const& triangle : BuildTriplanarWallRenderTriangles(
+               arrangement, wall, projectionData[wallIndex])) {
+        for (auto const& v : triangle.vertices) {
+          meshes[mesh].push_back(vertex(v.position.x, v.elevation, -v.position.y,
+              normal[0], normal[1], normal[2], v.u, v.v, true,
+              {v.projectionNormal.x, 0.0f, -v.projectionNormal.y}));
+        }
       }
     } else {
-      // The same perimeter and fan as the facesPlayer branch above, with each
-      // triangle's vertex order reversed, so the winding and therefore which
-      // side is visible is a true mirror image.
-      auto mesh = wallRenderer.renderer->getMeshIndexForMaterialHash(backHash, false);
-      auto backNormal = -orientation.normal;
-      auto colour = int32_t(wallIndex) == highlightedWall
-                        ? lookedAtVertexColour
-                        : untintedVertexColour;
-      if (!replacements.empty()) {
-        auto const& properties = worldData.palette[wall.paletteIndex];
-        auto resolved = mBakedSurfaceMaterialResolver.resolve(
-            properties.wallMaterial, properties.wallEmbossPresetId);
-        auto hash = resolved.hash();
-        // Chip facets expose a new surface and do not inherit the authored
-        // edge's Image. The coplanar remainder is back-facing in this branch.
-        auto authoredMesh = wallRenderer.renderer->getMeshIndexForMaterialHash(
-            hash, false);
-        for (auto const& replacement : replacements) {
-          auto followsWall = replacement.followsWallFacing;
-          addDetailTriangleToDataProvider(
-              wallRenderer.dataProvider,
-              followsWall ? mesh : authoredMesh,
-              replacement,
-              followsWall,
-              colour,
-              liquidSurfaceHeight);
-        }
-        continue;
-      }
-      auto surface =
-          bw::core::arr::BuildArrangementWallSurface(worldData, wall);
-      auto addSurfaceVertex = [&](size_t index) {
-        auto const& vertex = surface.vertices[index];
-        return addVertexToDataProvider(
-            wallRenderer.dataProvider, mesh, vertex.position.x,
-            vertex.elevation, -vertex.position.y, backNormal.x, 0,
-            -backNormal.y, float(vertex.endpoint),
-            vertex.topBoundary ? 1.0f : 0.0f, colour, liquidSurfaceHeight);
+      auto uv = CalculateWallPhysicalUv(orientation, wall);
+      auto surface = bw::core::arr::BuildArrangementWallSurface(arrangement, wall);
+      auto surfaceVertex = [&](uint8_t corner) {
+        auto const& v = surface.vertices[corner];
+        return vertex(v.position.x, v.elevation, -v.position.y,
+            normal[0], normal[1], normal[2], v.endpoint == 0 ? uv.u0 : uv.u1,
+            v.topBoundary ? uv.topV[v.endpoint] : uv.bottomV[v.endpoint], true, normal);
       };
       for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
-        auto first = addSurfaceVertex(0);
-        auto second = addSurfaceVertex(corner);
-        auto third = addSurfaceVertex(corner + 1);
-        wallRenderer.dataProvider->addTriangle(mesh, third, second, first);
+        meshes[mesh].push_back(surfaceVertex(0));
+        meshes[mesh].push_back(surfaceVertex(corner));
+        meshes[mesh].push_back(surfaceVertex(corner + 1));
       }
     }
   }
-  wallRenderer.dataProvider->finalizeInternals();
-  wallRenderer.dataProvider->setNumPrimitives(wallRenderer.dataProvider->getNumTriangles());
+  std::vector<uint32_t> counts;
+  for (auto const& mesh : meshes) counts.push_back(uint32_t(mesh.size() / 3));
+  dataProvider->updateInternals(counts);
+  for (uint32_t mesh = 0; mesh < meshes.size(); ++mesh) {
+    for (size_t first = 0; first < meshes[mesh].size(); first += 3) {
+      auto a = dataProvider->addVertex(mesh, meshes[mesh][first]);
+      auto b = dataProvider->addVertex(mesh, meshes[mesh][first + 1]);
+      auto c = dataProvider->addVertex(mesh, meshes[mesh][first + 2]);
+      dataProvider->addTriangle(mesh, a, b, c);
+    }
+  }
+  dataProvider->finalizeInternals();
+  dataProvider->setNumPrimitives(dataProvider->getNumTriangles());
+}
+
+void WorldRenderer::renderScene(
+    bw::core::WorldData const& worldData, mpp::CameraPtr const& camera,
+    mpp::RenderPipelinePtr const& pipeline, uint32_t width, uint32_t height) {
+  if (mZone == bw::core::ZoneId::Phantom)
+    renderPhantomScene(worldData, camera, pipeline, width, height);
+  else
+    renderWorldScene(worldData, camera, pipeline, width, height);
+}
+
+void WorldRenderer::renderPhantomScene(
+    bw::core::WorldData const& worldData, mpp::CameraPtr const& camera,
+    mpp::RenderPipelinePtr const& pipeline, uint32_t width, uint32_t height) {
+  if (!mScene || !mRenderSystem || !camera || !pipeline || !width || !height)
+    throw std::invalid_argument("Phantom rendering requires a created scene, camera and target");
+  auto const& arrangement = worldData.getArrangement();
+  auto const& walls = worldData.getWalls();
+  // Snapshot changes, not camera/Zone changes, own the aperture geometry.
+  if (!mPhantom || mPhantomGeometryDirty) {
+    mPhantom.reset();
+    mPhantom = std::make_unique<PhantomRenderState>();
+    auto& state = *mPhantom;
+    state.system = mRenderSystem;
+    state.scene = std::make_shared<PhantomRenderState::ApertureScene>(mRenderSystem, mScene);
+    state.scene->setClearColour({0.0f, 0.0f, 0.0f, 1.0f});
+    std::vector<WallRenderSurface> surfaces;
+    for (uint32_t index = 0; index < walls.size(); ++index) {
+      if (!bw::core::isPhantomAperture(walls[index])) continue;
+      state.walls.push_back(index);
+      auto const& properties = arrangement.palette[walls[index].paletteIndex];
+      surfaces.push_back({properties.wallMaterial,
+          WallRenderVariant{.identity = portalWallRenderVariantIdentity(index)},
+          properties.wallEmbossPresetId});
+    }
+    state.provider = std::make_shared<WorldTriangle3dDataProvider>();
+    state.renderer = std::make_shared<WorldRenderer3d>(
+        mResourceMgr->getResource("Material.Default", "World"),
+        mResourceMgr->getResource("Material.FragmentOverdraw", "World"), mwLogger,
+        WorldSurfaceSet::Walls, &mSurfaceMaterialResolver, surfaces, false,
+        mBatchNamePrefix + ".Phantom", true);
+    state.renderer->create(state.provider, mwWorld, mRenderSystem, mRenderResourceMgr);
+    state.renderer->addToScene(state.scene, mwWorld);
+    std::vector<uint32_t> counts(state.provider->getNumMeshes());
+    auto meshFor = [&](uint32_t index) {
+      auto const& properties = arrangement.palette[walls[index].paletteIndex];
+      auto resolved = mSurfaceMaterialResolver.resolve(properties.wallMaterial, properties.wallEmbossPresetId);
+      return state.renderer->getMeshIndexForMaterialHash(resolved.hash(), false,
+          WallRenderVariant{.identity = portalWallRenderVariantIdentity(index)});
+    };
+    for (auto index : state.walls) {
+      auto surface = bw::core::arr::BuildArrangementWallSurface(arrangement, walls[index]);
+      if (surface.vertexCount >= 3) counts[meshFor(index)] += surface.vertexCount - 2;
+    }
+    state.provider->updateInternals(counts);
+    for (auto index : state.walls) {
+      auto mesh = meshFor(index);
+      auto frame = bw::core::arr::OrientArrangementWall(arrangement, walls[index]);
+      auto surface = bw::core::arr::BuildArrangementWallSurface(arrangement, walls[index]);
+      auto vertex = [&](uint8_t corner) {
+        auto const& v = surface.vertices[corner];
+        return addVertexToDataProvider(state.provider, mesh,
+            v.position.x, v.elevation, -v.position.y,
+            frame.normal.x, 0.0f, -frame.normal.y, 0, 0, untintedVertexColour);
+      };
+      for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+        auto a = vertex(0), b = vertex(corner), c = vertex(corner + 1);
+        state.provider->addTriangle(mesh, a, b, c);
+      }
+    }
+    state.provider->finalizeInternals();
+    state.provider->setNumPrimitives(state.provider->getNumTriangles());
+    mPhantomGeometryDirty = false;
+  }
+  auto& state = *mPhantom;
+  if (state.hostPipeline.lock() != pipeline) {
+    state.clearPipelines();
+    state.hostPipeline = pipeline;
+  }
+  state.scene->setViewport(0, 0, width, height);
+  state.renderer->setPortalFallback();
+  state.renderer->update(camera->getPosition(), mPlayerTorchPosition,
+      WorldTriangle3dDataProvider::dryLiquidSurfaceHeight, {}, {}, {}, {},
+      defaultLiquidReflectionMipLevel, false, mPlayerTorchOptions, false,
+      -1, 32.0f, 1.0f / 32.0f, {}, 0.0f);
+  auto view = camera->getViewTransform();
+  auto projection = camera->getProjectionTransform();
+  auto eye = camera->getPosition();
+  std::set<uint32_t> usedViews;
+  mLastPortalViewPlan = {};
+  mSelectedPortal.reset();
+  for (auto index : state.walls) {
+    if (!bw::core::phantomApertureFacesEye(arrangement, walls[index], {eye.x, -eye.z})) continue;
+    auto surface = bw::core::arr::BuildArrangementWallSurface(arrangement, walls[index]);
+    std::array<uint8_t, 5> outside{};
+    for (uint8_t corner = 0; corner < surface.vertexCount; ++corner) {
+      auto const& vertex = surface.vertices[corner];
+      auto p = projection * view * glm::vec4(vertex.position.x, vertex.elevation, -vertex.position.y, 1.0f);
+      outside[0] += p.x < -p.w; outside[1] += p.x > p.w;
+      outside[2] += p.y < -p.w; outside[3] += p.y > p.w;
+      outside[4] += p.z > p.w;
+    }
+    // Do not reject the near plane: the aperture is depth-clamped until the
+    // centre crosses it, just like an ordinary Portal surface.
+    if (surface.vertexCount < 3 || std::ranges::any_of(outside,
+          [&](auto count) { return count == surface.vertexCount; })) continue;
+    usedViews.insert(index);
+    auto frame = bw::core::arr::OrientArrangementWall(arrangement, walls[index]);
+    glm::vec3 normal{frame.normal.x, 0.0f, -frame.normal.y};
+    glm::vec3 point{frame.v0.x, 0.0f, -frame.v0.y};
+    glm::vec4 plane{normal, -glm::dot(normal, point)};
+    auto clipped = mpp::buildObliquelyClippedVirtualCamera(view, projection, plane, 0.0f);
+    auto childCamera = std::make_shared<mpp::VirtualCamera>(clipped.view, clipped.projection,
+        camera->getNearClipDistance(), camera->getFarClipDistance());
+    auto name = mBatchNamePrefix + ".Phantom.View." + std::to_string(index);
+    auto child = mRenderSystem->getOrCreateRenderPipeline(name, pipeline->getOptions());
+    state.pipelines[index] = child;
+    child->setBloomOptions(pipeline->getOptions().bloom);
+    child->setAmbientOcclusionOptions(pipeline->getOptions().ambientOcclusion);
+    child->setGraphPassDebugOptions(pipeline->getOptions().graphPasses);
+    child->resize(width, height);
+    // renderWorldScene deliberately bypasses Phantom dispatch. All nested
+    // Portal and reflection cameras inherit Euclidean material treatment.
+    renderWorldScene(worldData, childCamera, child, width, height);
+    auto const& outputs = pipeline->getOptions().outputs;
+    auto texture = std::dynamic_pointer_cast<mpp::RenderTexture>(outputs.empty()
+        ? child->getOutputRenderTarget() : child->getOutputRenderTarget(outputs.front().name));
+    if (!texture) throw std::runtime_error("Phantom view has no sampleable output");
+    state.renderer->setPortalView(index, std::static_pointer_cast<mpp::Resource>(texture),
+        projection * view, true);
+  }
+  for (auto it = state.pipelines.begin(); it != state.pipelines.end();) {
+    if (!usedViews.contains(it->first)) {
+      mRenderSystem->removeRenderPipeline(it->second->getName());
+      it = state.pipelines.erase(it);
+    } else ++it;
+  }
+  // Apertures write their own depth, so the nearest one owns overlapping
+  // pixels even when its child image contains only black. No primary world
+  // geometry, liquid or physical-world markers can leak outside their outline.
+  mRenderSystem->renderScene(state.scene, camera, {0.0f, 0.0f}, pipeline->getName());
+}
+
+void WorldRenderer::renderWorldScene(
+    bw::core::WorldData const& worldData,
+    mpp::CameraPtr const& camera,
+    mpp::RenderPipelinePtr const& pipeline,
+    uint32_t width,
+    uint32_t height) {
+  if (!mScene || !mRenderSystem || !camera || !pipeline) {
+    throw std::invalid_argument(
+        "Portal-capable World rendering requires a created scene, camera, and pipeline");
+  }
+
+  mLastPortalViewPlan = mPortalViewPlanner.build(
+      worldData.getPortalPairs(), camera->getViewTransform(),
+      camera->getProjectionTransform(), camera->getNearClipDistance(),
+      camera->getFarClipDistance(), width, height);
+  mSelectedPortal = mLastPortalViewPlan.rootChildren.empty()
+                        ? std::nullopt
+                        : std::optional<PortalEndpointKey>{
+                              mLastPortalViewPlan.rootChildren.front().endpoint};
+
+  auto& walls = mMaterialRenderers[2].renderer;
+  std::vector<mpp::ResourcePtr> renderedTextures(
+      mLastPortalViewPlan.nodes.size());
+
+  // Portal lighting is a property of the rendered World position, not of the
+  // camera observing it. The same deterministically bounded path set is
+  // attached to the primary view and every Auxiliary view.
+  mLastPortalLightPlan = PlanPortalLights(
+      worldData.getPortalPairs(), mPlayerTorchPosition,
+      mPlayerTorchOptions, mPortalLightLimits);
+
+  std::vector<PortalLightShadowAttachment> portalLights;
+  auto reportShadowFailure = [&](std::string const& reason) {
+    if (mwLogger) {
+      mwLogger->warn(
+          "Portal-transmitted Player Torch path disabled: " + reason);
+    }
+  };
+  auto markShadowUnavailable = [&](PortalLightAttachment const& light) {
+    auto diagnostic = std::ranges::find_if(
+        mLastPortalLightPlan.diagnostics, [&](auto const& item) {
+          return item.reason == PortalLightDiagnosticReason::Retained &&
+                 item.path == light.path;
+        });
+    if (diagnostic != mLastPortalLightPlan.diagnostics.end()) {
+      diagnostic->reason = PortalLightDiagnosticReason::ShadowUnavailable;
+    }
+  };
+  auto const& ordinaryDomain = pipeline->getOptions().shadowDomain;
+  auto shadowsAvailable = !ordinaryDomain.empty() &&
+                          mRenderSystem->hasShadowDomain(ordinaryDomain);
+  std::optional<mpp::ShadowOptions> ordinaryOptions;
+  if (shadowsAvailable) {
+    ordinaryOptions = mRenderSystem->getShadowDomainOptions(ordinaryDomain);
+    shadowsAvailable = ordinaryOptions->enabled &&
+                       ordinaryOptions->light.type ==
+                           mpp::ShadowLightType::Point;
+  }
+  if (!mLastPortalLightPlan.lights.empty() && !shadowsAvailable) {
+    reportShadowFailure(
+        "ordinary Player Torch point-shadow domain is unavailable");
+    for (auto const& light : mLastPortalLightPlan.lights) {
+      markShadowUnavailable(light);
+    }
+  } else if (ordinaryOptions) {
+    auto pointCasterClip = [](glm::vec3 const& centre,
+                              glm::vec3 const& tangent,
+                              glm::vec3 const& front,
+                              float halfWidth,
+                              float bottom,
+                              float top) {
+      mpp::PointShadowCasterClip clip;
+      clip.enabled = true;
+      auto normal = glm::normalize(front);
+      clip.retainedWorldPlane =
+          glm::vec4(normal, -glm::dot(normal, centre));
+      clip.openingCentre = {
+          centre.x, (bottom + top) * 0.5f, centre.z};
+      clip.openingTangent = glm::normalize(tangent);
+      clip.openingBitangent = {0.0f, 1.0f, 0.0f};
+      clip.openingHalfSize = {
+          halfWidth, (top - bottom) * 0.5f};
+      clip.planeTolerance = 0.01f;
+      return clip;
+    };
+    auto renderLeg = [&](std::string const& domain,
+                         mpp::ShadowOptions const& options) {
+      mRenderSystem->configureShadowDomain(domain, options);
+      auto target = mRenderSystem->getShadowDomainDepthTarget(domain);
+      if (!target ||
+          !mRenderSystem->getShadowDomainOptions(domain).enabled) {
+        throw std::runtime_error(domain + " cubemap allocation failed");
+      }
+      auto casters = mScene->get3dModelsInSphere(
+          options.light.position, options.light.range);
+      mRenderSystem->renderShadowDomain(domain, casters);
+      auto diagnostics = mRenderSystem->getShadowDomainDiagnostics(domain);
+      if (!diagnostics.cacheComplete) {
+        throw std::runtime_error(domain + " cubemap execution was incomplete");
+      }
+      auto resource = std::dynamic_pointer_cast<mpp::Resource>(target);
+      if (!resource) {
+        throw std::runtime_error(
+            domain + " point-shadow target is not sampleable");
+      }
+      return resource;
+    };
+
+    for (size_t lightIndex = 0;
+         lightIndex < mLastPortalLightPlan.lights.size(); ++lightIndex) {
+      auto const& light = mLastPortalLightPlan.lights[lightIndex];
+      try {
+        std::vector<mpp::ResourcePtr> maps;
+        maps.reserve(light.hops.size() + 1);
+        for (size_t leg = 0; leg <= light.hops.size(); ++leg) {
+          auto options = *ordinaryOptions;
+          if (leg == 0) {
+            auto const& first = light.hops.front();
+            options.light.position = light.sourcePosition;
+            options.pointCasterClip = pointCasterClip(
+                first.sourceApertureCentre,
+                first.sourceApertureTangent,
+                first.sourceApertureFront,
+                first.apertureHalfWidth,
+                first.sourceApertureBottom,
+                first.sourceApertureTop);
+          } else {
+            auto const& previous = light.hops[leg - 1];
+            options.light.position = previous.virtualLightPosition;
+            options.pointCasterClip = pointCasterClip(
+                previous.destinationApertureCentre,
+                previous.destinationApertureTangent,
+                previous.destinationApertureFront,
+                previous.apertureHalfWidth,
+                previous.destinationApertureBottom,
+                previous.destinationApertureTop);
+          }
+
+          std::string domain;
+          if (mLastPortalLightPlan.lights.size() == 1 &&
+              light.hops.size() == 1) {
+            domain = leg == 0
+                         ? "BooleanWorld.PortalTorch.SourceLeg"
+                         : "BooleanWorld.PortalTorch.DestinationLeg";
+          } else {
+            domain = "BooleanWorld.PortalTorch.Path" +
+                     std::to_string(lightIndex) + ".Leg" +
+                     std::to_string(leg);
+          }
+          maps.push_back(renderLeg(domain, options));
+        }
+        portalLights.push_back({light,
+                                std::move(maps),
+                                ordinaryOptions->light.range,
+                                ordinaryOptions->constantBias,
+                                ordinaryOptions->normalBias,
+                                ordinaryOptions->filterRadiusTexels,
+                                ordinaryOptions->fadeStartNormalized,
+                                1.0f / static_cast<float>(ordinaryOptions->resolution),
+                                ordinaryOptions->filterMode == mpp::ShadowFilterMode::Pcf3x3});
+      } catch (std::exception const& error) {
+        markShadowUnavailable(light);
+        reportShadowFailure(error.what());
+      }
+    }
+  }
+
+  // Every pass shares the published buffers and the player's Zone material
+  // uniforms. renderAuxiliaryScene supplies each transformed CameraFrame, so
+  // shaders classify geometric facing from that eye, not PLAYER_POSITION.
+  // Portal placement/traversal never selects a Zone or rebuilds endpoint buckets.
+  // Only endpoint texture bindings change; a child target must have completed
+  // earlier in deepest-first order.
+  auto configurePortalSurfaces = [&](std::vector<PortalViewPlanEdge> const& edges, bool clampNearPlane) {
+    walls->setPortalFallback();
+    for (auto const& edge : edges) {
+      auto const& texture = renderedTextures[edge.childNode];
+      if (!texture) {
+        throw std::logic_error(
+            "Portal view dependency was not rendered deepest-first");
+      }
+      walls->setPortalView(
+          mPortalEndpointBuckets.at(edge.endpoint), texture, edge.sourceProjectiveTransform, clampNearPlane);
+    }
+  };
+
+  for (auto nodeIndex : mLastPortalViewPlan.deepestFirst) {
+    auto const& node = mLastPortalViewPlan.nodes[nodeIndex];
+    configurePortalSurfaces(node.children, false);
+    auto auxiliary = node.auxiliary;
+    if (!AttachPortalLightsToPass(auxiliary, portalLights)) {
+      reportShadowFailure(
+          "Auxiliary pass rejected incomplete or conflicting shadow state");
+    }
+    auto outputs = mRenderSystem->renderAuxiliaryScene(
+        mScene, camera, pipeline->getName(), auxiliary);
+    auto renderTexture =
+        std::dynamic_pointer_cast<mpp::RenderTexture>(outputs.colour);
+    if (!renderTexture) {
+      throw std::runtime_error("Portal auxiliary colour output is not a texture");
+    }
+    renderedTextures[nodeIndex] =
+        std::static_pointer_cast<mpp::Resource>(renderTexture);
+  }
+
+  configurePortalSurfaces(mLastPortalViewPlan.rootChildren, true);
+  mpp::ScenePassOverrides primaryPass;
+  if (!AttachPortalLightsToPass(primaryPass, portalLights)) {
+    reportShadowFailure(
+        "primary pass rejected incomplete or conflicting shadow state");
+  }
+  mRenderSystem->renderScene(
+      mScene, camera, {0.0f, 0.0f}, pipeline->getName(), primaryPass);
+}
+
+std::optional<PortalEndpointKey> const&
+WorldRenderer::getSelectedPortal() const {
+  return mSelectedPortal;
+}
+
+PortalViewPlan const& WorldRenderer::getPortalViewDiagnostics() const {
+  return mLastPortalViewPlan;
+}
+
+PortalLightPlan const& WorldRenderer::getPortalLightDiagnostics() const {
+  return mLastPortalLightPlan;
+}
+
+void WorldRenderer::setPortalLightLimits(PortalLightLimits limits) {
+  mPortalLightLimits.maxHops =
+      std::min(limits.maxHops, PortalLightHopLimit);
+  mPortalLightLimits.maxVirtualLights =
+      std::min(limits.maxVirtualLights, PortalLightAttachmentLimit);
+  mPortalLightLimits.maxShadowPasses =
+      std::min(limits.maxShadowPasses, PortalLightShadowPassLimit);
 }
 
 void WorldRenderer::update(
@@ -1089,6 +1387,9 @@ void WorldRenderer::update(
     int32_t highlightedWall) {
   BW_UNUSED(world);
 
+  mPlayerTorchPosition = lightPosition;
+  mPlayerTorchOptions = playerTorch;
+
   auto const horizontalHighlightChanged =
       highlightedTriangle != mHighlightedTriangle ||
       highlightedCeiling != mHighlightedCeiling;
@@ -1105,15 +1406,10 @@ void WorldRenderer::update(
     updateLiquidDataProvider(
         worldData, mMaterialRenderers[1].dataProvider);
   }
-  auto facingNormalSides = wallFacingNormalSides(worldData, playerPosition);
-  if (worldHasChanged ||
-      mWallUpdatePolicy == WallUpdatePolicy::EditorEveryUpdate ||
-      facingNormalSides != mWallFacingNormalSides) {
-    updateWallDataProvider(
-        worldData, facingNormalSides, highlightedWall,
-        mMaterialRenderers[2].dataProvider);
-    mWallFacingNormalSides = std::move(facingNormalSides);
+  if (worldHasChanged) {
+    updateWallDataProvider(worldData, mMaterialRenderers[2].dataProvider);
   }
+  mMaterialRenderers[2].renderer->setHighlightedWall(highlightedWall);
   mWorldHasChanged = false;
 
   auto liquidEyeSurfaceHeight =
@@ -1136,7 +1432,7 @@ void WorldRenderer::update(
   glm::vec3 liquidExtinction{
       extinction[0], extinction[1], extinction[2]};
   glm::vec3 liquidTint{liquid.tint[0], liquid.tint[1], liquid.tint[2]};
-  if (!std::isfinite(liquidEyeSurfaceHeight)) {
+  if (mZone == bw::core::ZoneId::Phantom || !std::isfinite(liquidEyeSurfaceHeight)) {
     liquidEyeSurfaceHeight =
         WorldTriangle3dDataProvider::dryLiquidSurfaceHeight;
   }

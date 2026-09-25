@@ -374,6 +374,12 @@ void renderRunScriptView(
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
+  ImGui::BeginDisabled(step->getScriptName().empty());
+  if (ImGui::Button("Run script")) {
+    rerunLayerScripts(doc, layer);
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
   ImGui::BeginDisabled(step->getScriptName().empty() || !editorRenderSystem());
   if (ImGui::Button("Reload script")) {
     string error;

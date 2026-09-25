@@ -17,6 +17,9 @@ struct WorldUpdateData {
   bool entityMoved;
   bool entityTurned;
   LayerSelection layerSelection;
+  // Gameplay with swept Zone changes delivers accepted physical segments
+  // separately. Other hosts retain the historical update-position triggers.
+  bool entityTriggersEnabled{true};
 };
 
 }  // namespace core

@@ -1613,6 +1613,51 @@ void draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease() {
   editor::undo(&document);
 }
 
+void selectedGhostMovesWhileAuthoringAPrefab() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto* definitions = new bw::core::DefinePrefabs;
+  auto stepIndex = layer->addStep(definitions);
+  auto* prefab = definitions->addPrefab("Tile");
+  definitions->setSelectedPrefab(prefab);
+  layer->setActiveStep(stepIndex);
+
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Primitive;
+  editor::EditorInteraction interaction;
+  auto* ghost = document.getGhost();
+  auto const start = ghost->getPosition();
+
+  auto press = pointerAt(start);
+  press.leftClicked = true;
+  interaction.updateSelection(&document, nullptr, settings, press);
+  require(document.getSelectedPrimitiveIndices() ==
+              std::set<uint32_t>{uint32_t(ED_GHOST_INDEX)},
+          "the Prefab authoring ghost could not be selected");
+  require(layer->getActiveStep()->acceptsNewPrimitives(),
+          "the selected Prefab did not accept the ghost's prospective Primitive");
+  require(document.selectedPrimitivesPermitDirectEditing(),
+          "the direct-editing gate rejected the selected Prefab authoring ghost");
+
+  auto drag = pointerAt(start + wp::Vector2{12.0f, 7.0f});
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  drag.dragDelta = {12.0f, -7.0f};
+  interaction.updateSelection(&document, nullptr, settings, drag);
+  interaction.updateDrag(&document, settings, drag);
+  require(ghost->getPosition() == start + wp::Vector2{12.0f, 7.0f},
+          "the selected Prefab authoring ghost did not move");
+
+  auto release = drag;
+  release.leftDown = false;
+  release.leftDragging = false;
+  release.leftReleased = true;
+  release.dragDelta = {};
+  interaction.updateSelection(&document, nullptr, settings, release);
+  interaction.updateDrag(&document, settings, release);
+}
+
 void primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown() {
   editor::Document document;
   document.newDoc();
@@ -1667,6 +1712,50 @@ void primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown() {
           "a drag with the grid off did not move by the raw pointer delta");
   interaction.updateDrag(&document, settings, release);
 
+  editor::undo(&document);
+}
+
+void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
+  editor::Document document;
+  document.newDoc();
+  addRectangle(document, {0.0f, 0.0f}, 100.0f);
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto const pairId = layer->addPortalPair(
+      {{-40.0f, 0.0f}, 16.0f, 0.0f, 24.0f},
+      {{50.0f, 0.0f}, 16.0f, 0.0f, 24.0f});
+  document.setSelectedPortalEndpoint(layer->getId(), pairId, 0);
+  auto snapshot = document.getWorld()->getWorldData();
+
+  editor::Settings settings;
+  settings.mode = editor::Settings::Mode::Primitive;
+  settings.showGrid = false;
+  editor::EditorInteraction interaction;
+
+  auto drag = pointerAt({500.0f, 500.0f});
+  drag.leftDown = true;
+  drag.leftDragging = true;
+  drag.dragDelta = {-8.0f, 0.0f};
+  interaction.updateDrag(&document, settings, drag, snapshot.get());
+  require(layer->getPortalPair(pairId)
+                  ->getEndpoint(0)
+                  .getAperture()
+                  .centre == wp::Vector2{-50.0f, 0.0f},
+          "a dragged Portal endpoint did not snap to a legal wall within three units");
+
+  // The raw gesture remains cumulative while snapped. Moving four units back
+  // makes the intended position -44, outside the wall's capture distance, so
+  // the endpoint must detach rather than becoming stuck at its snapped centre.
+  drag.dragDelta = {4.0f, 0.0f};
+  interaction.updateDrag(&document, settings, drag, snapshot.get());
+  require(layer->getPortalPair(pairId)
+                  ->getEndpoint(0)
+                  .getAperture()
+                  .centre == wp::Vector2{-44.0f, 0.0f},
+          "a wall-snapped Portal endpoint did not detach from cumulative drag motion");
+
+  auto release = pointerAt({500.0f, 500.0f});
+  release.leftReleased = true;
+  interaction.updateDrag(&document, settings, release, snapshot.get());
   editor::undo(&document);
 }
 
@@ -2570,6 +2659,40 @@ void meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly() {
   auto undoneProxy = undonePrimitive->createEditingProxy();
   require(undoneProxy->getEdgeVisible(undoneProxy->getFirstEdgeIndex()),
           "undo did not restore the edge's default visible = true");
+}
+
+void meshEdgeOtherZoneTransactionUndoesAndRedoes() {
+  using bw::core::ZoneId;
+  editor::Document document;
+  document.newDoc();
+  auto meshIndex = addMesh(document, {0, 0});
+  document.activateMesh(meshIndex);
+  auto edge = document.getActiveMesh()->getFirstEdgeIndex();
+  require(document.getActiveMeshEdgeOtherZone(edge) == ZoneId::NegativeSpace,
+          "editor Other Zone default incorrect");
+  document.setActiveMeshEdgeVisible(edge, false);
+  document.setActiveMeshEdgeCollisionOverride(edge, true);
+  document.setModified(false);
+  auto before = editor::getUndoLevels();
+  editor::transactUndoableAction(
+      &document, "Set Mesh edge Other Zone",
+      std::bind(editor::setMeshEdgeOtherZone, std::placeholders::_1, edge, ZoneId::Euclidean));
+  require(document.isModified() && editor::getUndoLevels() == before + 1,
+          "Other Zone did not produce one dirty transaction");
+  auto verify = [&](ZoneId expected) {
+    auto* primitive = static_cast<bw::core::MeshPrimitive*>(document.getWorld()->getPrimitive(meshIndex));
+    auto proxy = primitive->createEditingProxy();
+    auto first = proxy->getFirstEdgeIndex();
+    require(proxy->getEdgeOtherZone(first) == expected, "Other Zone transaction lost value");
+    require(!proxy->getEdgeVisible(first) && proxy->getEdgeCollisionOverride(first) == true,
+            "Other Zone transaction altered independent overrides");
+  };
+  verify(ZoneId::Euclidean);
+  editor::undo(&document);
+  require(editor::getUndoLevels() == before, "Other Zone undo count incorrect");
+  verify(ZoneId::NegativeSpace);
+  editor::redo(&document);
+  verify(ZoneId::Euclidean);
 }
 
 void drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep() {
@@ -4422,7 +4545,9 @@ int main() {
     prefabMeshVerticesSnapToFineGridsBeforeToolkitDragThreshold();
     meshDragSnapsToGridBeforeValidating();
     draggingADifferencePrimitiveDoesNotClearItsSelectionOnRelease();
+    selectedGhostMovesWhileAuthoringAPrefab();
     primitiveDragSnapsItsMovementToTheGridWhileTheGridIsShown();
+    portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach();
     meshDragCommitIsOneUndoEntryAndUpdatesTheMeshPrimitive();
     vertexDeletionHealsRingAndRefusesAtMinimumCount();
     edgeDeletionWeldsEndpointsAtMidpointAndRefusesAtMinimumCount();
@@ -4444,6 +4569,7 @@ int main() {
     invalidMeshEdgeWallMaskImageIsAtomic();
     meshEdgeVisibleTogglesAndCommitsToThePrimitive();
     meshEdgeVisibleToggleIsOneUndoEntryAndUndoesCleanly();
+    meshEdgeOtherZoneTransactionUndoesAndRedoes();
     drawToolArmsOnlyInVertexSubModeOnAnAcceptingStep();
     prefabDrawCanStartAtAnExistingGridVertexDespiteOverlappingStepGeometry();
     gridSnappedDrawPointTakesPrecedenceOverNearbyPrefabVertex();

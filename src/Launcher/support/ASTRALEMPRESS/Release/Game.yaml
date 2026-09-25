@@ -1,7 +1,7 @@
 Configuration:
   Video:
-    Width: 2048
-    Height: 1280
+    Width: 1600
+    Height: 900
     Fullscreen: false
     VSync: true
     RenderScale: quarter

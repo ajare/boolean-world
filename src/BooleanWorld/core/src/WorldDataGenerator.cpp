@@ -56,6 +56,18 @@ vector<Primitive*> selectAndOrderPrimitives(
   return primitives;
 }
 
+vector<PortalPairSnapshot> snapshotPortalPairs(
+    World const& world, LayerSelection const& selection) {
+  vector<PortalPairSnapshot> result;
+  for (auto const* layer : world.getLayers()) {
+    if (!IsLayerSelected(selection, layer->getId())) continue;
+    for (auto const& pair : layer->getPortalPairs()) {
+      result.push_back({layer->getId(), pair});
+    }
+  }
+  return result;
+}
+
 WorldDataGenerator::WorldDataGenerator()
     : mViewTriangle{} {
 }

@@ -10,6 +10,8 @@
 
 #include <sol/sol.hpp>
 
+#include <core/BuildVariables.h>
+
 namespace bw {
 namespace core {
 
@@ -19,6 +21,7 @@ class MeshPrimitiveEditingProxy;
 class Prefab;
 class DefinePrefabs;
 class PrimitiveField;
+class DefineTileMaps;
 class TileMap;
 class LayerBuildContext;
 class RunScript;
@@ -151,6 +154,9 @@ private:
   RunScript const* mStep;
   LayerBuildContext* mBuild;
 
+  [[nodiscard]] DefineTileMaps const* findDefineTileMaps(
+      std::string const& name) const;
+
 public:
   RunScriptContext(RunScript const& step, LayerBuildContext& build);
 
@@ -169,7 +175,8 @@ public:
   void placePrimitive(Primitive* primitive) const;
   void placeMeshPrimitive(ScriptMeshPrimitive const& primitive) const;
   void placePrefabInstance(
-      PrefabView view, int32_t tileX, int32_t tileY, float angle) const;
+      PrefabView view, int32_t tileX, int32_t tileY, float angle,
+      float elevationOffset = 0.0f) const;
   [[nodiscard]] std::tuple<int32_t, int32_t> getTile(
       uint32_t gridSize, float x, float y) const;
 
@@ -179,6 +186,7 @@ public:
       std::string const& name) const;
   [[nodiscard]] TileMapView findTileMap(
       std::string const& name, uint32_t index) const;
+  [[nodiscard]] uint32_t getTileMapCount(std::string const& name) const;
   [[nodiscard]] std::vector<PrimitiveView> getBuildPrimitives() const;
   [[nodiscard]] std::tuple<float, float, float, float> getExtents() const;
   [[nodiscard]] std::vector<PrimitiveView> findBuildPrimitivesOverlapping(
@@ -193,6 +201,9 @@ public:
 // Primitives are bound by borrowed pointer only. Lua never owns a C++ object
 // - the step that creates a Primitive owns it - so a script that raises
 // halfway through cannot leak or double-free one.
+[[nodiscard]] sol::table readonlyBuildVariables(
+    sol::state_view lua, BuildVariables const& variables);
+
 void bindScriptTypes(sol::state& lua);
 
 }  // namespace core

@@ -759,6 +759,7 @@ vector<ComplexPolygon> Primitive::generateTransformedVertices(wp::Vector2* minEx
         vertices[i].edgeFlags = polygon[i].edgeFlags;
         vertices[i].edgeNormalMap = polygon[i].edgeNormalMap;
         vertices[i].edgeWallMask = polygon[i].edgeWallMask;
+        vertices[i].edgeOtherZone = polygon[i].edgeOtherZone;
         verticesChanged = verticesChanged || vChanged;
 
         if (minExtent) {

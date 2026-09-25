@@ -2,7 +2,7 @@
 // whole render stack headlessly: EditorRenderSystem, then a PreviewRenderScene
 // (mpp::Scene + RenderPipeline + the game's WorldRenderer) over a real
 // Arrangement built from world-test-1.world.yaml, rendered through the same
-// renderScene/getGraphImageRenderTarget path Preview3D.cpp uses.
+// renderScene/named-output path Preview3D.cpp uses.
 //
 // Every frame it renders also carries a hovered-surface outline, so the raw-GL
 // pass that draws one over the pipeline's finished image - a program, a

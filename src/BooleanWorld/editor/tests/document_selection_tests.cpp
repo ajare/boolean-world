@@ -833,14 +833,25 @@ void worldMines3BuildsPreviewWorldData(bw::core::ScriptRuntime& runtime) {
         .integerMinimum = 1,
         .integerMaximum = 50}});
 
+  editor::Settings settings;
+  settings.ghostActive = false;
   editor::Document document;
+  document.setPrimitiveFilter(
+      [&settings](bw::core::Layer const& layer, bw::core::Primitive const* primitive) {
+        return editor::primitiveParticipatesInEditorFold(layer, primitive, settings);
+      });
   require(
       document.openDoc((resourceRoot / "world-mines-3.world.yaml").string()),
       "world-mines-3.world.yaml did not open");
-
-  editor::Settings settings;
-  settings.ghostActive = false;
   auto* world = document.getWorld().get();
+  // Include the editor's initial ghost: a game-only load does not exercise
+  // its effect on the starting chamber's supporting Portal walls.
+  auto portalData = world->getWorldData();
+  auto const* portalPair = portalData->findPortalPair(0, 0);
+  require(portalPair != nullptr, "mines example Portal pair missing in editor generation");
+  require(portalPair->active,
+          "mines example Portal pair inactive in editor: " +
+              std::string(bw::core::PortalResolutionDiagnosticText(portalPair->diagnostic)));
   auto const selected = world->getWorldDataGenerator()->getLayerSelection();
   auto const inScope = editor::inScopePrimitives(*world, selected, settings);
   std::vector<bw::core::Primitive*> primitives;

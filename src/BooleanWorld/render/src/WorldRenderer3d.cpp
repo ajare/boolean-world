@@ -7,6 +7,7 @@
 #include <mpp/ProgrammaticBasicMaterialStream.h>
 #include <mpp/ProgrammaticProgramStream.h>
 #include <mpp/ProgrammaticTextureStream.h>
+#include <mpp/RenderTexture.h>
 #include <mpp/program/Parser.h>
 
 #include <core/Defines.h>
@@ -19,12 +20,17 @@
 
 #include "WorldRenderer3d.h"
 
+#include "PortalLight.h"
+
 using namespace std;
 using namespace wp::application::resourcesystem;
 
 namespace {
 constexpr char const* debugProgramName = "BooleanWorldRender.DebugMaterial.Program";
 constexpr char const* debugMaterialName = "BooleanWorldRender.DebugMaterial";
+constexpr char const* portalMaterialName = "BooleanWorldRender.Portal.Material";
+constexpr char const* portalFallbackTextureName =
+    "BooleanWorldRender.Portal.Fallback";
 
 // The neutral mask blend set bound before a mesh's primary parameters are
 // known. Wall meshes overwrite it with their primary parameters; masked
@@ -87,6 +93,56 @@ mpp::ResourcePtr getOrCreateDebugMaterial(
 // multiplies the sampled channel by WALL_MASK_ENABLED, which those meshes
 // bind to zero. A 1x1 single-channel zero texture is the neutral bound value,
 // so the mask contract never needs a per-mesh branch on mask availability.
+struct PortalResources {
+  mpp::ResourcePtr material;
+  mpp::ResourcePtr fallbackTexture;
+};
+
+PortalResources getOrCreatePortalResources(
+    mpp::ResourceManager* resourceMgr, mpp::ResourcePtr const& worldMaterial) {
+  auto fallback = resourceMgr->getResource(portalFallbackTextureName, true);
+  if (!fallback) {
+    auto texture = std::make_shared<mpp::ProgrammaticTextureStream>(resourceMgr);
+    texture->setTarget(mpp::TextureTarget::Texture2D);
+    texture->setColourSpace(mpp::TextureColourSpace::Linear);
+    texture->setData([](std::string const&) {
+      mpp::TextureData data;
+      data.width = 1;
+      data.height = 1;
+      data.bitsPerPixel = 32;
+      data.dataType = GL_UNSIGNED_BYTE;
+      data.pixelFormat = GL_RGBA;
+      data.data = new uint8_t[4]{32, 48, 64, 255};
+      return data;
+    });
+    texture->setFiltering(
+        mpp::TextureParams::MinFilter::Linear,
+        mpp::TextureParams::MagFilter::Linear);
+    fallback = resourceMgr->declareResource(
+                              portalFallbackTextureName, texture)
+                   .first;
+  }
+
+  auto material = resourceMgr->getResource(portalMaterialName, true);
+  if (!material) {
+    auto stream =
+        std::make_shared<mpp::ProgrammaticBasicMaterialStream>(resourceMgr);
+    // Share the world shader for lit white backs and recursion fallbacks.
+    // Apertures never cast shadows, regardless of their current view binding.
+    auto source = std::dynamic_pointer_cast<mpp::Material>(worldMaterial);
+    stream->setProgram(source->getProgram()->getName());
+    stream->setTexture("TEX1", portalFallbackTextureName);
+    stream->setTexture("TEX2", portalFallbackTextureName);
+    stream->setTexture("TEX3", portalFallbackTextureName);
+    mpp::ShadowCasterContract shadow;
+    shadow.behaviour = mpp::ShadowCasterContract::Behaviour::Disabled;
+    stream->setShadowCasterContract(shadow);
+    material = resourceMgr->declareResource(portalMaterialName, stream).first;
+  }
+  material->create();
+  return {material, fallback};
+}
+
 mpp::ResourcePtr getOrCreateWallMaskZeroTexture(
     mpp::ResourceManager* resourceMgr) {
   constexpr char const* name = "BooleanWorld.WallMaskZero";
@@ -131,12 +187,13 @@ WorldRenderer3d::WorldRenderer3d(
     SurfaceMaterialResolver const* resolver,
     vector<WallRenderSurface> wallRenderSurfaces,
     bool deferToWaterPass,
-    string batchNamePrefix)
+    string batchNamePrefix, bool apertureOnly)
     : mRenderer(nullptr),
       mMaterial(resource),
       mFragmentOverdrawMaterial(fragmentOverdrawMaterial),
       mSurfaceSet(surfaceSet),
       mDeferToWaterPass(deferToWaterPass),
+      mApertureOnly(apertureOnly),
       mBatchNamePrefix(move(batchNamePrefix)),
       mwResolver(resolver),
       mWallRenderSurfaces(move(wallRenderSurfaces)),
@@ -268,6 +325,12 @@ void WorldRenderer3d::updateMaterialUniforms(
   // mapped variant as well as the ordinary bucket, without touching the
   // variant's independently bound image uniforms and texture.
   for (auto const& surface : mWallRenderSurfaces) {
+    // Portal buckets retain neutral white fallback parameters, independently
+    // of the authored material on the surrounding wall.
+    if (surface.variant &&
+        portalWallRenderVariantBucket(surface.variant->identity)) {
+      continue;
+    }
     auto resolved = mwResolver->resolve(
         surface.material, surface.embossPresetId);
     if (resolved.hash() == bakedMaterialHash) {
@@ -311,9 +374,13 @@ void WorldRenderer3d::create(shared_ptr<WorldTriangle3dDataProvider> dataProvide
   mDebugMaterial = getOrCreateDebugMaterial(
       resourceMgr, mRenderer->getWorldBatch()->getSpecification());
 
-  // Only the wall batch needs the mask sampler, and only walls can be masked.
+  // Only the wall batch needs the mask sampler and projective Portal material.
   if (mSurfaceSet == WorldSurfaceSet::Walls) {
     mWallMaskZeroTexture = getOrCreateWallMaskZeroTexture(resourceMgr);
+    auto portal = getOrCreatePortalResources(
+        resourceMgr, mMaterial->getMppResource());
+    mPortalMaterial = std::move(portal.material);
+    mPortalFallbackTexture = std::move(portal.fallbackTexture);
   }
 
   mDataProvider->setMeshCount(static_pointer_cast<mpp::Model>(mRenderer->getModel())->getNumMeshes());
@@ -334,7 +401,10 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   auto worldBatch = mRenderer->getWorldBatch();
   auto useDebugMaterialFor =
       [&](std::string const& meshName, uint32_t materialIndex) {
-        if (static_cast<int32_t>(materialIndex) >= 0) return;
+        // Walls must retain their lit white reverse side even when their
+        // authored front is the unlit magenta diagnostic material.
+        if (static_cast<int32_t>(materialIndex) >= 0 ||
+            mSurfaceSet == WorldSurfaceSet::Walls) return;
         params->setMeshMaterial(meshName, mDebugMaterial);
         mDebugMeshNames.insert(meshName);
       };
@@ -392,11 +462,17 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   mUniforms.resize(worldBatch->getMaterialMeshCount(), nullptr);
   mMaterialIndices.resize(worldBatch->getMaterialMeshCount(), 0);
 
-  auto initializeGlobalUniforms = [](mpp::UniformCollection& uniforms) {
+  auto initializeGlobalUniforms = [this](mpp::UniformCollection& uniforms) {
+    uniforms.setUniform("HIGHLIGHTED_WALL", int32_t{-1});
+    uniforms.setUniform("PORTAL_VIEW_ENABLED", int32_t{0});
+    uniforms.setUniform("PHANTOM_APERTURE", int32_t{mApertureOnly ? 1 : 0});
+    uniforms.setUniform("PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
     uniforms.setUniform("VIEW_DISTANCE", BW_PLAYER_VIEW_DISTANCE);
     uniforms.setUniform("GLOBAL_TIME", 0.0f);
     uniforms.setUniform("PIXEL_SIZE", 1.0f / 32);
     uniforms.setUniform("PLAYER_POSITION", glm::vec3{});
+    uniforms.setUniform("WALL_BACK_FACE_TREATMENT",
+        static_cast<int32_t>(bw::core::wallBackFaceTreatment(mZone)));
     uniforms.setUniform("LIGHT_POSITION", glm::vec3{});
     uniforms.setUniform(
         "LIQUID_EYE_SURFACE_Z",
@@ -412,6 +488,32 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
     uniforms.setUniform("LIQUID_REFLECTION_ENABLED", int32_t{0});
     uniforms.setUniform("LIGHT_ATTENUATION_RADIUS", 192.0f);
     uniforms.setUniform("LIGHT_ATTENUATION_FALLOFF", 64.0f);
+    uniforms.setUniform("PORTAL_LIGHT_COUNT", int32_t{0});
+    uniforms.setUniform("PORTAL_LIGHT_SHADOW_PARAMS", glm::vec4{});
+    uniforms.setUniform("PORTAL_LIGHT_SHADOW_BIAS", glm::vec3{});
+    for (size_t light = 0; light < PortalLightAttachmentLimit; ++light) {
+      auto lightName = [&](char const* field) {
+        return "PORTAL_LIGHT_" + std::string(field) + "_" +
+               std::to_string(light);
+      };
+      uniforms.setUniform(lightName("POSITION"), glm::vec3{});
+      uniforms.setUniform(lightName("SOURCE_POSITION"), glm::vec3{});
+      uniforms.setUniform(lightName("RADIANCE"), glm::vec3{});
+      uniforms.setUniform(lightName("HOP_COUNT"), int32_t{0});
+      for (uint32_t hop = 0; hop < PortalLightHopLimit; ++hop) {
+        auto hopName = [&](char const* field) {
+          return lightName(field) + "_" + std::to_string(hop);
+        };
+        uniforms.setUniform(hopName("APERTURE_CENTRE"), glm::vec3{});
+        uniforms.setUniform(hopName("APERTURE_TANGENT"), glm::vec3{});
+        uniforms.setUniform(hopName("APERTURE_FRONT"), glm::vec3{});
+        uniforms.setUniform(
+            hopName("SOURCE_APERTURE_FRONT"), glm::vec3{});
+        uniforms.setUniform(hopName("APERTURE_BOUNDS"), glm::vec3{});
+        uniforms.setUniform(
+            hopName("DESTINATION_TO_SOURCE"), glm::mat4{1.0f});
+      }
+    }
     uniforms.setUniform("MATERIAL_SCALE", 32.0f);
     uniforms.setUniform("SECONDARY_MATERIAL_INDEX", int32_t{-1});
     uniforms.setUniform("USE_SECONDARY_MATERIAL", int32_t{0});
@@ -548,6 +650,38 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
       auto meshName = worldBatch->formatMeshName(hashValue, false, variant);
       params->setMeshUniforms(meshName, uniforms);
       params->setMeshBlend(meshName, false);
+
+      if (auto portalBucket = portalWallRenderVariantBucket(variant.identity)) {
+        auto material = dynamic_pointer_cast<mpp::Material>(mPortalMaterial);
+        auto program = material
+                           ? dynamic_pointer_cast<mpp::Program>(
+                                 material->getProgram())
+                           : nullptr;
+        auto textureUnit =
+            program ? program->getSamplerUnit("TEX3") : -1;
+        if (textureUnit < 0) {
+          throw logic_error("Portal projective sampler is unavailable.");
+        }
+        bw::core::MaterialDefinition fallback{};
+        uniforms->setUniform("MATERIAL_INDEX", int32_t{BW_WALL_BACK_FACE_MATERIAL_INDEX});
+        uniforms->setUniform("MATERIAL_PARAMS", BW_MATERIAL_PARAMS_MAX, 1, fallback.data.params.data());
+        setMaterialColour(*uniforms, std::array<float, 3>{1.0f, 1.0f, 1.0f});
+        setEmbossUniforms(*uniforms, fallback.data.emboss);
+        initializeGlobalUniforms(*uniforms);
+        bindWallMaskTexture(meshName, mWallMaskZeroTexture);
+        params->setMeshMaterial(meshName, mPortalMaterial);
+        params->setMeshTexture(
+            meshName, static_cast<uint32_t>(textureUnit),
+            mPortalFallbackTexture);
+        mPortalMeshBindings.push_back(
+            {meshName, uniforms, static_cast<uint32_t>(textureUnit),
+             *portalBucket});
+        mPortalMeshNames.insert(meshName);
+        mUniforms[meshIndex] = uniforms;
+        mMaterialIndices[meshIndex] = BW_WALL_BACK_FACE_MATERIAL_INDEX;
+        continue;
+      }
+
       useDebugMaterialFor(meshName, resolved.materialIndex);
       if (variant.texture) {
         auto material = dynamic_pointer_cast<mpp::Material>(
@@ -704,7 +838,9 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
   for (auto const& meshName : meshNames) {
     params->setMeshMaterial(
         meshName, enabled ? material
-                          : (mDebugMeshNames.contains(meshName)
+                          : (mPortalMeshNames.contains(meshName)
+                                 ? mPortalMaterial
+                             : mDebugMeshNames.contains(meshName)
                                  ? mDebugMaterial
                                  : mpp::ResourcePtr{}));
     // Turning the diagnostic off restores each mesh's own classification. A
@@ -719,6 +855,51 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
     params->setMeshDepthPrepass(
         meshName, enabled ? std::optional<bool>{true} : std::nullopt);
   }
+}
+
+void WorldRenderer3d::setPortalFallback() {
+  if (!mSceneModel || !mPortalFallbackTexture) return;
+  auto params = mSceneModel->getParams();
+  for (auto const& binding : mPortalMeshBindings) {
+    binding.uniforms->updateUniform("PORTAL_VIEW_ENABLED", int32_t{0});
+    params->setMeshDepthPrepass(binding.meshName,
+        mApertureOnly ? std::optional<bool>{false} : std::nullopt);
+    binding.uniforms->updateUniform(
+        "PORTAL_PROJECTIVE_MATRIX", glm::mat4{1.0f});
+    params->setMeshTexture(
+        binding.meshName, binding.textureUnit, mPortalFallbackTexture);
+  }
+}
+
+void WorldRenderer3d::setPortalView(
+    uint32_t endpointBucket,
+    mpp::ResourcePtr const& texture,
+    glm::mat4 const& sourceProjectiveTransform, bool clampNearPlane) {
+  if (!mSceneModel || !texture) return;
+  auto params = mSceneModel->getParams();
+  for (auto const& binding : mPortalMeshBindings) {
+    if (binding.endpointBucket != endpointBucket) continue;
+    // The ordinary depth-only shader does not clamp Portal apertures.
+    params->setMeshDepthPrepass(binding.meshName,
+        (clampNearPlane || mApertureOnly) ? std::optional<bool>{false} : std::nullopt);
+    // 0: fallback, 1: auxiliary view (retain its oblique clip plane),
+    // 2: primary view (depth-clamp the aperture until traversal).
+    binding.uniforms->updateUniform(
+        "PORTAL_VIEW_ENABLED", int32_t{clampNearPlane ? 2 : 1});
+    binding.uniforms->updateUniform(
+        "PORTAL_PROJECTIVE_MATRIX", sourceProjectiveTransform);
+    params->setMeshTexture(binding.meshName, binding.textureUnit, texture);
+  }
+}
+
+void WorldRenderer3d::setHighlightedWall(int32_t wall) {
+  for (auto const& uniforms : mUniforms) {
+    if (uniforms) uniforms->updateUniform("HIGHLIGHTED_WALL", wall);
+  }
+}
+
+uint64_t WorldRenderer3d::geometryUploadCount() const {
+  return mRenderer ? mRenderer->geometryUploadCount() : 0;
 }
 
 void WorldRenderer3d::update(
@@ -750,6 +931,8 @@ void WorldRenderer3d::update(
     uc->updateUniform("GLOBAL_TIME", mGlobalTime);
     uc->updateUniform("PIXEL_SIZE", pixelSize);
     uc->updateUniform("PLAYER_POSITION", playerPosition);
+    uc->updateUniform("WALL_BACK_FACE_TREATMENT",
+        static_cast<int32_t>(bw::core::wallBackFaceTreatment(mZone)));
     uc->updateUniform("LIGHT_POSITION", lightPosition);
     uc->updateUniform("LIQUID_EYE_SURFACE_Z", liquidEyeSurfaceHeight);
     uc->updateUniform("LIQUID_EXTINCTION", liquidExtinction);
@@ -793,9 +976,13 @@ void WorldRenderer3d::update(
         materialIndexOverride >= 0 ? materialIndexOverride : mMaterialIndices[i]);
   }
 
+  // Wall topology/order belongs to the snapshot, including in diagnostic
+  // modes. Sorting opaque wall indices per camera would reintroduce uploads.
   mDataProvider->orderTrianglesForView(
       playerPosition,
-      mSurfaceSet == WorldSurfaceSet::Liquid
+      mSurfaceSet == WorldSurfaceSet::Walls
+          ? WorldTriangle3dDataProvider::TriangleOrder::Authored
+      : mSurfaceSet == WorldSurfaceSet::Liquid
           ? WorldTriangle3dDataProvider::TriangleOrder::BackToFront
       : sortGeometryFrontToBack
           ? WorldTriangle3dDataProvider::TriangleOrder::FrontToBack

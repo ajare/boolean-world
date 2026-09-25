@@ -314,19 +314,43 @@ if(BUILD_TESTING)
 endif()
 
 # Per-machine support files:
-#   support/<COMPUTERNAME>/<CONFIG>/*  ->  output directory
+#   support/<host>/<CONFIG>/*  ->  output directory
+# Windows conventionally exposes the machine name through COMPUTERNAME. Linux
+# does not, so ask the host directly instead of relying on a shell-specific
+# environment variable.
+set(_bw_launcher_host_name "")
+if(WIN32 AND DEFINED ENV{COMPUTERNAME})
+    set(_bw_launcher_host_name "$ENV{COMPUTERNAME}")
+elseif(UNIX)
+    cmake_host_system_information(RESULT _bw_launcher_host_name QUERY HOSTNAME)
+endif()
+
 # Run through a script so both $<CONFIG> and the directory's existence resolve
 # at build time - most machines have no support directory, and
 # `cmake -E copy_directory` fails outright on a missing source.
-if(DEFINED ENV{COMPUTERNAME})
+if(_bw_launcher_host_name)
+    set(_bw_launcher_support_dir
+        "${CMAKE_CURRENT_SOURCE_DIR}/support/${_bw_launcher_host_name}/$<CONFIG>")
     add_custom_command(TARGET Launcher POST_BUILD
         COMMAND ${CMAKE_COMMAND}
-                "-DSRC=${CMAKE_CURRENT_SOURCE_DIR}/support/$ENV{COMPUTERNAME}/$<CONFIG>"
+                "-DSRC=${_bw_launcher_support_dir}"
                 "-DDST=$<TARGET_FILE_DIR:Launcher>"
                 -P "${BW_ROOT}/cmake/CopyDirIfExists.cmake"
         VERBATIM
-        COMMENT "Staging support files for $ENV{COMPUTERNAME}")
+        COMMENT "Staging support files for ${_bw_launcher_host_name}")
+    # A changed host configuration must relink Launcher so its POST_BUILD copy
+    # runs even when no C++ source changed. Only list files that exist, since
+    # most hosts do not have an override for every build configuration.
+    file(GLOB _bw_launcher_host_configs CONFIGURE_DEPENDS
+         "${CMAKE_CURRENT_SOURCE_DIR}/support/${_bw_launcher_host_name}/*/Game.yaml")
+    if(_bw_launcher_host_configs)
+        set_property(TARGET Launcher APPEND PROPERTY
+            LINK_DEPENDS ${_bw_launcher_host_configs})
+    endif()
+    unset(_bw_launcher_host_configs)
+    unset(_bw_launcher_support_dir)
 endif()
+unset(_bw_launcher_host_name)
 
 # TARGET_RUNTIME_DLLS is a Windows DLL facility. Linux resolves shared objects
 # through the generated RPATH and the standalone dependency build directories.

@@ -5,6 +5,7 @@
 #include <string>
 
 #include <core/ArrangementWorldDataGenerator.h>
+#include <core/ArrangementWorldData.h>
 #include <core/MeshPrimitive.h>
 #include <core/RectanglePolygon.h>
 
@@ -208,6 +209,109 @@ void imageWallMaskPropagatesToItsSurvivingBorderWall() {
           "the selected edge's Image mask did not reach exactly one surviving Border ArrangementWall");
 }
 
+void borderSideZonesFollowAuthoredEdges() {
+  using namespace bw::core;
+  // Exercise both the unbounded exterior and a bounded Hole, both side
+  // orientations, explicit equal IDs, dormant values and hidden walls.
+  for (auto zone : {ZoneId::Euclidean, ZoneId::NegativeSpace}) {
+    for (bool collides : {false, true}) {
+      for (bool visible : {false, true}) {
+        auto mesh = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+            Primitive::Operation::Union,
+            {{ring(-10, -10, 10, 10), {{ring(-3, -3, 3, 3), {}}}}}));
+        auto proxy = mesh->createEditingProxy();
+        for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+             edge = proxy->getNextEdgeIndex(edge)) {
+          if (!proxy->isEdgeCollisionEditable(edge)) continue;
+          require(proxy->setEdgeOtherZone(edge, zone) &&
+                      proxy->setEdgeCollisionOverride(edge, collides) &&
+                      proxy->setEdgeVisible(edge, visible),
+                  "could not author Hole/outer edge");
+        }
+        proxy->commitTo(*mesh);
+        auto converted = ConvertPrimitiveToContours(*mesh);
+        for (auto const& contour : converted.edgeOtherZones)
+          for (auto value : contour)
+            require(!value || value == zone, "contour conversion lost Other Zone");
+        auto inputs = SnapshotPrimitives({mesh.get()});
+        require(inputs.front().contourEdgeOtherZones == converted.edgeOtherZones,
+                "immutable input lost Other Zone");
+        auto arrangement = arr::BuildArrangement(inputs);
+        ArrangementWorldData const runtime(
+            arrangement, wp::BoundingBox({-20, -20}, {20, 20}), 4.0f);
+        auto const& walls = runtime.getWalls();
+        require(walls.size() == 8, "expected outer and Hole Borders");
+        bool leftSolid = false, rightSolid = false;
+        for (auto const& wall : walls) {
+          require(wall.visible == visible, "Zone altered visibility");
+          require(wall.sideZones.has_value() == !collides,
+                  "only non-colliding Borders should carry side Zones");
+          auto const& edge = arrangement->edges[wall.edge];
+          if (!collides) {
+            for (int side = 0; side < 2; ++side) {
+              bool solid = arrangement->faces[edge.face[side]].solid;
+              require((*wall.sideZones)[side] == (solid ? ZoneId::Euclidean : zone),
+                      "Border Zone assigned to wrong geometric side");
+            }
+          }
+          leftSolid |= arrangement->faces[edge.face[0]].solid;
+          rightSolid |= arrangement->faces[edge.face[1]].solid;
+        }
+        require(leftSolid && rightSolid, "fixture must exercise both orientations");
+      }
+    }
+  }
+}
+
+void otherZoneUsesPropertyPrecedenceIndependentlyOfCollision() {
+  using namespace bw::core;
+  auto make = [](ZoneId zone, bool collides) {
+    auto mesh = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromComplexPolygons(
+        Primitive::Operation::Union, {rectangle(0, 0, 10, 10)}));
+    auto proxy = mesh->createEditingProxy();
+    for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+         edge = proxy->getNextEdgeIndex(edge)) {
+      proxy->setEdgeOtherZone(edge, zone);
+      proxy->setEdgeCollisionOverride(edge, collides);
+    }
+    proxy->commitTo(*mesh);
+    return mesh;
+  };
+  auto lower = make(ZoneId::NegativeSpace, false);
+  auto higher = make(ZoneId::Euclidean, true);
+  for (bool transparent : {false, true}) {
+    auto inputs = SnapshotPrimitives({higher.get(), lower.get()}, {20, 10});
+    inputs[0].contributesProperties = !transparent;
+    auto arrangement = arr::BuildArrangement(inputs);
+    auto walls = arr::BuildArrangementWalls(*arrangement);
+    require(walls.size() == 4, "coincident fixture lost Borders");
+    for (auto const& wall : walls) {
+      require(wall.sideZones.has_value(), "collision false must dominate independently");
+      auto const& edge = arrangement->edges[wall.edge];
+      int emptySide = arrangement->faces[edge.face[0]].solid ? 1 : 0;
+      require((*wall.sideZones)[emptySide] ==
+                  (transparent ? ZoneId::NegativeSpace : ZoneId::Euclidean),
+              "Other Zone ignored property precedence/transparency");
+    }
+  }
+
+  // Adjacent solids with different heights generate Steps, not Zone boundaries.
+  auto adjacent = make(ZoneId::NegativeSpace, false);
+  auto inputs = SnapshotPrimitives({lower.get(), adjacent.get()});
+  for (auto& contour : inputs[1].contours)
+    for (auto& vertex : contour) vertex.x += arr::ToFixedPointCoordinate(10);
+  inputs[1].properties.floorZ = 1.0f;
+  auto arrangement = arr::BuildArrangement(inputs);
+  size_t steps = 0;
+  for (auto const& wall : arr::BuildArrangementWalls(*arrangement)) {
+    if (wall.kind != arr::ArrangementWallKind::Border) {
+      ++steps;
+      require(!wall.sideZones, "Step became a Zone boundary");
+    }
+  }
+  require(steps != 0, "fixture produced no Steps");
+}
+
 void meshInternalEdgeProducesNoOverride() {
   // Two Shells sharing a boundary weld into one Internal edge along x = 0,
   // per the #244 fixture (mesh_primitive_geometry_proxy_tests.cpp).
@@ -227,6 +331,7 @@ void meshInternalEdgeProducesNoOverride() {
                      i < converted.edgeOverrides[c].size() &&
                      converted.edgeOverrides[c][i].has_value();
   require(!hasOverride, "an Internal edge produced a collides override");
+  require(!converted.edgeOtherZones[c][i], "Internal edge produced Other Zone");
   bool hasVisibleOverride = c < converted.edgeVisibleOverrides.size() &&
                             i < converted.edgeVisibleOverrides[c].size() &&
                             converted.edgeVisibleOverrides[c][i].has_value();
@@ -262,6 +367,7 @@ void nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData() {
 
   auto converted = ConvertPrimitiveToContours(*rectangle);
   require(!converted.contours.empty(), "the rectangle fixture produced no contours at all");
+  require(converted.edgeOtherZones.empty(), "non-Mesh produced Other Zones");
   require(converted.edgeOverrides.empty(),
           "a non-MeshPrimitive produced non-empty edgeOverrides");
   require(converted.edgeVisibleOverrides.empty(),
@@ -289,6 +395,8 @@ int main() {
     meshExternalEdgeVisibleOverrideIsExtractedAtTheRightIndex();
     imageNormalMapPropagatesToItsSurvivingBorderWall();
     imageWallMaskPropagatesToItsSurvivingBorderWall();
+    borderSideZonesFollowAuthoredEdges();
+    otherZoneUsesPropertyPrecedenceIndependentlyOfCollision();
     meshInternalEdgeProducesNoOverride();
     nonMeshPrimitiveProducesNoOverridesRegardlessOfVertexData();
     std::cout << "ConvertPrimitiveToContours/SnapshotPrimitives extract the mesh wall collision override\n";

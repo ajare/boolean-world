@@ -157,6 +157,35 @@ void prefabTagsAreCanonicalValidatedAndFilterInCollectionOrder() {
                        "DefinePrefabs changed tags on a foreign Prefab");
 }
 
+void prefabVariablesAreLocalValidatedAuthoredData() {
+  bw::core::Layer layer(1, "Prefabs", 256.0f, 16.0f);
+  layer.setBuildVariable("shared", int64_t{99});
+  auto* step = addDefinePrefabs(layer);
+  auto* prefab = step->addPrefab("Variable holder");
+
+  step->setPrefabBuildVariable(prefab, "shared", int64_t{3});
+  step->setPrefabBuildVariable(prefab, "label", std::string{"local"});
+  require(prefab->getBuildVariables().size() == 2 &&
+              std::get<int64_t>(prefab->getBuildVariables().at("shared")) == 3,
+          "Prefab variables inherited or replaced a Layer variable");
+
+  step->renamePrefabBuildVariable(prefab, "label", "renamed");
+  step->removePrefabBuildVariable(prefab, "shared");
+  require(prefab->getBuildVariables().size() == 1 &&
+              std::get<std::string>(
+                  prefab->getBuildVariables().at("renamed")) == "local",
+          "Prefab variables could not be renamed or removed");
+  requireCoreException(
+      [&] { step->setPrefabBuildVariable(prefab, "not valid", false); },
+      "Prefab accepted an invalid build variable name");
+
+  bw::core::DefinePrefabs other;
+  auto* foreign = other.addPrefab("Foreign");
+  requireCoreException(
+      [&] { step->setPrefabBuildVariable(foreign, "value", int64_t{1}); },
+      "DefinePrefabs changed variables on a foreign Prefab");
+}
+
 void ordinaryAndPrefabSourcePrioritiesUseTheFullRange() {
   bw::core::Layer layer(0, "Base", 256.0f, 16.0f);
   auto* ordinary = makeRectangle(0.0f);
@@ -249,6 +278,7 @@ void layerCopyClonesPrefabsRemapsParentsAndClearsSelection() {
   auto* sourceStep = addDefinePrefabs(*source);
   auto* sourcePrefab = sourceStep->addPrefab("Parented");
   sourceStep->setPrefabTags(sourcePrefab, {"source-tag"});
+  sourceStep->setPrefabBuildVariable(sourcePrefab, "count", int64_t{7});
   sourceStep->setSelectedPrefab(sourcePrefab);
   source->setActiveStep(1);
   auto* root = makeRectangle(0.0f);
@@ -265,6 +295,8 @@ void layerCopyClonesPrefabsRemapsParentsAndClearsSelection() {
   require(copiedStep->getNumPrefabs() == 1 &&
               copiedStep->getPrefab(0)->getTags() ==
                   std::set<std::string>({"source-tag"}) &&
+              std::get<int64_t>(copiedStep->getPrefab(0)->getBuildVariables().at(
+                  "count")) == 7 &&
               copiedStep->getPrefab(0)->getPrimitive(0) != root &&
               copiedStep->getPrefab(0)->getPrimitive(1) != child,
           "copying a Layer did not deep-copy its Prefabs and tags");
@@ -289,6 +321,7 @@ void serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection() {
   sourceStep->setPrefabTileSize(kept, bw::core::PrefabTileSize::Size128);
   sourceStep->setPrefabTileSize(second, bw::core::PrefabTileSize::Size32);
   sourceStep->setPrefabTags(kept, {"Rock", "OUTDOOR"});
+  sourceStep->setPrefabBuildVariable(kept, "weight", 2.5);
   sourceStep->setSelectedPrefab(kept);
   source.setActiveStep(1);
   source.addPrimitive(makeRectangle(42.0f));
@@ -314,6 +347,8 @@ void serializationRoundTripsPrefabsCounterAndArgumentsButNotSelection() {
               loadedStep->getPrefab(0)->getName() == "Same name" &&
               loadedStep->getPrefab(0)->getTags() ==
                   std::set<std::string>({"outdoor", "rock"}) &&
+              std::get<double>(loadedStep->getPrefab(0)->getBuildVariables().at(
+                  "weight")) == 2.5 &&
               loadedStep->getPrefab(0)->getNumPrimitives() == 1 &&
               loadedStep->getPrefab(0)->getPrimitive(0)->getPosition().x == 42.0f,
           "Prefab ids, names, or Primitives did not round-trip");
@@ -434,6 +469,7 @@ int main() {
     squareTilingHasTheCoreRotationAngleTable();
     prefabIdsNamesAndStepArgumentsBehaveAsAuthoredData();
     prefabTagsAreCanonicalValidatedAndFilterInCollectionOrder();
+    prefabVariablesAreLocalValidatedAuthoredData();
     ordinaryAndPrefabSourcePrioritiesUseTheFullRange();
     selectionControlsOutputCapabilitiesAndLayerStorage();
     laterStepsCannotObserveSelectedPrefabPrimitives();

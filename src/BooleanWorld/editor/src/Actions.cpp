@@ -155,9 +155,11 @@ bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromInde
 bool setLayerBuildStepName(
     Document*, bw::core::Layer* layer, uint32_t stepIndex,
     string const& name) {
-  layer->getStep(stepIndex)->setName(name);
-  // A later RunScript may look this step up by name.
-  layer->rebuild();
+  auto* step = layer->getStep(stepIndex);
+  step->setName(name);
+  // Keep a later RunScript's current output while its DefineTileMaps lookup
+  // name is authored, just as for edits to the maps themselves.
+  if (!dynamic_cast<bw::core::DefineTileMaps*>(step)) layer->rebuild();
   return true;
 }
 
@@ -169,7 +171,8 @@ bool setTileMapMapSize(
     return false;
   }
   definitions->setMapSize(size);
-  layer->rebuild();
+  // Keep any later RunScript output as-is while its TileMap input is being
+  // authored. The user explicitly re-runs scripts when they want new output.
   return true;
 }
 
@@ -181,7 +184,6 @@ bool setTileMapCellSize(
     return false;
   }
   definitions->setCellSize(size);
-  layer->rebuild();
   return true;
 }
 
@@ -193,7 +195,6 @@ bool setNumTileMaps(
     return false;
   }
   definitions->setNumTileMaps(count);
-  layer->rebuild();
   return true;
 }
 
@@ -206,7 +207,6 @@ bool toggleTileMapCell(
     return false;
   }
   tileMap->toggleCell(x, y);
-  layer->rebuild();
   return true;
 }
 
@@ -363,6 +363,29 @@ bool setPrefabTags(
   return true;
 }
 
+bool setPrefabBuildVariable(
+    Document*, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    string const& name, bw::core::BuildVariableValue value) {
+  auto const oldVariables = prefab->getBuildVariables();
+  step->setPrefabBuildVariable(prefab, name, move(value));
+  return prefab->getBuildVariables() != oldVariables;
+}
+
+bool removePrefabBuildVariable(
+    Document*, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    string const& name) {
+  auto const oldVariables = prefab->getBuildVariables();
+  step->removePrefabBuildVariable(prefab, name);
+  return prefab->getBuildVariables() != oldVariables;
+}
+
+bool renamePrefabBuildVariable(
+    Document*, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    string const& oldName, string const& newName) {
+  step->renamePrefabBuildVariable(prefab, oldName, newName);
+  return true;
+}
+
 bool bindPrefabField(
     Document*, bw::core::Layer* layer, bw::core::PrefabField* field,
     bw::core::DefinePrefabs* definitions) {
@@ -453,6 +476,83 @@ bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex) {
 
 bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::WorldTriggerLineSide side) {
   triggerLine->setSide(side);
+  return true;
+}
+
+bool createPortalPair(
+    Document* doc, bw::core::Layer* layer,
+    bw::core::AuthoredAperture const& first,
+    bw::core::AuthoredAperture const& second) {
+  auto const pairId = layer->addPortalPair(first, second);
+  doc->setSelectedPortalEndpoint(layer->getId(), pairId, 0);
+  return true;
+}
+
+bool deletePortalPair(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId) {
+  layer->removePortalPair(pairId);
+  if (doc->getSelectedPortalLayerId() == layer->getId() &&
+      doc->getSelectedPortalPairId() == pairId) {
+    doc->clearSelections();
+  }
+  return true;
+}
+
+bool selectPortalEndpoint(
+    Document* doc, uint32_t layerId, uint32_t pairId,
+    uint32_t endpointIndex) {
+  auto const* layer = doc->getWorld()->getLayer(layerId);
+  if (!layer || endpointIndex >= 2 || !layer->getPortalPair(pairId)) {
+    return false;
+  }
+  doc->setSelectedPortalEndpoint(layerId, pairId, endpointIndex);
+  return false;
+}
+
+bool setPortalEndpointPosition(
+    Document*, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, wp::Vector2 const& position) {
+  auto const* pair = layer->getPortalPair(pairId);
+  if (!pair || endpointIndex >= 2) return false;
+  auto aperture = pair->getEndpoint(endpointIndex).getAperture();
+  if (aperture.centre == position) return false;
+  aperture.centre = position;
+  layer->setPortalEndpointAperture(pairId, endpointIndex, aperture);
+  return true;
+}
+
+bool movePortalEndpoint(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, wp::Vector2 const& delta) {
+  auto const* pair = layer->getPortalPair(pairId);
+  if (!pair || endpointIndex >= 2 || delta == wp::Vector2::ZERO) return false;
+  return setPortalEndpointPosition(
+      doc, layer, pairId, endpointIndex,
+      pair->getEndpoint(endpointIndex).getAperture().centre + delta);
+}
+
+bool setPortalEndpointWidth(
+    Document*, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, float width) {
+  auto const* pair = layer->getPortalPair(pairId);
+  if (!pair || endpointIndex >= 2) return false;
+  auto aperture = pair->getEndpoint(endpointIndex).getAperture();
+  if (aperture.width == width) return false;
+  aperture.width = width;
+  layer->setPortalEndpointAperture(pairId, endpointIndex, aperture);
+  return true;
+}
+
+bool setPortalEndpointVerticalBounds(
+    Document*, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, float bottom, float top) {
+  auto const* pair = layer->getPortalPair(pairId);
+  if (!pair || endpointIndex >= 2) return false;
+  auto aperture = pair->getEndpoint(endpointIndex).getAperture();
+  if (aperture.bottom == bottom && aperture.top == top) return false;
+  aperture.bottom = bottom;
+  aperture.top = top;
+  layer->setPortalEndpointAperture(pairId, endpointIndex, aperture);
   return true;
 }
 
@@ -547,6 +647,10 @@ bool setMeshEdgeMetadata(
 bool setMeshEdgeCollisionOverride(
     Document* doc, uint32_t edgeIndex, optional<bool> collides) {
   return doc->setActiveMeshEdgeCollisionOverride(edgeIndex, collides);
+}
+
+bool setMeshEdgeOtherZone(Document* doc, uint32_t edgeIndex, bw::core::ZoneId zone) {
+  return doc->setActiveMeshEdgeOtherZone(edgeIndex, zone);
 }
 
 bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible) {

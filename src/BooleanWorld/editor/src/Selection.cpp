@@ -18,6 +18,14 @@ void Selection::setSelectedTriggerLineIndex(uint32_t index) {
   mSelectedTriggerLineIndex = index;
 }
 
+void Selection::setSelectedPortalEndpoint(
+    uint32_t layerId, uint32_t pairId, uint32_t endpointIndex) {
+  clearSelections();
+  mSelectedPortalLayerId = layerId;
+  mSelectedPortalPairId = pairId;
+  mSelectedPortalEndpointIndex = endpointIndex;
+}
+
 void Selection::setSelectedPrimitiveIndices(set<uint32_t> const& indices) {
   clearSelections();
   mSelectedPrimitiveIndices = indices;
@@ -43,6 +51,9 @@ void Selection::clearSelections() {
   mSelectedPrimitiveIndices.clear();
   mSelectedWorldVertexIndex = ~0u;
   mSelectedTriggerLineIndex = ~0u;
+  mSelectedPortalLayerId = ~0u;
+  mSelectedPortalPairId = ~0u;
+  mSelectedPortalEndpointIndex = ~0u;
   clearMeshSelections();
 }
 
@@ -65,6 +76,15 @@ void Selection::revalidateSelection() {
   if (mSelectedTriggerLineIndex != ~0u &&
       mSelectedTriggerLineIndex >= world->getNumTriggerLines()) {
     mSelectedTriggerLineIndex = ~0u;
+  }
+  if (mSelectedPortalPairId != ~0u) {
+    auto const* layer = world->getLayer(mSelectedPortalLayerId);
+    if (!layer || mSelectedPortalEndpointIndex >= 2 ||
+        !layer->getPortalPair(mSelectedPortalPairId)) {
+      mSelectedPortalLayerId = ~0u;
+      mSelectedPortalPairId = ~0u;
+      mSelectedPortalEndpointIndex = ~0u;
+    }
   }
   // World vertices are regenerated asynchronously and have no synchronous
   // bound here. Their index is only compared with the sentinel.
@@ -91,8 +111,25 @@ uint32_t Selection::getSelectedTriggerLineIndex() const {
   return mSelectedTriggerLineIndex;
 }
 
+uint32_t Selection::getSelectedPortalLayerId() const {
+  return mSelectedPortalLayerId;
+}
+
+uint32_t Selection::getSelectedPortalPairId() const {
+  return mSelectedPortalPairId;
+}
+
+uint32_t Selection::getSelectedPortalEndpointIndex() const {
+  return mSelectedPortalEndpointIndex;
+}
+
+bool Selection::hasSelectedPortalEndpoint() const {
+  return mSelectedPortalPairId != ~0u;
+}
+
 bool Selection::hasSelection() const {
   return !mSelectedPrimitiveIndices.empty() || mSelectedTriggerLineIndex != ~0u ||
+         mSelectedPortalPairId != ~0u ||
          mSelectedWorldVertexIndex != ~0u || !mSelectedMeshVertexIndices.empty() ||
          !mSelectedMeshEdgeIndices.empty() || !mSelectedMeshRingIndices.empty();
 }

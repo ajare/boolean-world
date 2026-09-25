@@ -76,7 +76,6 @@ void StateMapTransitionBooleanWorld::processResources(application::resourcesyste
     auto newWorldRenderer = new WorldRenderer(
         resourceMgr, this->mwLogger, model->getRenderTextureFilter(),
         model->getHorizontalMaterials(),
-        WorldRenderer::WallUpdatePolicy::GameplayViewerSideChanges,
         {}, {}, "World", true);
     newWorldRenderer->createRenderTargets(this->mwRenderSystem);
 

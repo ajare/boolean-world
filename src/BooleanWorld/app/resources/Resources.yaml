@@ -566,7 +566,7 @@ Resources:
                           type: "float32"
                   - Channels:
                       Channel:
-                        - data: "texcoord2"
+                        - data: "texcoord4"
                           type: "float32"
                         - data: "colour4"
                           type: "uint8"
@@ -599,7 +599,7 @@ Resources:
                           type: "float32"
                   - Channels:
                       Channel:
-                        - data: "texcoord2"
+                        - data: "texcoord4"
                           type: "float32"
                         - data: "colour4"
                           type: "uint8"
@@ -631,7 +631,7 @@ Resources:
                           type: "float32"
                   - Channels:
                       Channel:
-                        - data: "texcoord2"
+                        - data: "texcoord4"
                           type: "float32"
                         - data: "colour4"
                           type: "uint8"
@@ -769,7 +769,7 @@ Resources:
                   value: "Texture"
       - type: "TextFile"
         name: "WorldFile"
-        location: "world-mines-3.world.yaml"
+        location: "world-zones-1.world.yaml"
       - type: "Map"
         name: "World"
         DependentResources:

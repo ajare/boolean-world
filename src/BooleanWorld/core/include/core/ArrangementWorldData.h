@@ -15,6 +15,7 @@
 #include "core/ImmutableAccelerationGrid.h"
 #include "core/LiquidType.h"
 #include "core/Platform.h"
+#include "core/Portal.h"
 #include "core/Stats.h"
 #include "core/WedgeGenerationParameters.h"
 
@@ -48,6 +49,15 @@ struct SurfaceTraversalSegment {
   std::optional<SurfaceSample> endSurface;
 };
 
+// One collidable horizontal remainder of an ArrangementWall after every
+// active resolved aperture on that wall has been removed. The source wall
+// index is retained for traversal diagnostics and Step policy.
+struct WallCollisionSegment {
+  wp::Vector2 v0;
+  wp::Vector2 v1;
+  uint32_t wallIndex;
+};
+
 class BW_API ArrangementWorldData {
   arr::ArrangementResultPtr mArrangement;
   std::vector<arr::ArrangementTriangle> mTriangles;
@@ -74,6 +84,14 @@ class BW_API ArrangementWorldData {
   std::shared_ptr<wp::wayfinder::Mesh> mWayfinderMesh;
   std::vector<CapturedAudioEmitter> mCapturedAudioEmitters;
   std::vector<FailedAudioEmitter> mFailedAudioEmitters;
+  // Resolution is derived from this snapshot's rendered ArrangementWalls.
+  // It never mutates either authored Portal data or the wall collection.
+  std::vector<ResolvedPortalPair> mPortalPairs;
+  // Kept separate from ordinary shared-edge Hydraulic links and collision.
+  // Conflicting offset cycles omit the offending pair from adjacency and
+  // retain a stable diagnostic here instead.
+  std::vector<PortalLiquidAdjacency> mPortalLiquidAdjacency;
+  std::vector<PortalLiquidAdjacencyDiagnostic> mPortalLiquidDiagnostics;
 
 public:
   ArrangementWorldData(
@@ -82,7 +100,8 @@ public:
       float gridCellSize,
       ArrangementStats* stats = nullptr,
       WedgeGenerationParameters const& wedgeGenerationParameters = {},
-      bool createWayfinderMesh = false);
+      bool createWayfinderMesh = false,
+      std::vector<PortalPairSnapshot> const& portalPairs = {});
 
   // Present when navigation generation was requested and the arrangement has
   // at least one solid polygon.
@@ -106,6 +125,16 @@ public:
   // first failed limb of the capture rule for editor feedback.
   [[nodiscard]] std::vector<FailedAudioEmitter> const&
   getFailedAudioEmitters() const;
+
+  [[nodiscard]] std::vector<ResolvedPortalPair> const&
+  getPortalPairs() const;
+  [[nodiscard]] ResolvedPortalPair const* findPortalPair(
+      uint32_t layerId, uint32_t pairId) const;
+
+  [[nodiscard]] std::vector<PortalLiquidAdjacency> const&
+  getPortalLiquidAdjacency() const;
+  [[nodiscard]] std::vector<PortalLiquidAdjacencyDiagnostic> const&
+  getPortalLiquidDiagnostics() const;
 
   [[nodiscard]] WedgeGenerationParameters const&
   getWedgeGenerationParameters() const;
@@ -186,6 +215,13 @@ public:
   [[nodiscard]] std::vector<uint32_t> getWallsNear(
       wp::Vector2 const& position,
       float radius) const;
+
+  // Splits one colliding wall around all active resolved horizontal aperture
+  // spans. Inactive pairs leave the wall intact. Vertical eligibility remains
+  // the swept Portal traversal's responsibility, so an ineligible crossing
+  // resolves against the special aperture collision span instead.
+  [[nodiscard]] std::vector<WallCollisionSegment> getWallCollisionSegments(
+      uint32_t wallIndex) const;
 
   // Filters nearby collision walls for movement beginning at sourcePosition.
   // A FloorStep above BW_PLAYER_STEP_HEIGHT blocks from its lower face but not

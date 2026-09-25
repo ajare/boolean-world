@@ -114,6 +114,9 @@ void renderStatusbar(ViewContext& context);
 void renderWorldView(ViewContext& context);
 void renderBuildVariablesEditor(
     ViewContext& context, bw::core::Layer* layer = nullptr);
+void renderPrefabBuildVariablesEditor(
+    ViewContext& context, bw::core::DefinePrefabs* step,
+    bw::core::Prefab* prefab);
 void renderCreatePrimitiveView(ViewContext& context);
 void renderEditPrimitiveView(ViewContext& context);
 bool hasEditablePrimitiveSelection(Document* doc);
@@ -132,6 +135,7 @@ void renderDefineTileMapsView(
 void renderCreateTriggerLineView(ViewContext& context);
 void renderEditTriggerLineView(ViewContext& context,
                                uint32_t triggerLineIndex);
+void renderPortalsView(ViewContext& context);
 void renderArrangementFaceView(ViewContext& context);
 void renderConfigView(ViewContext& context);
 void renderHistoryView(ViewContext& context);

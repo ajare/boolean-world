@@ -8,6 +8,7 @@
 
 #include <core/ArrangementWorldData.h>
 #include <core/SurfaceMaterialReference.h>
+#include <core/ZoneId.h>
 
 namespace editor {
 
@@ -44,11 +45,13 @@ struct PreviewScenePick {
 // composited geometry WorldRenderer draws; no Primitive ordering or
 // draw-order tie breaking is involved. Coordinates are (x, y ground-plane,
 // z height), and the function is deliberately free of the graphics API.
-// Surfaces are two-sided, matching the rendered preview.
+// Solid surface/facet facing follows the preview Zone; global wall visibility
+// always wins. Suppressed parents are replaced by their generated detail facets.
 [[nodiscard]] PreviewScenePick pickPreviewSceneSurface(
     bw::core::ArrangementWorldData const& worldData,
     std::array<float, 3> const& rayOrigin,
-    std::array<float, 3> const& rayDirection);
+    std::array<float, 3> const& rayDirection,
+    bw::core::ZoneId zone = bw::core::ZoneId::Euclidean);
 
 // A picked surface resolved back to the Arrangement polygon it belongs to,
 // and to the authored Primitive whose properties that polygon was given.

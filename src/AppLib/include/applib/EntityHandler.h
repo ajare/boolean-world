@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <willpower/collide/Simulation.h>
 #include <willpower/collide/Collider.h>
 
@@ -19,6 +21,8 @@ protected:
   wp::collide::Simulation* mwSimulation;
 
   wp::collide::Collider* mwPlayerCollider;
+
+  std::function<void(float)> mCollisionUpdate;
 
   // Input
   std::vector<std::string> mActiveInputStates;
@@ -81,7 +85,9 @@ public:
 
   std::vector<std::string> const& getActiveInputStates() const;
 
-  void setupCollisions(wp::collide::Simulation* simulation, wp::collide::Collider* collider);
+  void setupCollisions(
+      wp::collide::Simulation* simulation, wp::collide::Collider* collider,
+      std::function<void(float)> update = {});
 
   void setup(Entity* entity, int type, wp::Vector2 const& position, float angle);
 

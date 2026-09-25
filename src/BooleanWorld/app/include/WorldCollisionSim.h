@@ -2,12 +2,64 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include <willpower/common/BoundingBox.h>
 
 #include <willpower/collide/Simulation.h>
 
 class WorldCollisionSim : public wp::collide::Simulation {
+public:
+  enum class PortalLineResponse { Ignore, Block, Traverse };
+  using PortalHitCallback = std::function<PortalLineResponse(
+      wp::collide::SweepResult*, uint32_t portalLineIndex)>;
+
+  enum class PlayerMovementSegmentType { Swept, PortalRelocation };
+
+  struct PlayerMovementSegment {
+    wp::Vector2 from;
+    wp::Vector2 to;
+    PlayerMovementSegmentType type{PlayerMovementSegmentType::Swept};
+    bool physicallyAbsent{false};
+  };
+
+private:
+  struct MovementCandidate {
+    wp::Vector2 oldPosition;
+    wp::Vector2 newPosition;
+    wp::Vector2 portalSourcePosition;
+    bool portalRelocation{false};
+    bool physicallyAbsentAfter{false};
+  };
+
+  PortalHitCallback mPortalHitCallback;
+  static constexpr int32_t ZoneLineBase = -1073741824;
+  std::function<std::optional<double>(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> mZoneQuery;
+  std::function<void(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> mZoneCrossed;
+  std::function<bool()> mIgnoreWorldGeometry;
+  std::function<bool()> mBoundaryApplies;
+  uint32_t mPortalLineCount{0};
+  wp::collide::Collider* mPlayerCollider{nullptr};
+  bool mTracingUpdate{false};
+  wp::Vector2 mUpdateStart;
+  bool mUpdatePhysicallyAbsent{false};
+  float mRemainingFrameFraction{1.0f};
+  std::vector<MovementCandidate> mMovementCandidates;
+  std::vector<PlayerMovementSegment> mPlayerMovementTrace;
+  std::optional<wp::BoundingBox> mMovementBoundary;
+
+  [[nodiscard]] wp::Vector2 constrainToMovementBoundary(
+      wp::Vector2 const& position) const;
+  void recordMovementCandidate(
+      wp::collide::SweepResult const& result, bool portalRelocation);
+  void finishMovementTrace();
+
+  bool sweepAgainstStaticLine(
+      wp::collide::Collider const* collider,
+      wp::Vector2 const& desiredPosition,
+      wp::collide::StaticLine const& line, float* time) const override;
+
   void getLineIndices(
       wp::BoundingBox const& bounds,
       std::vector<uint32_t>& indices) const override;
@@ -19,9 +71,42 @@ public:
       std::unique_ptr<wp::collide::Collider> collider,
       std::function<void()> const& onWallHit = {});
 
+  // Resolves the player's requested movement and replaces the previous trace.
+  // Swept segments contain only movement actually travelled by the player
+  // centre; Portal jumps are separate relocation segments.
+  void update(float frameTime);
+
+  // Resolves movement against an engine-owned rectangular boundary. The four
+  // sides exist only for this update and never enter generated World data.
+  // Relocations are constrained before their recursive sweep resumes.
+  void updateWithinBoundary(
+      float frameTime, wp::BoundingBox const& boundary);
+
+  std::vector<PlayerMovementSegment> const& getPlayerMovementTrace() const;
+
   std::vector<wp::collide::StaticLine> const& getLines() const;
 
   void clearLines();
 
+  void setPortalHitCallback(PortalHitCallback callback);
+
+  // Pure queries participate in nearest-contact ordering. The commit callback
+  // runs only for the selected centre crossing, before the remaining sweep.
+  void setZoneCallbacks(
+      std::function<std::optional<double>(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> query,
+      std::function<void(wp::Vector2 const&, wp::Vector2 const&, uint32_t)> crossed,
+      std::function<bool()> ignoreWorldGeometry,
+      std::function<bool()> boundaryApplies = {});
+  void addZoneLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t wall);
+  void updatePhantom(float frameTime, wp::BoundingBox const& boundary);
+  bool hasZoneCallbacks() const { return bool(mZoneQuery); }
+  float remainingFrameFraction() const { return mRemainingFrameFraction; }
+
   void addLine(wp::Vector2 const& v0, wp::Vector2 const& v1, uint32_t index);
+
+  // Portal spans are special swept planes. Ignore makes the span an opening,
+  // Block applies the ordinary sliding wall response, and Traverse supplies a
+  // transformed SweepResult whose movementLeft is recursively consumed.
+  uint32_t addPortalLine(
+      wp::Vector2 const& v0, wp::Vector2 const& v1);
 };

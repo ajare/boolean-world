@@ -781,6 +781,13 @@ void renderStatusbar(ViewContext& context) {
             ImGui::TextColored(c, "Hovered Vertex: %d", gHoveredIndices[0]);
             break;
 
+          case editor::HoverableType::PortalEndpoint:
+            ImGui::SameLine();
+            ImGui::TextColored(
+                c, "Hovered Portal: %d endpoint %d",
+                gHoveredIndices[0], gHoveredIndices[1]);
+            break;
+
           case editor::HoverableType::None:
             ImGui::SameLine();
             ImGui::TextColored(c, "Hovered <nothing>");

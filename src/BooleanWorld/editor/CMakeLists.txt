@@ -43,6 +43,7 @@ add_executable(editor WIN32
     src/ui/MeshPanel.cpp
     src/ui/Modals.cpp
     src/ui/PrefabPanel.cpp
+    src/ui/PortalPanel.cpp
     src/ui/PrimitivePanel.cpp
     src/ui/ResourceWidgets.cpp
     src/ui/Shortcuts.cpp
@@ -176,10 +177,28 @@ if(BUILD_TESTING)
     bw_deploy_vendor_dlls(boolean_world_editor_world_renderer_smoke)
     add_test(NAME boolean_world_triplanar_material_real_render
              COMMAND boolean_world_editor_world_renderer_smoke triplanar)
+    add_test(NAME boolean_world_editor_phantom_smoke
+             COMMAND boolean_world_editor_world_renderer_smoke phantom)
     add_test(NAME boolean_world_triplanar_surface_composition_real_render
              COMMAND boolean_world_editor_world_renderer_smoke triplanar-composition)
     add_test(NAME boolean_world_triplanar_wall_continuity_real_render
              COMMAND boolean_world_editor_world_renderer_smoke triplanar-continuity)
+    add_test(NAME boolean_world_reflection_shadow_zone_render
+        COMMAND boolean_world_editor_world_renderer_smoke reflection-shadow-zones)
+    add_test(NAME boolean_world_portal_zone_render
+        COMMAND boolean_world_editor_world_renderer_smoke portal-zones)
+    add_test(NAME boolean_world_detail_zone_render
+        COMMAND boolean_world_editor_world_renderer_smoke detail-zones)
+    add_test(NAME boolean_world_horizontal_zone_render
+        COMMAND boolean_world_editor_world_renderer_smoke horizontal-zones)
+    add_test(NAME boolean_world_immutable_wall_render
+        COMMAND boolean_world_editor_world_renderer_smoke immutable-walls)
+    add_test(NAME boolean_world_portal_public_render_scene
+             COMMAND boolean_world_editor_world_renderer_smoke portal)
+    add_test(NAME boolean_world_mines_portal_render
+             COMMAND boolean_world_editor_world_renderer_smoke mines-portal)
+    add_test(NAME boolean_world_portal_light_render
+             COMMAND boolean_world_editor_world_renderer_smoke portal-light)
 
     # Not registered via add_test - needs a real GPU/driver. Build and run it
     # manually to see EditorRenderSystem's bootstrap/teardown work (or fail)

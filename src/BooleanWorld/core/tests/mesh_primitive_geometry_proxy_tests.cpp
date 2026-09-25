@@ -851,6 +851,60 @@ void externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet() {
           "an Internal edge became visible after a refused setEdgeVisible");
 }
 
+void otherZonesAreExternalOnlyAndSurviveEditing() {
+  using bw::core::ZoneId;
+  auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union,
+      {{ring(-2, -1, 0, 1), {}}, {ring(0, -1, 2, 1), {}}}));
+  auto proxy = primitive->createEditingProxy();
+  uint32_t external = ~0u;
+  for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+       edge = proxy->getNextEdgeIndex(edge)) {
+    if (proxy->getEdge(edge).getConnectivity() == wp::geometry::Edge::External) {
+      require(proxy->getEdgeOtherZone(edge) == ZoneId::NegativeSpace, "wrong Other Zone default");
+      external = edge;
+    } else {
+      require(!proxy->getEdgeOtherZone(edge) &&
+                  !proxy->setEdgeOtherZone(edge, ZoneId::Euclidean),
+              "Internal edge exposes Other Zone");
+    }
+  }
+  require(external != ~0u, "missing External edge");
+  require(!proxy->setEdgeOtherZone(external, static_cast<ZoneId>(999)), "invalid Zone accepted");
+  require(proxy->setEdgeOtherZone(external, ZoneId::Euclidean), "Zone edit refused");
+  proxy->setEdgeCollisionOverride(external, true);
+  proxy->setEdgeVisible(external, false);
+  require(proxy->getEdgeOtherZone(external) == ZoneId::Euclidean, "dormant Zone erased");
+  wp::geometry::SplitEdgeResult split;
+  require(proxy->splitEdge(external, &split), "Zone edge split failed");
+  for (auto edge : split.newEdgeIndices) {
+    require(proxy->getEdgeOtherZone(edge) == ZoneId::Euclidean, "split lost Zone");
+  }
+  proxy->commitTo(*primitive);
+  auto verify = [](MeshPrimitive const& value) {
+    auto transformed = value.createEditingProxy();
+    size_t euclidean = 0;
+    for (auto edge = transformed->getFirstEdgeIndex(); !transformed->edgeIndexIterationFinished(edge);
+         edge = transformed->getNextEdgeIndex(edge))
+      euclidean += transformed->getEdgeOtherZone(edge) == ZoneId::Euclidean;
+    require(euclidean == 2, "transform or commit lost Other Zone");
+  };
+  verify(*primitive);
+  primitive->setPosition({5, 7});
+  primitive->setSize(12, 8);
+  verify(*primitive);
+  auto rotated = std::unique_ptr<Primitive>(primitive->rotatedCopy(90.0f));
+  verify(*static_cast<MeshPrimitive*>(rotated.get()));
+  proxy = primitive->createEditingProxy();
+  auto added = proxy->addShell(ring(20, 20, 22, 22));
+  require(added != ~0u, "new Shell failed");
+  auto vertices = proxy->getPolygon(added).getOrderedVertexIndices();
+  for (size_t i = 0; i < vertices.size(); ++i) {
+    auto edge = proxy->getMesh().getEdgeIndexByVertices(vertices[i], vertices[(i + 1) % vertices.size()]);
+    require(proxy->getEdgeOtherZone(edge) == ZoneId::NegativeSpace, "unrelated edge inherited Zone");
+  }
+}
+
 void normalMapsAreExternalOnlyAndSplitsInheritThem() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union,
@@ -1293,6 +1347,7 @@ int main() {
     removeVertexMergeKeepsThePredecessorEdgesValue();
     externalEdgesDefaultVisibleAndInternalEdgesCannotBeSet();
     normalMapsAreExternalOnlyAndSplitsInheritThem();
+    otherZonesAreExternalOnlyAndSurviveEditing();
     normalMapStatesSurviveSplitAndProxyRoundTrip();
     normalMapMergeRefusesDifferentValuesAndPreservesEqualValues();
     windingNormalizationKeepsNormalMapsOnTheirGeometricEdges();

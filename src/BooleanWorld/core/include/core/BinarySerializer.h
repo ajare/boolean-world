@@ -42,6 +42,7 @@ private:
   std::string mBuffer;
 
   size_t mReadPos;
+  uint32_t mFormatVersion;
 
   std::stack<ObjectType> mTypeStack;
 
@@ -92,6 +93,10 @@ public:
   bool isPositional() const override {
     return true;
   }
+
+  // Versioned trailing fields remain detectable even though ordinary binary
+  // fields are positional.
+  bool hasField(std::string const& name) const override;
 
   using Serializer::writeString;
 

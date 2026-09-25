@@ -2,12 +2,22 @@
 
 // Native varying paired with world.vert; Pool elevation is constant per triangle.
 layout(location = 6) flat in float liquidSurfaceHeight;
+layout(location = 7) flat in vec2 wallData;
+layout(location = 8) in vec2 portalClipDepth;
+// Ordinary surfaces retain raster depth; Portal surfaces only increase it
+// from the near plane. Preserve conservative early-depth rejection.
+layout(depth_greater) out float gl_FragDepth;
+@@Uniform(int HIGHLIGHTED_WALL);
+@@Uniform(int PORTAL_VIEW_ENABLED);
+@@Uniform(int PHANTOM_APERTURE);
+@@Uniform(mat4 PORTAL_PROJECTIVE_MATRIX);
 
 // Global
 @@Uniform(float VIEW_DISTANCE);
 @@Uniform(float GLOBAL_TIME);
 @@Uniform(float PIXEL_SIZE);
 @@Uniform(vec3 PLAYER_POSITION);
+@@Uniform(int WALL_BACK_FACE_TREATMENT);
 @@Uniform(vec3 LIGHT_POSITION);
 @@Uniform(float LIQUID_EYE_SURFACE_Z);
 @@Uniform(vec3 LIQUID_EXTINCTION);
@@ -39,6 +49,53 @@ layout(location = 6) flat in float liquidSurfaceHeight;
 @@Uniform(float MPP_PLANAR_REFLECTION_MAXIMUM_ELEVATION_3);
 @@Uniform(float LIGHT_ATTENUATION_RADIUS);
 @@Uniform(float LIGHT_ATTENUATION_FALLOFF);
+@@Uniform(int PORTAL_LIGHT_COUNT);
+@@Uniform(vec4 PORTAL_LIGHT_SHADOW_PARAMS);
+@@Uniform(vec3 PORTAL_LIGHT_SHADOW_BIAS);
+@@Uniform(vec3 PORTAL_LIGHT_POSITION_0);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_POSITION_0);
+@@Uniform(vec3 PORTAL_LIGHT_RADIANCE_0);
+@@Uniform(int PORTAL_LIGHT_HOP_COUNT_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_0_0);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_0_1);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_0_2);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_2);
+@@Uniform(vec3 PORTAL_LIGHT_POSITION_1);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_POSITION_1);
+@@Uniform(vec3 PORTAL_LIGHT_RADIANCE_1);
+@@Uniform(int PORTAL_LIGHT_HOP_COUNT_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_1_0);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_0);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_1_1);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_1);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_CENTRE_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_TANGENT_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_FRONT_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_2);
+@@Uniform(vec3 PORTAL_LIGHT_APERTURE_BOUNDS_1_2);
+@@Uniform(mat4 PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_2);
 @@Uniform(float MATERIAL_SCALE);
 @@Uniform(int SECONDARY_MATERIAL_INDEX);
 @@Uniform(int USE_SECONDARY_MATERIAL);
@@ -87,6 +144,14 @@ vec3 blendedMaterialColour;
 @@Texture(sampler2D PBR_SCENE_DEPTH);
 @@Texture(sampler2DShadow SHADOW_MAP);
 @@Texture(samplerCubeShadow POINT_SHADOW_MAP);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_0);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_1);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_2);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_3);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_4);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_5);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_6);
+@@Texture(samplerCubeShadow PASS_POINT_SHADOW_MAP_7);
 
 layout(std140, binding = 2) uniform ShadowFrame
 {
@@ -2990,6 +3055,145 @@ float playerTorchAttenuation(float lightDistance)
     return physicalAttenuation * edgeAttenuation;
 }
 
+float portalLightGate(
+    vec3 receiverPosition, vec3 lightPosition, vec3 centre,
+    vec3 tangentAxis, vec3 frontAxis, vec3 bounds,
+    out vec3 intersection)
+{
+    intersection = receiverPosition;
+    vec3 front = normalize(frontAxis);
+    float receiverSide = dot(receiverPosition - centre, front);
+    float lightSide = dot(lightPosition - centre, front);
+    if (receiverSide <= 0.0001 || lightSide >= -0.0001)
+        return 0.0;
+
+    float denominator = lightSide - receiverSide;
+    if (abs(denominator) <= 0.0001)
+        return 0.0;
+    float alongRay = -receiverSide / denominator;
+    if (alongRay < 0.0 || alongRay > 1.0)
+        return 0.0;
+
+    intersection = receiverPosition +
+        alongRay * (lightPosition - receiverPosition);
+    vec3 tangent = normalize(tangentAxis);
+    float across = abs(dot(intersection - centre, tangent));
+    return across <= bounds.x &&
+           intersection.y >= bounds.y && intersection.y <= bounds.z
+        ? 1.0 : 0.0;
+}
+
+float portalPointShadowVisibility(
+    samplerCubeShadow shadowMap, vec3 worldPosition, vec3 normal,
+    vec3 lightDirection, vec3 lightPosition)
+{
+    vec4 params = @Uniform(PORTAL_LIGHT_SHADOW_PARAMS);
+    vec3 lightToFragment = worldPosition - lightPosition;
+    float distanceToLight = length(lightToFragment);
+    if (distanceToLight >= params.w) return 0.0;
+    vec3 biases = @Uniform(PORTAL_LIGHT_SHADOW_BIAS);
+    float bias = biases.x + biases.y *
+        (1.0 - max(dot(normal, lightDirection), 0.0));
+    float compareDepth = distanceToLight / params.w - bias;
+    float visibility;
+    if (params.z < 0.5)
+    {
+        visibility = texture(shadowMap, vec4(lightToFragment, compareDepth));
+    }
+    else
+    {
+        vec3 direction = lightToFragment / max(distanceToLight, 0.00001);
+        vec3 reference = abs(direction.z) < 0.999
+            ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+        vec3 tangent = normalize(cross(reference, direction));
+        vec3 bitangent = cross(direction, tangent);
+        float radius = 2.0 * params.x * params.y;
+        visibility = 0.0;
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x)
+            {
+                vec3 tapDirection = normalize(direction +
+                    tangent * (float(x) * radius) +
+                    bitangent * (float(y) * radius));
+                visibility += texture(
+                    shadowMap, vec4(tapDirection, compareDepth));
+            }
+        visibility /= 9.0;
+    }
+    float fade = clamp((distanceToLight / params.w - biases.z) /
+        max(1.0 - biases.z, 0.00001), 0.0, 1.0);
+    fade = fade * fade * (3.0 - 2.0 * fade);
+    return mix(visibility, 1.0, fade);
+}
+
+vec3 portalLightContribution(
+    Material material, vec3 viewDir, vec3 worldPosition,
+    vec3 virtualPosition, vec3 sourcePosition, vec3 radiance, int hopCount,
+    vec3 centre0, vec3 tangent0, vec3 front0, vec3 sourceFront0,
+    vec3 bounds0, mat4 inverse0,
+    vec3 centre1, vec3 tangent1, vec3 front1, vec3 sourceFront1,
+    vec3 bounds1, mat4 inverse1,
+    vec3 centre2, vec3 tangent2, vec3 front2, vec3 sourceFront2,
+    vec3 bounds2, mat4 inverse2,
+    samplerCubeShadow shadow0, samplerCubeShadow shadow1,
+    samplerCubeShadow shadow2, samplerCubeShadow shadow3)
+{
+    if (hopCount < 1 || hopCount > 3)
+        return vec3(0.0);
+
+    vec3 toVirtualLight = virtualPosition - worldPosition;
+    float virtualDistance = max(length(toVirtualLight), 0.0001);
+    vec3 virtualDirection = toVirtualLight / virtualDistance;
+    vec3 foldedReceiver = worldPosition;
+    vec3 foldedLight = virtualPosition;
+    vec3 foldedNormal = material.normal;
+    vec3 intersection;
+    float visibility = 1.0;
+
+    if (hopCount == 3)
+    {
+        visibility *= portalPointShadowVisibility(
+            shadow3, foldedReceiver, foldedNormal,
+            normalize(foldedLight - foldedReceiver), foldedLight);
+        if (portalLightGate(
+                foldedReceiver, foldedLight, centre2, tangent2, front2,
+                bounds2, intersection) == 0.0)
+            return vec3(0.0);
+        foldedReceiver = vec3(inverse2 * vec4(intersection, 1.0));
+        foldedLight = vec3(inverse2 * vec4(foldedLight, 1.0));
+        foldedNormal = normalize(sourceFront2);
+    }
+    if (hopCount >= 2)
+    {
+        visibility *= portalPointShadowVisibility(
+            shadow2, foldedReceiver, foldedNormal,
+            normalize(foldedLight - foldedReceiver), foldedLight);
+        if (portalLightGate(
+                foldedReceiver, foldedLight, centre1, tangent1, front1,
+                bounds1, intersection) == 0.0)
+            return vec3(0.0);
+        foldedReceiver = vec3(inverse1 * vec4(intersection, 1.0));
+        foldedLight = vec3(inverse1 * vec4(foldedLight, 1.0));
+        foldedNormal = normalize(sourceFront1);
+    }
+
+    visibility *= portalPointShadowVisibility(
+        shadow1, foldedReceiver, foldedNormal,
+        normalize(foldedLight - foldedReceiver), foldedLight);
+    if (portalLightGate(
+            foldedReceiver, foldedLight, centre0, tangent0, front0,
+            bounds0, intersection) == 0.0)
+        return vec3(0.0);
+    foldedReceiver = vec3(inverse0 * vec4(intersection, 1.0));
+    visibility *= portalPointShadowVisibility(
+        shadow0, foldedReceiver, normalize(sourceFront0),
+        normalize(sourcePosition - foldedReceiver), sourcePosition);
+
+    return evaluatePbrLight(
+        material, viewDir, virtualDirection,
+        radiance * playerTorchAttenuation(virtualDistance) * visibility);
+}
+
 struct PbrLighting
 {
     vec3 direct;
@@ -3013,6 +3217,69 @@ PbrLighting shadePbr(Material material, vec3 viewDir, vec3 worldPosition,
     // term. Ambient illumination below remains present in occluded regions.
     direct *= playerTorchVisibility(
         worldPosition, material.normal, lightDirection);
+
+    if (@Uniform(PORTAL_LIGHT_COUNT) >= 1)
+    {
+        direct += portalLightContribution(
+            material, viewDir, worldPosition,
+            @Uniform(PORTAL_LIGHT_POSITION_0),
+            @Uniform(PORTAL_LIGHT_SOURCE_POSITION_0),
+            @Uniform(PORTAL_LIGHT_RADIANCE_0),
+            @Uniform(PORTAL_LIGHT_HOP_COUNT_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_0_0),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_0_0),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_0_1),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_0_1),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_0_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_0_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_0_2),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_0_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_0_2),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_0_2),
+            @Texture(PASS_POINT_SHADOW_MAP_0),
+            @Texture(PASS_POINT_SHADOW_MAP_1),
+            @Texture(PASS_POINT_SHADOW_MAP_2),
+            @Texture(PASS_POINT_SHADOW_MAP_3));
+    }
+    if (@Uniform(PORTAL_LIGHT_COUNT) >= 2)
+    {
+        direct += portalLightContribution(
+            material, viewDir, worldPosition,
+            @Uniform(PORTAL_LIGHT_POSITION_1),
+            @Uniform(PORTAL_LIGHT_SOURCE_POSITION_1),
+            @Uniform(PORTAL_LIGHT_RADIANCE_1),
+            @Uniform(PORTAL_LIGHT_HOP_COUNT_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_1_0),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_1_0),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_0),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_1_1),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_1_1),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_1),
+            @Uniform(PORTAL_LIGHT_APERTURE_CENTRE_1_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_TANGENT_1_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_FRONT_1_2),
+            @Uniform(PORTAL_LIGHT_SOURCE_APERTURE_FRONT_1_2),
+            @Uniform(PORTAL_LIGHT_APERTURE_BOUNDS_1_2),
+            @Uniform(PORTAL_LIGHT_DESTINATION_TO_SOURCE_1_2),
+            @Texture(PASS_POINT_SHADOW_MAP_4),
+            @Texture(PASS_POINT_SHADOW_MAP_5),
+            @Texture(PASS_POINT_SHADOW_MAP_6),
+            @Texture(PASS_POINT_SHADOW_MAP_7));
+    }
 
     // Keep ambient illumination orientation-independent so opposite floor and
     // ceiling normals do not introduce a different colour cast.
@@ -3256,15 +3523,73 @@ vec3 applyLiquidAbsorption(
 
 void main()
 {
+    gl_FragDepth = gl_FragCoord.z;
+    // Phantom windows exist only while bound from their non-solid side. They
+    // never fall back to an authored/white surface or participate in depth-only
+    // passes. The separate aperture scene contains no ordinary world meshes.
+    if (@Uniform(PHANTOM_APERTURE) != 0 && @Uniform(PORTAL_VIEW_ENABLED) == 0) discard;
     // Keep reserved values distinct before dispatch. Clamping the Triplanar
     // sentinel (42) to the Liquid index (41) routes image-backed walls through
     // the Liquid interface path, whose unlit reflection output is black there.
     int bucketMaterialIndex = @Uniform(MATERIAL_INDEX);
 
+    // Endpoint buckets are immutable. TEX3 is either the Triplanar albedo or,
+    // exclusively for a Portal bucket, this pass's completed child image.
+    // Selection already rejects back-facing endpoints. Repeating the sidedness
+    // test per fragment is unstable when the eye lies exactly on the plane.
+    // Unselected endpoints use the ordinary lit white fallback.
+    if (@Uniform(PORTAL_VIEW_ENABLED) != 0)
+    {
+        if (@Uniform(PORTAL_VIEW_ENABLED) == 2)
+            gl_FragDepth = clamp(0.5 * portalClipDepth.x / portalClipDepth.y + 0.5, 0.0, 1.0);
+        // The child uses the same screen projection. Screen coordinates also
+        // remain well-defined when the aperture passes through the eye.
+        // Full Phantom child pipelines may resolve SSAA before compositing;
+        // normalize against this pass's viewport, not the child's texel size.
+        vec2 uv = @Uniform(PHANTOM_APERTURE) != 0
+            ? gl_FragCoord.xy * VIEWPORT_SIZE.zw
+            : gl_FragCoord.xy / vec2(textureSize(@Texture(TEX3), 0));
+        @Out(vec4 COLOUR) = vec4(texture(@Texture(TEX3), clamp(uv, vec2(0.0), vec2(1.0))).rgb, 1.0);
+        @Out(vec4 BLOOM_MASK) = vec4(0.0);
+        @Out(vec2 SHADING_NORMAL) = vec2(0.0);
+        @Out(float LIQUID_RETENTION) = @Uniform(PHANTOM_APERTURE) != 0 ? 0.0 : 1.0;
+        return;
+    }
+
+    // FRAGNORMAL is the authored geometric normal, including each detail
+    // facet (not its parent wall or horizontal surface).
+    bool geometricBackFace = dot(@In(FRAGNORMAL), @ViewPos - @In(FRAGPOSITION)) < 0.0;
+    bool liquidInterface = bucketMaterialIndex == 41;
+    bool omittedBack = @Uniform(WALL_BACK_FACE_TREATMENT) == 0;
+    if (geometricBackFace && omittedBack && !liquidInterface) discard;
+    bool surfaceBackFace = geometricBackFace && !omittedBack;
+
+    // Negative Space backs are display white, not a lit white material.
+    // Zero retention also exempts them from the later AO composite.
+    if (surfaceBackFace)
+    {
+        @Out(COLOUR) = vec4(1.0);
+        @Out(BLOOM_MASK) = vec4(0.0);
+        @Out(SHADING_NORMAL) = vec2(0.0);
+        @Out(LIQUID_RETENTION) = 0.0;
+        return;
+    }
+
+    if (bucketMaterialIndex < 0 && !surfaceBackFace)
+    {
+        @Out(COLOUR) = vec4(1.0, 0.0, 1.0, 1.0);
+        @Out(BLOOM_MASK) = vec4(0.0);
+        @Out(SHADING_NORMAL) = vec2(0.0);
+        @Out(LIQUID_RETENTION) = 0.0;
+        return;
+    }
+
     // Liquid is an interface, not another lit volume. The water pass has no
     // depth attachment, so reject interfaces hidden by the sampled opaque
     // depth before marching that same point-sampled buffer.
-    if (bucketMaterialIndex == 41)
+    if (liquidInterface && @Uniform(LIQUID_WATER_PASS_ENABLED) != 0 &&
+        gl_FragCoord.z > liquidSceneDepth(gl_FragCoord.xy * VIEWPORT_SIZE.zw)) discard;
+    if (liquidInterface && !surfaceBackFace)
     {
         vec2 screenUv = gl_FragCoord.xy * VIEWPORT_SIZE.zw;
         bool hasWaterPass = @Uniform(LIQUID_WATER_PASS_ENABLED) != 0;
@@ -3272,9 +3597,6 @@ void main()
             @Uniform(LIQUID_REFLECTION_ENABLED) != 0;
         bool planarReflection =
             @Uniform(MPP_WATER_REFLECTION_TECHNIQUE) != 0;
-        if (hasWaterPass && gl_FragCoord.z > liquidSceneDepth(screenUv))
-            discard;
-
         vec3 worldPos = @In(FRAGPOSITION);
         vec3 viewDir = normalize(@ViewPos - worldPos);
         vec3 interfaceNormal = normalize(@In(FRAGNORMAL));
@@ -3403,10 +3725,10 @@ void main()
         // Fixed-function alpha blending overlays reflection over the absorption
         // already in WaterComposite. Do not light or absorb this interface a
         // second time: alpha is exactly reflectance × Schlick(F0, N·V).
-        @Out(vec4 COLOUR) = vec4(reflectionColour, alpha);
-        @Out(vec4 BLOOM_MASK) = vec4(0.0);
-        @Out(vec2 SHADING_NORMAL) = encodeOctahedralNormal(viewNormal);
-        @Out(float LIQUID_RETENTION) = 1.0;
+        @Out(COLOUR) = vec4(reflectionColour, alpha);
+        @Out(BLOOM_MASK) = vec4(0.0);
+        @Out(SHADING_NORMAL) = encodeOctahedralNormal(viewNormal);
+        @Out(LIQUID_RETENTION) = 1.0;
         return;
     }
 
@@ -3420,15 +3742,21 @@ void main()
 
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     vec3 viewDir = normalize(@ViewPos - @In(FRAGPOSITION));
-    vec3 normalDir = applyWallNormalMap(shadingNormal);
+    // Receiver absorption still uses the source-side Liquid elevations;
+    // this is independent of the surface's Zone treatment.
+    bool liquidBackSide = wallData.x != 0.0 &&
+        dot(wallData.x > 0.0 ? shadingNormal : normalize(@In(SURFACE_UP)), viewDir) < 0.0;
+    float receiverLiquidHeight = liquidBackSide ? wallData.y : liquidSurfaceHeight;
+    if (surfaceBackFace) shadingNormal = -shadingNormal;
+    vec3 normalDir = surfaceBackFace ? shadingNormal : applyWallNormalMap(shadingNormal);
     vec3 texturePosition = snapToGrid(
         @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
     int materialIndex = floorMaterialIndex(
         @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 40));
-    materialIndex = clamp(materialIndex, 0, 40);
+    materialIndex = surfaceBackFace ? 40 : clamp(materialIndex, 0, 40);
     blendMaterialParams();
-    bool usesTriplanar = @Uniform(TRIPLANAR_ENABLED) != 0;
+    bool usesTriplanar = !surfaceBackFace && @Uniform(TRIPLANAR_ENABLED) != 0;
     Material material;
     if (usesTriplanar)
     {
@@ -3448,11 +3776,13 @@ void main()
     // lighting; the per-vertex tint (white unless the editor is marking a
     // surface out) is applied on top and leaves the material untouched when
     // white.
-    material.albedo *= blendedMaterialColour * @In(COLOUR).rgb;
+    material.albedo *= (surfaceBackFace ? vec3(1.0) : blendedMaterialColour) * @In(COLOUR).rgb;
+    if (wallData.x != 0.0 && int(abs(wallData.x)) - 1 == @Uniform(HIGHLIGHTED_WALL))
+        material.albedo *= vec3(1.0, 1.0, 89.0 / 255.0);
 
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
-    if (@Uniform(EMBOSS_PATTERN) != 0)
+    if (!surfaceBackFace && @Uniform(EMBOSS_PATTERN) != 0)
     {
         material.normal = embossSurface(
             material.normal, @In(FRAGPOSITION),
@@ -3479,7 +3809,7 @@ void main()
     vec3 outTransmittance;
     vec3 value = applyLiquidAbsorption(
         lighting.direct, ambientAndEmission, @ViewPos, @In(FRAGPOSITION),
-        @Uniform(LIQUID_EYE_SURFACE_Z), liquidSurfaceHeight, outTransmittance);
+        @Uniform(LIQUID_EYE_SURFACE_Z), receiverLiquidHeight, outTransmittance);
     value = value / (value + vec3(1.0));
     value = pow(value, vec3(1.0 / 2.2));
 

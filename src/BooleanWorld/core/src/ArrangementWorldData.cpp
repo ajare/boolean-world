@@ -124,7 +124,8 @@ ArrangementWorldData::ArrangementWorldData(
     float gridCellSize,
     ArrangementStats* stats,
     WedgeGenerationParameters const& wedgeGenerationParameters,
-    bool createWayfinderMesh)
+    bool createWayfinderMesh,
+    std::vector<PortalPairSnapshot> const& portalPairs)
     : mArrangement(std::move(arrangement)),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
   wp::Timer timer;
@@ -136,6 +137,7 @@ ArrangementWorldData::ArrangementWorldData(
   timer.restart();
 
   mWalls = arr::BuildArrangementWalls(*mArrangement);
+  mPortalPairs = ResolvePortalPairs(*mArrangement, mWalls, portalPairs);
   if (stats != nullptr) {
     stats->wallCount = uint32_t(mWalls.size());
     stats->wallGenerationTimeNs = timer.elapsedNanoseconds();
@@ -147,6 +149,8 @@ ArrangementWorldData::ArrangementWorldData(
   // above. Neither of those is altered by its presence.
   mDetail = arr::BuildChipDetail(
       *mArrangement, mWalls, wedgeGenerationParameters);
+  arr::ApplyPortalApertures(
+      mDetail, *mArrangement, mWalls, mPortalPairs);
   if (stats != nullptr) {
     stats->chipCount = mDetail.getChipCount();
     stats->wedgeCount = mDetail.getWedgeCount();
@@ -154,7 +158,17 @@ ArrangementWorldData::ArrangementWorldData(
   }
   timer.restart();
 
-  mLiquidState = arr::ComputeLiquidState(*mArrangement, mTriangles);
+  auto hasActivePortal = std::ranges::any_of(
+      mPortalPairs, [](auto const& pair) { return pair.active; });
+  if (hasActivePortal) {
+    auto portalLiquid = BuildPortalLiquidAdjacency(
+        *mArrangement, mWalls,
+        arr::BuildHydraulicCells(*mArrangement, mTriangles), mPortalPairs);
+    mPortalLiquidAdjacency = std::move(portalLiquid.adjacency);
+    mPortalLiquidDiagnostics = std::move(portalLiquid.diagnostics);
+  }
+  mLiquidState = arr::ComputeLiquidState(
+      *mArrangement, mTriangles, mPortalLiquidAdjacency);
   if (stats != nullptr) {
     stats->liquidEquilibriumTimeNs = timer.elapsedNanoseconds();
   }
@@ -342,6 +356,31 @@ ArrangementWorldData::getCapturedAudioEmitters() const {
 std::vector<FailedAudioEmitter> const&
 ArrangementWorldData::getFailedAudioEmitters() const {
   return mFailedAudioEmitters;
+}
+
+std::vector<ResolvedPortalPair> const&
+ArrangementWorldData::getPortalPairs() const {
+  return mPortalPairs;
+}
+
+ResolvedPortalPair const* ArrangementWorldData::findPortalPair(
+    uint32_t layerId, uint32_t pairId) const {
+  auto found = std::find_if(
+      mPortalPairs.begin(), mPortalPairs.end(),
+      [=](auto const& pair) {
+        return pair.layerId == layerId && pair.pairId == pairId;
+      });
+  return found == mPortalPairs.end() ? nullptr : &*found;
+}
+
+std::vector<PortalLiquidAdjacency> const&
+ArrangementWorldData::getPortalLiquidAdjacency() const {
+  return mPortalLiquidAdjacency;
+}
+
+std::vector<PortalLiquidAdjacencyDiagnostic> const&
+ArrangementWorldData::getPortalLiquidDiagnostics() const {
+  return mPortalLiquidDiagnostics;
 }
 
 std::vector<arr::HydraulicCell> const&
@@ -610,6 +649,66 @@ std::vector<uint32_t> ArrangementWorldData::getWallsNear(
   return result;
 }
 
+std::vector<WallCollisionSegment>
+ArrangementWorldData::getWallCollisionSegments(uint32_t wallIndex) const {
+  if (wallIndex >= mWalls.size()) return {};
+  auto orientation = arr::OrientArrangementWall(*mArrangement, mWalls[wallIndex]);
+  auto span = orientation.v1 - orientation.v0;
+  auto length = static_cast<float>(span.normalise());
+  if (length <= 0.0f) return {};
+
+  struct Interval {
+    float begin;
+    float end;
+  };
+  std::vector<Interval> openings;
+  for (auto const& pair : mPortalPairs) {
+    if (!pair.active) continue;
+    for (auto const& endpoint : pair.endpoints) {
+      auto const& aperture = endpoint.aperture;
+      if (std::find(
+              aperture.wallIndices.begin(), aperture.wallIndices.end(),
+              wallIndex) == aperture.wallIndices.end()) {
+        continue;
+      }
+      auto half = aperture.tangent * (aperture.width * 0.5f);
+      auto a = (aperture.centre - half - orientation.v0).dot(span);
+      auto b = (aperture.centre + half - orientation.v0).dot(span);
+      auto begin = std::clamp(std::min(a, b), 0.0f, length);
+      auto end = std::clamp(std::max(a, b), 0.0f, length);
+      if (end > begin + 1.0e-5f) openings.push_back({begin, end});
+    }
+  }
+  std::sort(openings.begin(), openings.end(), [](auto const& a, auto const& b) {
+    return a.begin != b.begin ? a.begin < b.begin : a.end < b.end;
+  });
+  std::vector<Interval> merged;
+  for (auto const& opening : openings) {
+    if (merged.empty() || opening.begin > merged.back().end + 1.0e-5f) {
+      merged.push_back(opening);
+    } else {
+      merged.back().end = std::max(merged.back().end, opening.end);
+    }
+  }
+
+  std::vector<WallCollisionSegment> result;
+  auto append = [&](float begin, float end) {
+    if (end > begin + 1.0e-5f) {
+      result.push_back(
+          {orientation.v0 + span * begin,
+           orientation.v0 + span * end,
+           wallIndex});
+    }
+  };
+  auto cursor = 0.0f;
+  for (auto const& opening : merged) {
+    append(cursor, opening.begin);
+    cursor = std::max(cursor, opening.end);
+  }
+  append(cursor, length);
+  return result;
+}
+
 bool ArrangementWorldData::wallBlocksTraversalWithoutStepAt(
     uint32_t wallIndex,
     wp::Vector2 const& position) const {
@@ -800,10 +899,10 @@ int32_t ArrangementWorldData::circleIntersectsWall(
     wp::Vector2 const& position,
     float radius) const {
   for (auto wallIndex : getWallsNear(position, radius)) {
-    auto const& wall = mWalls[wallIndex];
-    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
-    if (position.distanceToLine(orientation.v0, orientation.v1) <= radius) {
-      return int32_t(wallIndex);
+    for (auto const& segment : getWallCollisionSegments(wallIndex)) {
+      if (position.distanceToLine(segment.v0, segment.v1) <= radius) {
+        return int32_t(wallIndex);
+      }
     }
   }
   return -1;
@@ -816,11 +915,11 @@ int32_t ArrangementWorldData::circleIntersectsWallForTraversal(
     bool descending) const {
   for (auto wallIndex : getWallsNearForTraversal(
            destinationPosition, radius, sourcePosition, descending)) {
-    auto const& wall = mWalls[wallIndex];
-    auto orientation = arr::OrientArrangementWall(*mArrangement, wall);
-    if (destinationPosition.distanceToLine(
-            orientation.v0, orientation.v1) <= radius) {
-      return int32_t(wallIndex);
+    for (auto const& segment : getWallCollisionSegments(wallIndex)) {
+      if (destinationPosition.distanceToLine(
+              segment.v0, segment.v1) <= radius) {
+        return int32_t(wallIndex);
+      }
     }
   }
   return -1;

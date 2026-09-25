@@ -58,7 +58,6 @@ void StateMapLoadBooleanWorld::loadResources(wp::application::resourcesystem::Re
     auto worldRenderer = new WorldRenderer(
         resourceMgr, this->mwLogger, model->getRenderTextureFilter(),
         model->getHorizontalMaterials(),
-        WorldRenderer::WallUpdatePolicy::GameplayViewerSideChanges,
         {}, {}, "World", true);
 
     // The world is composited from an offscreen target rather than drawn

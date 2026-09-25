@@ -54,7 +54,37 @@ void buffersAreSizedPerMesh() {
 WorldTriangle3dDataProvider::DrawVert vertex(
     float x, float y, float z, float nx, float ny, float nz,
     float u, float v, uint32_t colour) {
-  return {{x, y, z}, {nx, ny, nz}, {u, v}, colour, WorldTriangle3dDataProvider::dryLiquidSurfaceHeight};
+  return {{x, y, z}, {nx, ny, nz},
+          {u, v, 0.0f, WorldTriangle3dDataProvider::dryLiquidSurfaceHeight},
+          colour, {0, 1, 0}, WorldTriangle3dDataProvider::dryLiquidSurfaceHeight};
+}
+
+void wallMetadataIsImmutableAndPartOfVertexIdentity() {
+  WorldTriangle3dDataProvider provider;
+  provider.setMeshCount(1);
+  provider.updateInternals({2});
+  auto v = vertex(0, 0, 0, 0, 0, 1, 0, 0, 0xffffffff);
+  v.tex[2] = 1; // Wall zero's coplanar surface.
+  v.liquidSurfaceHeight = 10;
+  v.tex[3] = 20;
+  auto original = provider.addVertex(0, v);
+  require(provider.addVertex(0, v) == original, "identical wall metadata did not weld");
+  v.tex[2] = -1; // Independent facet on the same wall.
+  require(provider.addVertex(0, v) != original, "Chip facet lost its facing policy");
+  v.tex[2] = 2;
+  require(provider.addVertex(0, v) != original, "different highlight IDs welded");
+  v.tex[2] = 1;
+  v.tex[3] = 30;
+  require(provider.addVertex(0, v) != original, "opposite Liquid heights welded");
+  provider.finalizeInternals();
+  auto revision = provider.revision();
+  for (int frame = 0; frame < 20; ++frame) {
+    provider.orderTrianglesForView({float(frame), 0, 0},
+        WorldTriangle3dDataProvider::TriangleOrder::Authored);
+    require(provider.revision() == revision, "moving a view invalidated authored buffers");
+  }
+  provider.clear();
+  require(provider.revision() == revision + 1, "clearing geometry did not invalidate GPU data");
 }
 
 void safelyReusesVerticesWithinEachMaterialMesh() {
@@ -186,7 +216,10 @@ void completedBuildReplacesActivePayloadWithoutChangingProvider() {
   completed.addTriangle(0, 3, 4, 5);
   completed.finalizeInternals();
 
+  auto revision = active.revision();
   active.replaceData(completed);
+  require(active.revision() == revision + 1,
+          "publishing a prepared payload did not invalidate GPU data");
   require(active.getNumTriangles() == 2 && active.getNumVertices() == 6,
           "completed world geometry was not installed");
   require(completed.getNumTriangles() == 1 && completed.getNumVertices() == 3,
@@ -226,6 +259,7 @@ int main() {
   try {
     destructorReleasesArrayBuffers();
     buffersAreSizedPerMesh();
+    wallMetadataIsImmutableAndPartOfVertexIdentity();
     safelyReusesVerticesWithinEachMaterialMesh();
     trianglesCanBeOrderedClosestFirstAndRestored();
     completedBuildReplacesActivePayloadWithoutChangingProvider();

@@ -70,6 +70,7 @@ PrimitiveContours ConvertPrimitiveToContours(
   std::vector<std::vector<uint32_t>> rawEdgeFlagsPerContour;
   std::vector<std::vector<WallNormalMapOverride>> rawNormalMapsPerContour;
   std::vector<std::vector<WallMaskOverride>> rawWallMasksPerContour;
+  std::vector<std::vector<ZoneId>> rawOtherZonesPerContour;
   auto const* meshPrimitive = dynamic_cast<MeshPrimitive const*>(&primitive);
 
   for (auto const& complexPolygon : primitive.getVertices()) {
@@ -79,6 +80,7 @@ PrimitiveContours ConvertPrimitiveToContours(
       std::vector<uint32_t> rawEdgeFlags;
       std::vector<WallNormalMapOverride> rawNormalMaps;
       std::vector<WallMaskOverride> rawWallMasks;
+      std::vector<ZoneId> rawOtherZones;
       if (meshPrimitive != nullptr) {
         rawEdgeFlags.reserve(polygon.size());
         rawNormalMaps.reserve(polygon.size());
@@ -92,6 +94,7 @@ PrimitiveContours ConvertPrimitiveToContours(
           rawEdgeFlags.push_back(vertex.edgeFlags);
           rawNormalMaps.push_back(vertex.edgeNormalMap);
           rawWallMasks.push_back(vertex.edgeWallMask);
+          rawOtherZones.push_back(vertex.edgeOtherZone);
         }
       }
       result.contours.push_back(std::move(contour));
@@ -99,6 +102,7 @@ PrimitiveContours ConvertPrimitiveToContours(
         rawEdgeFlagsPerContour.push_back(std::move(rawEdgeFlags));
         rawNormalMapsPerContour.push_back(std::move(rawNormalMaps));
         rawWallMasksPerContour.push_back(std::move(rawWallMasks));
+        rawOtherZonesPerContour.push_back(std::move(rawOtherZones));
       }
     }
   }
@@ -128,6 +132,7 @@ PrimitiveContours ConvertPrimitiveToContours(
   result.edgeVisibleOverrides.resize(result.contours.size());
   result.edgeNormalMapOverrides.resize(result.contours.size());
   result.edgeWallMaskOverrides.resize(result.contours.size());
+  result.edgeOtherZones.resize(result.contours.size());
   for (size_t c = 0; c < result.contours.size(); ++c) {
     auto const& contour = result.contours[c];
     auto n = contour.size();
@@ -138,10 +143,12 @@ PrimitiveContours ConvertPrimitiveToContours(
     result.edgeVisibleOverrides[c].resize(n);
     result.edgeNormalMapOverrides[c].resize(n);
     result.edgeWallMaskOverrides[c].resize(n);
+    result.edgeOtherZones[c].resize(n);
     for (size_t i = 0; i < n; ++i) {
       auto j = (i + 1) % n;
       auto useCount = edgeUseCounts[MakeEdgeKey(contour[i], contour[j])];
       if (useCount == 1) {
+        result.edgeOtherZones[c][i] = rawOtherZonesPerContour[c][i];
         auto rawFlags = rawEdgeFlagsPerContour[c][i];
         if ((rawFlags & BW_MESH_EDGE_COLLISION_OVERRIDE_FLAG) != 0) {
           result.edgeOverrides[c][i] = std::optional<bool>(
@@ -218,7 +225,8 @@ std::vector<arr::ArrangementPrimitive> SnapshotPrimitives(
                       std::move(contours.edgeNormalMapOverrides),
                       std::move(contours.edgeWallMaskOverrides),
                       primitive->getArea(),
-                      std::move(audioEmitters)});
+                      std::move(audioEmitters),
+                      std::move(contours.edgeOtherZones)});
   }
   return result;
 }

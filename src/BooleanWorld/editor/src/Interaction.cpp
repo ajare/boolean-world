@@ -201,13 +201,14 @@ void EditorInteraction::updateSelection(
     auto const stepX = lineX < targetX ? 1 : -1;
     auto const stepY = lineY < targetY ? 1 : -1;
     auto error = deltaX + deltaY;
-    bool changed = false;
     while (true) {
       auto const cellX = static_cast<uint32_t>(lineX);
       auto const cellY = static_cast<uint32_t>(lineY);
       if (tileMap->getCell(cellX, cellY) != mTileMapPaintValue) {
+        // Do not rebuild here: a later RunScript may read this map, and
+        // painting must leave its current output intact until the user
+        // explicitly re-runs the script.
         tileMap->setCell(cellX, cellY, mTileMapPaintValue);
-        changed = true;
       }
       if (lineX == targetX && lineY == targetY) break;
       auto const twiceError = 2 * error;
@@ -222,7 +223,6 @@ void EditorInteraction::updateSelection(
     }
     mTileMapLastPaintCell =
         array<uint32_t, 3>{location->mapIndex, x, y};
-    if (changed) layer->rebuild();
     return;
   }
 
@@ -462,7 +462,7 @@ void EditorInteraction::updateSelection(
   // Primitives: their interior is intentionally not a selectable solid face,
   // so treating release as a background click would clear their selection.
   if (mMovingSelectedPrimitives || mScalingSelectedPrimitives ||
-      mRotatingSelectedPrimitives) {
+      mRotatingSelectedPrimitives || mMovingSelectedPortalEndpoint) {
     if (input.leftReleased) {
       mPendingPrimitiveClick.clear();
       mBoxSelectPending = false;
@@ -496,6 +496,15 @@ void EditorInteraction::updateSelection(
 
       case HoverableType::WorldVertex:
         transact(doc, CommandId::SelectWorldVertex, [&] { selectWorldVertex(doc, mHover.indices.front()); });
+        break;
+
+      case HoverableType::PortalEndpoint:
+        if (mHover.indices.size() == 2) {
+          transact(doc, CommandId::SelectPortalEndpoint, [&] {
+            selectPortalEndpoint(
+                doc, layer->getId(), mHover.indices[0], mHover.indices[1]);
+          });
+        }
         break;
 
       case HoverableType::None:
@@ -600,7 +609,8 @@ bool EditorInteraction::updatePlayerProxy(
 }
 
 void EditorInteraction::updateDrag(
-    Document* doc, Settings const& settings, PointerInput const& input) {
+    Document* doc, Settings const& settings, PointerInput const& input,
+    bw::core::WorldData const* worldData) {
   // Placing a clone is a pointer gesture of its own - see updateSelection.
   if (doc->clonePlacementArmed()) {
     return;
@@ -668,7 +678,68 @@ void EditorInteraction::updateDrag(
 
   auto const& primitiveSelection = doc->getSelectedPrimitiveIndices();
   auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
-  if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u) {
+  auto selectedPortalPairId = doc->getSelectedPortalPairId();
+  if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u &&
+      selectedPortalPairId == ~0u) {
+    return;
+  }
+
+  if (selectedPortalPairId != ~0u) {
+    if (input.leftReleased) {
+      if (mMovingSelectedPortalEndpoint && undoableActionInProgress()) {
+        commitUndoableAction(doc);
+      }
+      mMovingSelectedPortalEndpoint = false;
+      mPortalDragCumulativeDelta = {};
+    } else if (input.leftDragging) {
+      auto* portalLayer = doc->getWorld()->getLayer(
+          doc->getSelectedPortalLayerId());
+      auto const* portalPair =
+          portalLayer ? portalLayer->getPortalPair(selectedPortalPairId)
+                      : nullptr;
+      auto const endpointIndex = doc->getSelectedPortalEndpointIndex();
+      if (portalPair && endpointIndex < 2) {
+        if (!mMovingSelectedPortalEndpoint) {
+          mMovingSelectedPortalEndpoint = true;
+          mPortalDragStartPosition =
+              portalPair->getEndpoint(endpointIndex).getAperture().centre;
+          mPortalDragCumulativeDelta = {};
+          if (!undoableActionInProgress()) {
+            beginTransaction(
+                doc, CommandId::MovePortalEndpointGesture, 0.0f);
+          }
+        }
+        mPortalDragCumulativeDelta +=
+            wp::Vector2{input.dragDelta.x, -input.dragDelta.y} / input.zoom;
+        auto target = mPortalDragStartPosition + mPortalDragCumulativeDelta;
+
+        // A rendered wall is the stronger constraint: test the unsnapped drag
+        // target so an enabled grid cannot pull an endpoint out of wall-snap
+        // range. Keeping the raw cumulative drag also lets the endpoint detach
+        // once the pointer moves more than the three-unit capture distance.
+        std::optional<wp::Vector2> wallSnap;
+        if (worldData) {
+          auto const& aperture =
+              portalPair->getEndpoint(endpointIndex).getAperture();
+          auto const otherIndex = 1u - endpointIndex;
+          auto const resolvedWidth = std::min(
+              aperture.width,
+              portalPair->getEndpoint(otherIndex).getAperture().width);
+          wallSnap = bw::core::FindNearestLegalPortalCentre(
+              worldData->getArrangement(), worldData->getWalls(), aperture,
+              resolvedWidth, target, 3.0f);
+        }
+        if (wallSnap) {
+          target = *wallSnap;
+        } else if (settings.showGrid && settings.gridSize > 0.0f) {
+          target = {
+              round(target.x / settings.gridSize) * settings.gridSize,
+              round(target.y / settings.gridSize) * settings.gridSize};
+        }
+        setPortalEndpointPosition(
+            doc, portalLayer, selectedPortalPairId, endpointIndex, target);
+      }
+    }
     return;
   }
 

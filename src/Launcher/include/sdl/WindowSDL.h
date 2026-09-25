@@ -25,6 +25,13 @@ class WindowSDL : public Window {
   // cursor did this for us.
   float mVirtualMouseX, mVirtualMouseY;
 
+  // Native relative mode is the preferred unbounded FPS input. X11 without
+  // XInput2 can reject it, so retain a grabbed, centre-warped fallback rather
+  // than silently reverting to an edge-clamped absolute cursor.
+  bool mCursorShown;
+  bool mWarpMouseCapture;
+  bool mIgnoreWarpMotion;
+
   // Input translation
   std::map<int, wp::application::Key> mKeyTranslator;
 
@@ -32,6 +39,10 @@ private:
   wp::application::KeyModifiers getKeyModifiers(uint16_t mod);
 
   bool translateKey(SDL_Keycode keycode, wp::application::Key& key) const;
+
+  void warpCapturedMouseToCenter();
+
+  void captureMouse();
 
 public:
   WindowSDL(std::string const& title, ProgramOptions const& options);

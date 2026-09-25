@@ -21,40 +21,6 @@ using namespace std;
 
 namespace {
 
-sol::table readonlyVariables(
-    sol::state_view lua, BuildVariables const& variables) {
-  auto values = lua.create_table();
-  auto names = lua.create_table(static_cast<int>(variables.size()), 0);
-  int index = 1;
-  for (auto const& [name, value] : variables) {
-    visit([&](auto const& concrete) { values[name] = concrete; }, value);
-    names[index++] = name;
-  }
-
-  sol::function factory = lua.script(R"(
-    local host_rawset, host_setmetatable, host_error = rawset, setmetatable, error
-    return function(values, names)
-      local proxy = {}
-      return host_setmetatable(proxy, {
-        __index = values,
-        __newindex = function(_, key)
-          host_error("build variable table is read-only: " .. tostring(key), 2)
-        end,
-        __pairs = function()
-          local i = 0
-          return function()
-            i = i + 1
-            local key = names[i]
-            if key ~= nil then return key, values[key] end
-          end
-        end,
-        __metatable = "protected build variable table"
-      })
-    end
-  )");
-  return factory(values, names);
-}
-
 sol::table readonlyNamespace(
     sol::state_view lua, sol::table const& variables) {
   auto values = lua.create_table();
@@ -204,7 +170,8 @@ void RunScript::placePrimitive(LayerBuildContext& context, Primitive* primitive)
 
 void RunScript::placePrefabInstance(
     LayerBuildContext& context, Prefab const* prefab,
-    int32_t tileX, int32_t tileY, float angle) const {
+    int32_t tileX, int32_t tileY, float angle,
+    float elevationOffset) const {
   if (!prefab) {
     throw CoreException("A script placed an instance of an unknown Prefab");
   }
@@ -212,6 +179,9 @@ void RunScript::placePrefabInstance(
       angle != 180.0f && angle != 270.0f) {
     throw CoreException(
         "A Prefab instance angle must be 0, 90, 180, or 270 degrees");
+  }
+  if (!isfinite(elevationOffset)) {
+    throw CoreException("A Prefab instance elevation offset must be finite");
   }
 
   auto const side = static_cast<float>(prefabTileSide(prefab->getTileSize()));
@@ -224,6 +194,14 @@ void RunScript::placePrefabInstance(
   clones.reserve(prefab->getPrimitives().size());
   for (auto const* source : prefab->getPrimitives()) {
     unique_ptr<Primitive> clone(source->rotatedCopy(angle));
+    if (elevationOffset != 0.0f) {
+      auto properties = clone->getProperties();
+      properties.floorSpan.lowerElevation += elevationOffset;
+      properties.floorSpan.upperElevation += elevationOffset;
+      properties.ceilingSpan.lowerElevation += elevationOffset;
+      properties.ceilingSpan.upperElevation += elevationOffset;
+      clone->setProperties(properties);
+    }
     clone->setPosition(clone->getPosition() + position);
     clone->setEmitterPlacementKey(EmitterPlacementKey{
         tileX, tileY, prefabTileSide(prefab->getTileSize())});
@@ -292,9 +270,9 @@ void RunScript::execute(LayerBuildContext& context) const {
           }
 
           auto lua = sol::state_view(mRuntime->getState());
-          auto worldVars = readonlyVariables(lua, worldVariables);
-          auto layerVars = readonlyVariables(lua, layerVariables);
-          auto stepVars = readonlyVariables(lua, stepVariables);
+          auto worldVars = readonlyBuildVariables(lua, worldVariables);
+          auto layerVars = readonlyBuildVariables(lua, layerVariables);
+          auto stepVars = readonlyBuildVariables(lua, stepVariables);
           reserveNamespaces(
               lua, environment,
               readonlyNamespace(lua, worldVars),

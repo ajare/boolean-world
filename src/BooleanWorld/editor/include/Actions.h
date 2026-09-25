@@ -84,6 +84,9 @@ class EditorInteraction {
   bool mRotatingSelectedPrimitives{false};
   bool mMovingSelectedTriggerLine{false};
   int mMovingSelectedTriggerLinePart{-1};
+  bool mMovingSelectedPortalEndpoint{false};
+  wp::Vector2 mPortalDragStartPosition;
+  wp::Vector2 mPortalDragCumulativeDelta;
 
   bool mMovingMeshSelection{false};
   wp::Vector2 mMeshDragCumulativeDelta;
@@ -110,7 +113,8 @@ public:
   void updateDrag(
       Document* doc,
       Settings const& settings,
-      PointerInput const& input);
+      PointerInput const& input,
+      bw::core::WorldData const* worldData = nullptr);
 
   // Handles a right-button gesture that began on the runtime player proxy.
   // Returns true while it owns the gesture, so view navigation can stand down.
@@ -165,6 +169,10 @@ bool addLayerBuildStep(
 bool removeLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t stepIndex);
 
 bool moveLayerBuildStep(Document* doc, bw::core::Layer* layer, uint32_t fromIndex, uint32_t toIndex);
+
+// Re-runs the Layer recipe (and therefore its RunScript steps) on explicit
+// user request. This changes only derived output and is not undoable.
+void rerunLayerScripts(Document* doc, bw::core::Layer* layer);
 
 // Authored RunScript arguments. Each action rebuilds the Layer immediately so
 // script output and downstream failure state stay in lockstep with the panel.
@@ -241,6 +249,15 @@ bool setPrefabTileSize(
 bool setPrefabTags(
     Document* doc, bw::core::Layer* layer, bw::core::DefinePrefabs* step,
     bw::core::Prefab* prefab, std::set<std::string> const& tags);
+bool setPrefabBuildVariable(
+    Document* doc, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    std::string const& name, bw::core::BuildVariableValue value);
+bool removePrefabBuildVariable(
+    Document* doc, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    std::string const& name);
+bool renamePrefabBuildVariable(
+    Document* doc, bw::core::DefinePrefabs* step, bw::core::Prefab* prefab,
+    std::string const& oldName, std::string const& newName);
 
 bool bindPrefabField(
     Document* doc, bw::core::Layer* layer, bw::core::PrefabField* field,
@@ -277,6 +294,28 @@ bool selectTriggerLine(Document* doc, uint32_t triggerLineIndex);
 bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex);
 
 bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::WorldTriggerLineSide side);
+
+bool createPortalPair(
+    Document* doc, bw::core::Layer* layer,
+    bw::core::AuthoredAperture const& first,
+    bw::core::AuthoredAperture const& second);
+bool deletePortalPair(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId);
+bool selectPortalEndpoint(
+    Document* doc, uint32_t layerId, uint32_t pairId,
+    uint32_t endpointIndex);
+bool setPortalEndpointPosition(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, wp::Vector2 const& position);
+bool movePortalEndpoint(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, wp::Vector2 const& delta);
+bool setPortalEndpointWidth(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, float width);
+bool setPortalEndpointVerticalBounds(
+    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    uint32_t endpointIndex, float bottom, float top);
 
 bool selectPrimitive(Document* doc, uint32_t primitiveIndex);
 
@@ -337,6 +376,7 @@ bool setMeshEdgeCollisionOverride(
 // Sets the active mesh edge's wall-render override (Document::
 // setActiveMeshEdgeVisible). Same External-only gating as above.
 bool setMeshEdgeVisible(Document* doc, uint32_t edgeIndex, bool visible);
+bool setMeshEdgeOtherZone(Document* doc, uint32_t edgeIndex, bw::core::ZoneId zone);
 
 // Commits the complete Wall normal-map value in one undoable editor action.
 bool setMeshEdgeNormalMapOverride(

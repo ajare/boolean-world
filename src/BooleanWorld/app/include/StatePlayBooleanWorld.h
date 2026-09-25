@@ -34,10 +34,12 @@
 
 #include "Platform.h"
 #include "WorldCollisionSim.h"
+#include "PlayerZone.h"
 #include "WorldRenderer.h"
 #include "Map.h"
 #include "DisplayMessage.h"
 #include "ClippingRecord.h"
+#include "PlayerPortalTraversal.h"
 #include "PlayerTorchShadows.h"
 #include "PlayerWallDepenetration.h"
 #include "LiquidReflectionSelection.h"
@@ -126,9 +128,19 @@ private:
 
   bw::core::WorldDataPtr mWorldData;
 
+  bw::app::PlayerZone mPlayerZone;
   WorldCollisionSim* mWorldCollisionSim;
 
   wp::collide::Collider* mPlayerCollider;
+
+  struct PortalCollisionEndpoint {
+    bw::core::ResolvedPortalPair const* pair{};
+    uint32_t endpoint{};
+    bool sourceWallBlocks{};
+  };
+  std::vector<PortalCollisionEndpoint> mPortalCollisionEndpoints;
+  bw::app::PlayerPortalMotion mPlayerPortalMotion;
+  bw::app::PlayerPortalUpdateState mPlayerPortalUpdateState;
 
   // Debug toggle: fold across every Layer, or just the first one.
   bool mAllLayers;
@@ -154,6 +166,7 @@ private:
   float mPlayerTraversalStartFeetElevation{0.0f};
   float mPlayerTraversalStartVerticalVelocity{0.0f};
   bool mPlayerTraversalStartValid{false};
+  float mPlayerPhysicalFrameFraction{1.0f};
 
   // True once PhysicalStats::feetElevation has been snapped to the sampled
   // floor at least once. Until mWorldData exists (early in map load) the floor
@@ -308,6 +321,9 @@ private:
 
   void createWorldCollisions(wp::Vector2 const& predictedPosition);
 
+  WorldCollisionSim::PortalLineResponse handlePlayerPortalLine(
+      wp::collide::SweepResult* result, uint32_t portalLineIndex);
+
   void liftPlayerOffOverlappingWalls(
       std::span<bw::app::WallSegment const> walls);
 
@@ -417,6 +433,10 @@ protected:
   void renderImpl(mpp::RenderSystem* renderSystem, mpp::ResourceManager* resourceMgr) override;
 
 public:
+  bw::core::ZoneId getPlayerZone() const { return mPlayerZone.current(); }
+  void setPlayerZone(bw::core::ZoneId zone) { mPlayerZone.set(zone); }
+  void initializePlayerZone() { mPlayerZone.initialize(); }
+
   StatePlayBooleanWorld();
 
   ~StatePlayBooleanWorld();

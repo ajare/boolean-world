@@ -81,6 +81,7 @@ Prefab* Prefab::copy(
     map<VertexTransformerObject const*, VertexTransformerObject*>& primitiveMap) const {
   auto clone = unique_ptr<Prefab>(new Prefab(mId, mName, mTileSize));
   clone->mTags = mTags;
+  clone->mBuildVariables = mBuildVariables;
   clone->mPrimitives.reserve(mPrimitives.size());
   for (auto const* primitive : mPrimitives) {
     auto* clonedPrimitive = primitive->copy();
@@ -149,6 +150,10 @@ PrefabTileSize Prefab::getTileSize() const {
 
 set<string> const& Prefab::getTags() const {
   return mTags;
+}
+
+BuildVariables const& Prefab::getBuildVariables() const {
+  return mBuildVariables;
 }
 
 uint32_t Prefab::getNumPrimitives() const {
@@ -327,6 +332,51 @@ void DefinePrefabs::setPrefabTags(
   modify();
 }
 
+void DefinePrefabs::setPrefabBuildVariable(
+    Prefab* prefab, string const& name, BuildVariableValue value) {
+  if (find(mPrefabs.begin(), mPrefabs.end(), prefab) == mPrefabs.end()) {
+    throw CoreException("Prefab not found in this DefinePrefabs step");
+  }
+  auto candidate = prefab->mBuildVariables;
+  candidate.insert_or_assign(name, move(value));
+  validateBuildVariables(candidate, format("Prefab '{}'", prefab->mName));
+  if (candidate == prefab->mBuildVariables) return;
+  prefab->mBuildVariables = move(candidate);
+  modify();
+}
+
+void DefinePrefabs::removePrefabBuildVariable(
+    Prefab* prefab, string const& name) {
+  if (find(mPrefabs.begin(), mPrefabs.end(), prefab) == mPrefabs.end()) {
+    throw CoreException("Prefab not found in this DefinePrefabs step");
+  }
+  if (!prefab->mBuildVariables.erase(name)) return;
+  modify();
+}
+
+void DefinePrefabs::renamePrefabBuildVariable(
+    Prefab* prefab, string const& oldName, string const& newName) {
+  if (find(mPrefabs.begin(), mPrefabs.end(), prefab) == mPrefabs.end()) {
+    throw CoreException("Prefab not found in this DefinePrefabs step");
+  }
+  auto found = prefab->mBuildVariables.find(oldName);
+  if (found == prefab->mBuildVariables.end()) {
+    throw CoreException(format(
+        "Prefab '{}' has no build variable '{}'", prefab->mName, oldName));
+  }
+  if (prefab->mBuildVariables.contains(newName)) {
+    throw CoreException(format(
+        "Prefab '{}' already has build variable '{}'", prefab->mName, newName));
+  }
+  auto candidate = prefab->mBuildVariables;
+  auto value = move(candidate.at(oldName));
+  candidate.erase(oldName);
+  candidate.emplace(newName, move(value));
+  validateBuildVariables(candidate, format("Prefab '{}'", prefab->mName));
+  prefab->mBuildVariables = move(candidate);
+  modify();
+}
+
 uint32_t DefinePrefabs::getNumPrefabs() const {
   return (uint32_t)mPrefabs.size();
 }
@@ -438,6 +488,7 @@ void DefinePrefabs::serializeArgs(shared_ptr<Serializer> serializer,
           }
           serializer->endArray();
         }
+        serializeBuildVariables(serializer, prefab->mBuildVariables);
         serializer->beginArray("primitives");
         {
           for (auto const* primitive : prefab->mPrimitives) {
@@ -497,6 +548,7 @@ bool DefinePrefabs::deserializeArgs(shared_ptr<Serializer> serializer,
             serializer->endArray();
           }
         }
+        prefab->mBuildVariables = deserializeBuildVariables(serializer);
 
         serializer->beginArray("primitives");
         {

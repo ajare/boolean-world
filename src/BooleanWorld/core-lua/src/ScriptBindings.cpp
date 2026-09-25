@@ -27,6 +27,39 @@ namespace core {
 
 using namespace std;
 
+sol::table readonlyBuildVariables(
+    sol::state_view lua, BuildVariables const& variables) {
+  auto values = lua.create_table();
+  auto names = lua.create_table(static_cast<int>(variables.size()), 0);
+  int index = 1;
+  for (auto const& [name, value] : variables) {
+    visit([&](auto const& concrete) { values[name] = concrete; }, value);
+    names[index++] = name;
+  }
+
+  sol::function factory = lua.script(R"(
+    local host_setmetatable, host_error = setmetatable, error
+    return function(values, names)
+      return host_setmetatable({}, {
+        __index = values,
+        __newindex = function(_, key)
+          host_error("build variable table is read-only: " .. tostring(key), 2)
+        end,
+        __pairs = function()
+          local i = 0
+          return function()
+            i = i + 1
+            local key = names[i]
+            if key ~= nil then return key, values[key] end
+          end
+        end,
+        __metatable = "protected build variable table"
+      })
+    end
+  )");
+  return factory(values, names);
+}
+
 namespace {
 
 constexpr char const* boundMarker = "__bw_script_types_bound";
@@ -107,6 +140,16 @@ tuple<float, float, float> getElevation(
   auto const& properties = primitive.getProperties();
   auto const& span = floor ? properties.floorSpan : properties.ceilingSpan;
   return {span.directionAngle, span.lowerElevation, span.upperElevation};
+}
+
+void setLiquidLevel(Primitive& primitive, float level) {
+  if (!isfinite(level) || level < 0.0f) {
+    throw CoreException(
+        "Primitive liquid level must be finite and non-negative");
+  }
+  auto properties = primitive.getProperties();
+  properties.liquidLevel = level;
+  primitive.setProperties(properties);
 }
 
 enum class MaterialSurface { Floor, Ceiling, Wall };
@@ -843,8 +886,10 @@ void RunScriptContext::placeMeshPrimitive(
 }
 
 void RunScriptContext::placePrefabInstance(
-    PrefabView view, int32_t tileX, int32_t tileY, float angle) const {
-  mStep->placePrefabInstance(*mBuild, view.prefab, tileX, tileY, angle);
+    PrefabView view, int32_t tileX, int32_t tileY, float angle,
+    float elevationOffset) const {
+  mStep->placePrefabInstance(
+      *mBuild, view.prefab, tileX, tileY, angle, elevationOffset);
 }
 
 tuple<int32_t, int32_t> RunScriptContext::getTile(
@@ -891,8 +936,8 @@ PrimitiveFieldView RunScriptContext::findPrimitiveField(string const& name) cons
   return PrimitiveFieldView{step};
 }
 
-TileMapView RunScriptContext::findTileMap(
-    string const& name, uint32_t index) const {
+DefineTileMaps const* RunScriptContext::findDefineTileMaps(
+    string const& name) const {
   auto& layer = mBuild->getLayer();
   auto const id = layer.findStepIdByName(name);
   if (id == ~0u) {
@@ -918,7 +963,16 @@ TileMapView RunScriptContext::findTileMap(
     throw CoreException(format(
         "DefineTileMaps step '{}' must precede this RunScript step", name));
   }
-  return TileMapView{definitions->getTileMap(index)};
+  return definitions;
+}
+
+TileMapView RunScriptContext::findTileMap(
+    string const& name, uint32_t index) const {
+  return TileMapView{findDefineTileMaps(name)->getTileMap(index)};
+}
+
+uint32_t RunScriptContext::getTileMapCount(string const& name) const {
+  return findDefineTileMaps(name)->getNumTileMaps();
 }
 
 vector<PrimitiveView> RunScriptContext::getBuildPrimitives() const {
@@ -1085,6 +1139,8 @@ void bindScriptTypes(sol::state& lua) {
       },
       "get_ceiling_elevation",
       [](Primitive const& primitive) { return getElevation(primitive, false); },
+
+      "set_liquid_level", &setLiquidLevel,
 
       "set_floor_material",
       [](Primitive& primitive, string const& materialId) {
@@ -1290,13 +1346,7 @@ void bindScriptTypes(sol::state& lua) {
       },
       "set_liquid_level",
       [](ScriptMeshPrimitive& mesh, float level) {
-        if (!isfinite(level) || level < 0.0f) {
-          throw CoreException(
-              "MeshPrimitive liquid level must be finite and non-negative");
-        }
-        auto properties = mesh.getPrimitive()->getProperties();
-        properties.liquidLevel = level;
-        mesh.getPrimitive()->setProperties(properties);
+        setLiquidLevel(*mesh.getPrimitive(), level);
       },
 
       "set_floor_material",
@@ -1490,10 +1540,12 @@ void bindScriptTypes(sol::state& lua) {
           &RunScriptContext::placeMeshPrimitive),
       "place_prefab_instance",
       [](RunScriptContext const& context, PrefabView prefab,
-         sol::object const& tileX, sol::object const& tileY, float angle) {
+         sol::object const& tileX, sol::object const& tileY, float angle,
+         sol::optional<float> elevationOffset) {
         context.placePrefabInstance(
             prefab, tileCoordinateFromLua(tileX, "x"),
-            tileCoordinateFromLua(tileY, "y"), angle);
+            tileCoordinateFromLua(tileY, "y"), angle,
+            elevationOffset.value_or(0.0f));
       },
       "get_tile",
       [](RunScriptContext const& context, sol::object const& gridSize,
@@ -1503,6 +1555,7 @@ void bindScriptTypes(sol::state& lua) {
       "find_define_prefabs", &RunScriptContext::findDefinePrefabs,
       "find_primitive_field", &RunScriptContext::findPrimitiveField,
       "find_tile_map", &RunScriptContext::findTileMap,
+      "get_tile_map_count", &RunScriptContext::getTileMapCount,
       "get_build_primitives",
       [](RunScriptContext const& context) {
         return sol::as_table(context.getBuildPrimitives());
@@ -1550,6 +1603,11 @@ void bindScriptTypes(sol::state& lua) {
         return sol::as_table(vector<string>(
             view.prefab->getTags().begin(), view.prefab->getTags().end()));
       },
+      "vars", sol::property(
+          [](PrefabView const& view, sol::this_state state) {
+            return readonlyBuildVariables(
+                sol::state_view(state), view.prefab->getBuildVariables());
+          }),
       "get_metadata_vertices",
       [](PrefabView const& view) {
         return sol::as_table(prefabMetadataVertices(*view.prefab, {}));

@@ -114,6 +114,7 @@ struct PendingPreviewOpen {
 std::optional<PendingPreviewOpen> pendingPreviewOpen;
 
 struct PreviewSession {
+  bw::core::ZoneId zone{bw::core::ZoneId::Euclidean};
   bool open{};
   Document* document{};
   bw::core::World const* world{};
@@ -197,7 +198,7 @@ PreviewSurfaceRef surfaceUnderCursor() {
   // and maps authored world +Y to renderer -Z.
   std::array<float, 3> origin{position.x, -position.z, position.y};
   std::array<float, 3> ray{direction.x, -direction.z, direction.y};
-  auto pick = pickPreviewSceneSurface(*session.worldData, origin, ray);
+  auto pick = pickPreviewSceneSurface(*session.worldData, origin, ray, session.zone);
   if (!pick.hit()) {
     return {};
   }
@@ -1204,7 +1205,8 @@ void renderPreviewScene(ImVec2 const& windowSize) {
 
   auto textureId = preview->render(
       session.document->getWorld().get(), *session.worldData, session.camera,
-      session.camera->getPosition(), io.DeltaTime, outlines);
+      session.camera->getPosition(), io.DeltaTime, outlines, -1, -1,
+      session.zone);
   if (textureId == 0) {
     return;
   }
@@ -1526,6 +1528,29 @@ void renderPreview3D() {
   }
   ImGui::End();
   ImGui::PopStyleVar(2);
+
+  // A separate overlay window keeps selector clicks and keyboard input out
+  // of the camera/surface-edit handlers, just like the surface editor window.
+  // This state belongs only to this preview-open, never to the Document.
+  if (visible && session.open) {
+    ImGui::SetNextWindowPos({session.viewportMin.x + 12.0f,
+                             session.viewportMin.y + 36.0f});
+    if (ImGui::Begin("##Preview Zone", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking |
+                     ImGuiWindowFlags_NoSavedSettings)) {
+      ImGui::SetNextItemWidth(160.0f);
+      int zone = static_cast<int>(session.zone) - 1;
+      if (ImGui::Combo("Preview Zone", &zone, "Euclidean\0Negative Space\0Phantom\0")) {
+        session.zone = static_cast<bw::core::ZoneId>(zone + 1);
+        session.lookedAt = {};
+        session.selection = {};
+        session.materialEditor = {};
+        session.embossEditor = {};
+      }
+    }
+    ImGui::End();
+  }
 
   // Every GPU resource this open of the preview built goes away with it. The
   // process-lifetime EditorRenderSystem underneath is deliberately kept.

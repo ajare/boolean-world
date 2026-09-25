@@ -23,7 +23,10 @@ public:
   struct DrawVert {
     float pos[3];
     float nor[3];
-    float tex[2];
+    // xy: physical UV; z: signed (wall index + 1), zero for non-walls.
+    // Negative IDs identify independent Chip facets, which do not flip their
+    // material/normal with the parent wall. w: opposite-side Liquid height.
+    float tex[4];
     uint32_t col;
     // Packed as one UserDefined4 attribute for the resource and programmatic
     // mesh specifications: xyz is canonical surface up for horizontal and
@@ -45,7 +48,8 @@ public:
   };
 
 private:
-  using VertexKey = std::array<uint32_t, 13>;
+  using VertexKey = std::array<uint32_t, 15>;
+  uint64_t mRevision{};
 
   struct VertexKeyHash {
     size_t operator()(VertexKey const& key) const noexcept;
@@ -83,6 +87,8 @@ public:
   void updateInternals(std::vector<uint32_t> const& numTrianglesPerMesh);
 
   void finalizeInternals();
+
+  [[nodiscard]] uint64_t revision() const { return mRevision; }
 
   // Atomically from the renderer's perspective, replaces the CPU-side mesh
   // payload with a completed off-thread build. The provider object itself is

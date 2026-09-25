@@ -137,6 +137,9 @@ void validateRing(ClosedPolygon& ring, size_t& ringCount, size_t& vertexCount) {
     throw CoreException("A MeshPrimitive Ring must contain a valid number of vertices.");
   }
   for (size_t i = 0; i < ring.size(); ++i) {
+    if (!isKnownZone(ring[i].edgeOtherZone)) {
+      throw CoreException("Unknown Other Zone reference on MeshPrimitive edge.");
+    }
     auto const& p = ring[i].p;
     auto const& next = ring[(i + 1) % ring.size()].p;
     if (!isfinite(p.x) || !isfinite(p.y) || p == next) {
@@ -180,6 +183,7 @@ void validateRing(ClosedPolygon& ring, size_t& ringCount, size_t& vertexCount) {
       ring[i].edgeFlags = original[source].edgeFlags;
       ring[i].edgeNormalMap = original[source].edgeNormalMap;
       ring[i].edgeWallMask = original[source].edgeWallMask;
+      ring[i].edgeOtherZone = original[source].edgeOtherZone;
     }
   }
 }
@@ -403,6 +407,12 @@ struct MeshPrimitiveEditingProxy::Impl {
   unordered_map<uint32_t, uint32_t> edgeFlags;
   unordered_map<uint32_t, WallNormalMapOverride> edgeNormalMaps;
   unordered_map<uint32_t, WallMaskOverride> edgeWallMasks;
+  unordered_map<uint32_t, ZoneId> edgeOtherZones;
+
+  ZoneId rawEdgeOtherZone(uint32_t edgeIndex) const {
+    auto found = edgeOtherZones.find(edgeIndex);
+    return found == edgeOtherZones.end() ? ZoneId::NegativeSpace : found->second;
+  }
 
   uint32_t rawEdgeFlags(uint32_t edgeIndex) const {
     auto found = edgeFlags.find(edgeIndex);
@@ -482,6 +492,7 @@ struct MeshPrimitiveEditingProxy::Impl {
           target.edgeFlags[found->second] = ring[i].edgeFlags;
           target.edgeNormalMaps[found->second] = ring[i].edgeNormalMap;
           target.edgeWallMasks[found->second] = ring[i].edgeWallMask;
+          target.edgeOtherZones[found->second] = ring[i].edgeOtherZone;
         } else if (target.edgeMetadata.at(found->second) !=
                    ring[i].edgeMetadata) {
           throw CoreException(
@@ -516,6 +527,7 @@ struct MeshPrimitiveEditingProxy::Impl {
     edgeFlags.clear();
     edgeNormalMaps.clear();
     edgeWallMasks.clear();
+    edgeOtherZones.clear();
     Builder builder{*this};
     for (auto const& shell : worldTree) shells.push_back(builder.addFilled(shell));
   }
@@ -553,6 +565,7 @@ struct MeshPrimitiveEditingProxy::Impl {
           result[i].edgeMetadata = metadata->second;
         }
         result[i].edgeFlags = rawEdgeFlags(index);
+        result[i].edgeOtherZone = rawEdgeOtherZone(index);
         auto normalMap = edgeNormalMaps.find(index);
         if (normalMap != edgeNormalMaps.end()) {
           result[i].edgeNormalMap = normalMap->second;
@@ -818,6 +831,7 @@ bool MeshPrimitiveEditingProxy::splitEdge(
   auto originalFlags = mImpl->rawEdgeFlags(edgeIndex);
   auto originalNormalMap = mImpl->edgeNormalMap(edgeIndex);
   auto originalWallMask = mImpl->edgeWallMask(edgeIndex);
+  auto originalOtherZone = mImpl->rawEdgeOtherZone(edgeIndex);
   wp::geometry::SplitEdgeResult localResult;
   auto* target = result ? result : &localResult;
   wp::geometry::MeshOperations::splitEdge(&mImpl->mesh, edgeIndex, t, target);
@@ -837,6 +851,8 @@ bool MeshPrimitiveEditingProxy::splitEdge(
     mImpl->edgeNormalMaps[target->newEdgeIndices[1]] = originalNormalMap;
     mImpl->edgeWallMasks[target->newEdgeIndices[0]] = originalWallMask;
     mImpl->edgeWallMasks[target->newEdgeIndices[1]] = originalWallMask;
+    mImpl->edgeOtherZones[target->newEdgeIndices[0]] = originalOtherZone;
+    mImpl->edgeOtherZones[target->newEdgeIndices[1]] = originalOtherZone;
   }
   return !target->newEdgeIndices.empty();
 }
@@ -914,6 +930,17 @@ bool MeshPrimitiveEditingProxy::setEdgeCollisionOverride(
 
 bool MeshPrimitiveEditingProxy::isEdgeCollisionEditable(uint32_t edgeIndex) const {
   return mImpl->isEdgeExternal(edgeIndex);
+}
+
+optional<ZoneId> MeshPrimitiveEditingProxy::getEdgeOtherZone(uint32_t edgeIndex) const {
+  if (!mImpl->isEdgeExternal(edgeIndex)) return nullopt;
+  return mImpl->rawEdgeOtherZone(edgeIndex);
+}
+
+bool MeshPrimitiveEditingProxy::setEdgeOtherZone(uint32_t edgeIndex, ZoneId zone) {
+  if (!mImpl->isEdgeExternal(edgeIndex) || !isKnownZone(zone)) return false;
+  mImpl->edgeOtherZones[edgeIndex] = zone;
+  return true;
 }
 
 bool MeshPrimitiveEditingProxy::getEdgeVisible(uint32_t edgeIndex) const {
@@ -1079,6 +1106,7 @@ bool MeshPrimitiveEditingProxy::sliceFilledRing(
           vertex.edgeFlags = mImpl->rawEdgeFlags(index);
           vertex.edgeNormalMap = mImpl->edgeNormalMap(index);
           vertex.edgeWallMask = mImpl->edgeWallMask(index);
+          vertex.edgeOtherZone = mImpl->rawEdgeOtherZone(index);
         }
       }
       ring.push_back(vertex);
@@ -1175,7 +1203,9 @@ bool MeshPrimitiveEditingProxy::removeVertex(uint32_t vertexIndex) {
          mImpl->edgeNormalMap(static_cast<uint32_t>(incoming)) !=
              mImpl->edgeNormalMap(static_cast<uint32_t>(outgoing)) ||
          mImpl->edgeWallMask(static_cast<uint32_t>(incoming)) !=
-             mImpl->edgeWallMask(static_cast<uint32_t>(outgoing)))) {
+             mImpl->edgeWallMask(static_cast<uint32_t>(outgoing)) ||
+         mImpl->rawEdgeOtherZone(static_cast<uint32_t>(incoming)) !=
+             mImpl->rawEdgeOtherZone(static_cast<uint32_t>(outgoing)))) {
       return false;
     }
   }
@@ -1541,6 +1571,11 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
       serializer->writeVector2("p", vertex.p);
       serializer->writeUint32("flags", vertex.edgeFlags);
       if (serializer->isPositional()) {
+        serializer->writeUint32("otherZone", static_cast<uint32_t>(vertex.edgeOtherZone));
+      } else {
+        serializer->writeString("otherZone", string(zoneSymbol(vertex.edgeOtherZone)));
+      }
+      if (serializer->isPositional()) {
         serializer->writeBool("hasMetadata", !vertex.metadata.empty());
       }
       if (!vertex.metadata.empty()) {
@@ -1606,7 +1641,7 @@ void MeshPrimitive::serializeImpl(shared_ptr<Serializer> serializer, Serializati
 
   serializer->beginMap("meshPrimitive");
   serializer->writeUint32("treeFormat", TreeFormatMagic);
-  serializer->writeUint32("edgeOverrideFormat", 7);
+  serializer->writeUint32("edgeOverrideFormat", 8);
   serializer->beginArray("shells");
   vector<Event> events;
   for (auto shell = mShells.rbegin(); shell != mShells.rend(); ++shell) {
@@ -1688,7 +1723,7 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
       edgeOverrideFormat =
           serializer->readUint32("collisionOverrideFormat", true, 0);
     }
-    if (edgeOverrideFormat < 4 || edgeOverrideFormat > 7) {
+    if (edgeOverrideFormat < 4 || edgeOverrideFormat > 8) {
       throw CoreException("Unsupported MeshPrimitive edge override format version.");
     }
 
@@ -1721,6 +1756,24 @@ bool MeshPrimitive::deserializeImpl(shared_ptr<Serializer> serializer, Serializa
           }
         }
         ring.back().edgeFlags = flags;
+        if ((serializer->isPositional() && edgeOverrideFormat >= 8) ||
+            (!serializer->isPositional() && serializer->hasField("otherZone"))) {
+          try {
+            ZoneId zone{};
+            if (serializer->isPositional()) {
+              zone = static_cast<ZoneId>(serializer->readUint32("otherZone"));
+            } else {
+              auto symbol = serializer->readString("otherZone");
+              if (symbol == zoneSymbol(ZoneId::Euclidean)) zone = ZoneId::Euclidean;
+              if (symbol == zoneSymbol(ZoneId::NegativeSpace)) zone = ZoneId::NegativeSpace;
+              if (symbol == zoneSymbol(ZoneId::Phantom)) zone = ZoneId::Phantom;
+            }
+            if (!isKnownZone(zone)) throw CoreException("Unknown Zone reference");
+            ring.back().edgeOtherZone = zone;
+          } catch (exception const&) {
+            throw CoreException("Unknown or malformed Other Zone reference (otherZone).");
+          }
+        }
         if (edgeOverrideFormat >= 6) {
           auto const hasMetadata = serializer->isPositional()
                                        ? serializer->readBool("hasMetadata")

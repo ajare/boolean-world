@@ -50,6 +50,7 @@ void DefaultWorldDataGenerator::generate(
       generator.getWorldData(),
       world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
-      world->getWedgeGenerationParameters());
+      world->getWedgeGenerationParameters(), false,
+      snapshotPortalPairs(*world, getLayerSelection()));
 }
 }  // namespace bw::core

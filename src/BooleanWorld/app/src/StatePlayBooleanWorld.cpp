@@ -58,6 +58,7 @@
 #include "PlayerWallDepenetration.h"
 #include "PlayerWorldReconciliation.h"
 #include "PlayerTorchShadows.h"
+#include "PlayerTorchPlacement.h"
 #include "BooleanWorldModel.h"
 #include "EntityHandlerBooleanWorld.h"
 #include "EntityType.h"
@@ -152,9 +153,6 @@ discoverLiquidReflectionPlanes(
 // LIQUID_RETENTION on location 3 in every mode; nothing samples their
 // contents, hence the cheapest format.
 //
-// This is also the count that shifts every later graph image along, so
-// renderWorldThroughTarget resolves its output index through this same
-// function rather than hard-coding a second copy of the total.
 std::vector<mpp::RenderPipelineSceneExtraOutput> worldSceneExtraOutputs(
     bool reservesMrtNormalSlots) {
   std::vector<mpp::RenderPipelineSceneExtraOutput> outputs;
@@ -536,6 +534,7 @@ void StatePlayBooleanWorld::registerInput() {
 }
 
 void StatePlayBooleanWorld::setupPlayerCollision() {
+  initializePlayerZone();
   mWorldCollisionSim = new WorldCollisionSim(this);
 
   auto const& physicalStats = getPlayerPhysicalStats();
@@ -546,9 +545,25 @@ void StatePlayBooleanWorld::setupPlayerCollision() {
   mWorldCollisionSim->addSlidingCollider(
       move(playerCollider),
       [this] { ++mCollisionsProcessed; });
+  mWorldCollisionSim->setPortalHitCallback(
+      [this](wp::collide::SweepResult* result, uint32_t portalLineIndex) {
+        return handlePlayerPortalLine(result, portalLineIndex);
+      });
   mPlayerCollider = playerColliderObserver;
 
-  applib::ModelInstance::entityHandler()->setupCollisions(mWorldCollisionSim, mPlayerCollider);
+  applib::ModelInstance::entityHandler()->setupCollisions(
+      mWorldCollisionSim, mPlayerCollider,
+      [this](float frameTime) {
+        // Zone events are ordered with contacts and change collision strategy
+        // before the unconsumed movement, including a fast return from Phantom.
+        mPlayerZone.resolveMovement(*mWorldCollisionSim, frameTime);
+        auto const& trace = mWorldCollisionSim->getPlayerMovementTrace();
+        mPlayerZone.rememberMovement(trace);
+        for (auto const& segment : trace)
+          if (!segment.physicallyAbsent && segment.type == WorldCollisionSim::PlayerMovementSegmentType::Swept)
+            getMap()->getWorld()->checkPlayerTriggers(segment.from, segment.to,
+                BW_PLAYER_RADIUS, layerSelection());
+      });
 }
 
 bool StatePlayBooleanWorld::playerInWorld() const {
@@ -571,66 +586,183 @@ void StatePlayBooleanWorld::getWorldInput(wp::Vector2* curPosition, wp::Vector2*
 void StatePlayBooleanWorld::createWorldCollisions(
     wp::Vector2 const& predictedPosition) {
   mWorldCollisionSim->clearLines();
+  mPortalCollisionEndpoints.clear();
   if (!mWorldData) {
     return;
   }
 
   auto const& arrangement = mWorldData->getArrangement();
   auto const& walls = mWorldData->getWalls();
-  auto radius = BW_PLAYER_SPEED + BW_PLAYER_RADIUS;
   auto const& physicalStats = getPlayerPhysicalStats();
   auto const& playerPosition = physicalStats.position;
+  mPlayerZone.configureMovement(*mWorldCollisionSim, *mWorldData, physicalStats.feetElevation,
+      [this](bw::core::ZoneId zone, wp::Vector2 const& point) {
+        // Surface traversal must never resolve a chord through the physically
+        // absent part of a frame. Start again at the last actual Zone event.
+        mPlayerTraversalStartPosition = point;
+        mPlayerTraversalStartFeetElevation = getPlayerPhysicalStats().feetElevation;
+        if (zone == bw::core::ZoneId::Phantom) {
+          mPlayerVerticalVelocity = 0.0f;
+          mPlayerPhysicalFrameFraction = 0.0f;
+          mPlayerPortalUpdateState.exitSide = {};
+        } else if (mPlayerPhysicalFrameFraction == 0.0f) {
+          mPlayerPhysicalFrameFraction = mWorldCollisionSim->remainingFrameFraction();
+        }
+        mPlayerTraversalStartVerticalVelocity = mPlayerVerticalVelocity;
+      });
+  for (uint32_t index = 0; index < walls.size(); ++index) {
+    if (!walls[index].sideZones) continue;
+    auto frame = bw::core::arr::OrientArrangementWall(arrangement, walls[index]);
+    mWorldCollisionSim->addZoneLine(frame.v0, frame.v1, index);
+  }
+  auto movementReach = playerPosition.distanceTo(predictedPosition);
+  auto radius = movementReach + BW_PLAYER_RADIUS + 1.0f;
   auto swimming = isPlayerSwimming();
-  std::vector<bw::app::WallSegment> addedWalls;
   auto descendingForTraversal =
       bw::app::isDescendingForTallStepTraversal(
           swimming, mPlayerVerticalVelocity);
-  for (auto wallIndex : mWorldData->getWallsNearForTraversal(
-           predictedPosition, radius, playerPosition,
-           descendingForTraversal)) {
+
+  std::vector<uint32_t> candidateWalls =
+      mWorldData->getWallsNearForTraversal(
+          predictedPosition, radius, playerPosition,
+          descendingForTraversal);
+  // A crossing may move the remainder to a remote endpoint, and several
+  // endpoints may chain in one update. Stage collision around every possible
+  // emergence point before Willpower begins its recursive sweep.
+  for (auto const& pair : mWorldData->getPortalPairs()) {
+    if (!pair.active) continue;
+    for (auto const& endpoint : pair.endpoints) {
+      auto emergence = endpoint.aperture.centre +
+                       endpoint.aperture.front *
+                           bw::app::PortalExitPlaneEpsilon;
+      auto nearby = mWorldData->getWallsNearForTraversal(
+          emergence, radius, emergence, false);
+      candidateWalls.insert(
+          candidateWalls.end(), nearby.begin(), nearby.end());
+    }
+  }
+  std::sort(candidateWalls.begin(), candidateWalls.end());
+  candidateWalls.erase(
+      std::unique(candidateWalls.begin(), candidateWalls.end()),
+      candidateWalls.end());
+
+  std::vector<bw::app::WallSegment> addedWalls;
+  std::vector<uint32_t> addedWallIndices;
+  for (auto wallIndex : candidateWalls) {
     auto const& wall = walls[wallIndex];
     auto orientation =
         bw::core::arr::OrientArrangementWall(arrangement, wall);
-    auto const& v0 = orientation.v0;
-    auto const& v1 = orientation.v1;
 
-    // A tall FloorStep is withheld while the player crosses over it - falling
-    // off the ledge, or swimming above the pool floor it encloses - so by the
-    // time the traversal rules admit it again the player may already be
-    // standing inside it. Reinstating it there does not block an approach; it
-    // wedges the collider against a wall it is behind, and the sliding
-    // response then strips the inward component of every direction at once,
-    // freezing the player in place. Only walls blocking purely by the
-    // step-height rule are skipped this way - authored collision, Borders and
-    // clearance limits stay solid regardless. Never suppress this wall for a
-    // swimmer: the deliberate climb-out action moves their whole collider
-    // clear of the edge after checking view pitch, facing and reach. Letting
-    // horizontal collision cross here would bypass those checks.
+    // The centre has to overlap a tall Step before it can leave the high side
+    // and begin falling. Suppress that Step only while the dry player's feet
+    // are still above its lower floor.
     auto blocksOnlyByStepHeight =
         wall.kind == bw::core::arr::ArrangementWallKind::FloorStep &&
         !mWorldData->wallBlocksTraversalWithoutStepAt(
             wallIndex, playerPosition);
+    auto span = orientation.v1 - orientation.v0;
+    auto spanLengthSquared = span.lengthSq();
+    auto closest = playerPosition.closestPointOnLine(
+        orientation.v0, orientation.v1);
+    auto along = spanLengthSquared > 0.0f
+                     ? std::clamp((closest - orientation.v0).dot(span) /
+                                      spanLengthSquared,
+                                  0.0f, 1.0f)
+                     : 0.0f;
+    auto lowerFloorElevation = std::lerp(
+        orientation.bottomZ[0], orientation.bottomZ[1], along);
     if (blocksOnlyByStepHeight &&
-        bw::app::maySuppressOverlappingTallStep(swimming) &&
-        playerPosition.distanceToLine(v0, v1) < BW_PLAYER_RADIUS) {
+        bw::app::maySuppressOverlappingTallStep(
+            swimming, physicalStats.feetElevation, lowerFloorElevation) &&
+        playerPosition.distanceToLine(
+            orientation.v0, orientation.v1) < BW_PLAYER_RADIUS) {
       continue;
     }
 
-    mWorldCollisionSim->addLine(v0, v1, wallIndex);
-    addedWalls.push_back({v0, v1});
+    for (auto const& segment :
+         mWorldData->getWallCollisionSegments(wallIndex)) {
+      mWorldCollisionSim->addLine(segment.v0, segment.v1, wallIndex);
+      addedWalls.push_back({segment.v0, segment.v1});
+    }
+    addedWallIndices.push_back(wallIndex);
   }
 
-  liftPlayerOffOverlappingWalls(addedWalls);
+  // The removed horizontal spans remain swept special planes. They pass a
+  // vertically eligible front-to-back crossing into the canonical transform,
+  // and otherwise use the ordinary wall response.
+  for (auto const& pair : mWorldData->getPortalPairs()) {
+    if (!pair.active) continue;
+    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
+      auto const& aperture = pair.endpoints[endpointIndex].aperture;
+      auto half = aperture.tangent * (aperture.width * 0.5f);
+      auto sourceWallBlocks = std::ranges::any_of(
+          aperture.wallIndices, [&](uint32_t wallIndex) {
+            return std::ranges::find(addedWallIndices, wallIndex) !=
+                   addedWallIndices.end();
+          });
+      mPortalCollisionEndpoints.push_back(
+          {&pair, endpointIndex, sourceWallBlocks});
+      mWorldCollisionSim->addPortalLine(
+          aperture.centre - half, aperture.centre + half);
+    }
+  }
+
+  if (mPlayerZone.current() != bw::core::ZoneId::Phantom)
+    liftPlayerOffOverlappingWalls(addedWalls);
+}
+
+WorldCollisionSim::PortalLineResponse
+StatePlayBooleanWorld::handlePlayerPortalLine(
+    wp::collide::SweepResult* result, uint32_t portalLineIndex) {
+  if (!mWorldData || portalLineIndex >= mPortalCollisionEndpoints.size()) {
+    return WorldCollisionSim::PortalLineResponse::Block;
+  }
+  auto const& source = mPortalCollisionEndpoints[portalLineIndex];
+  mPlayerPortalMotion.position = result->oldPosition;
+  mPlayerPortalMotion.unconsumedMovement = result->movementDesired;
+  auto response = bw::app::tryPlayerPortalCrossing(
+      *mWorldData, *source.pair, source.endpoint, BW_PLAYER_RADIUS,
+      BW_PLAYER_HEIGHT, mPlayerPortalMotion, mPlayerPortalUpdateState);
+  if (response == bw::app::PlayerPortalCrossingResult::Approaching) {
+    return WorldCollisionSim::PortalLineResponse::Ignore;
+  }
+  if (response == bw::app::PlayerPortalCrossingResult::Blocked) {
+    return source.sourceWallBlocks
+               ? WorldCollisionSim::PortalLineResponse::Block
+               : WorldCollisionSim::PortalLineResponse::Ignore;
+  }
+  if (response == bw::app::PlayerPortalCrossingResult::NotCrossing) {
+    bw::app::PortalEndpointIdentity identity{
+        source.pair->layerId, source.pair->pairId,
+        static_cast<uint8_t>(source.endpoint)};
+    return !source.sourceWallBlocks ||
+                   (mPlayerPortalUpdateState.exitSide.active &&
+                    mPlayerPortalUpdateState.exitSide.endpoint == identity)
+               ? WorldCollisionSim::PortalLineResponse::Ignore
+               : WorldCollisionSim::PortalLineResponse::Block;
+  }
+
+  auto desiredLength = result->movementDesired.length();
+  auto remainingLength = mPlayerPortalMotion.unconsumedMovement.length();
+  result->newPosition = mPlayerPortalMotion.position;
+  result->movementDone = result->newPosition - result->oldPosition;
+  result->movementLeft = mPlayerPortalMotion.unconsumedMovement;
+  result->distanceMoved = std::max(0.0f, desiredLength - remainingLength);
+  result->timeTaken = desiredLength > 0.0f
+                          ? result->distanceMoved / desiredLength
+                          : 0.0f;
+  getPlayerPhysicalStats().feetElevation =
+      mPlayerPortalMotion.feetElevation;
+  return WorldCollisionSim::PortalLineResponse::Traverse;
 }
 
 // A wall the player is already inside stops them dead in every direction at
 // once, because willpower's sweep abandons any movement that ends still
 // intersecting a line - see resolveWallOverlap. That happens wherever a wall
-// arrives underneath the player rather than being walked into: the swimmer who
-// dropped into a deep pool a couple of units from its bank is the case that
+// arrives underneath the player rather than being walked into: someone who
+// dropped into a deep pit a couple of units from its bank is the case that
 // bites, since the bank's tall floor step is withheld for the whole fall and
-// reinstated the moment they are submerged enough to count as swimming, and
-// the overlap suppression above deliberately does not cover them.
+// reinstated once they stop descending.
 //
 // Lifting them clear keeps the wall solid - a swimmer still leaves the liquid
 // only through tryClimbOutOfLiquid - and only ever moves them the shortest
@@ -816,7 +948,7 @@ float StatePlayBooleanWorld::getPlayerCeilingElevation() const {
 }
 
 float StatePlayBooleanWorld::getPlayerLiquidSubmersionDepth() const {
-  if (!mWorldData) {
+  if (!mWorldData || mPlayerZone.current() == bw::core::ZoneId::Phantom) {
     return 0.0f;
   }
 
@@ -1056,16 +1188,13 @@ void StatePlayBooleanWorld::setup(application::resourcesystem::ResourceManager* 
   // For subclasses
   createGameObjects(resourceMgr, renderSystem, renderResourceMgr, args);
   if (mWorldData) {
-    auto const& physicalStats = getPlayerPhysicalStats();
-    auto const viewerPosition = bw::app::worldToRendererAudioPosition(
-        physicalStats.position, physicalStats.feetElevation);
     auto initialArtifacts = std::async(
         std::launch::async,
-        [this, worldData = mWorldData, viewerPosition] {
+        [this, worldData = mWorldData] {
           PreparedGenerationArtifacts artifacts;
           artifacts.worldData = worldData;
           artifacts.renderData = mwRenderer->prepareWorldRenderData(
-              worldData, viewerPosition);
+              worldData);
           if (mSteamAudio) {
             artifacts.acousticScene = mSteamAudio->buildScene(
                 worldData, *mAcousticPresetResolver);
@@ -1117,6 +1246,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   mPlayerTraversalStartFeetElevation = traversalStart.feetElevation;
   mPlayerTraversalStartVerticalVelocity = mPlayerVerticalVelocity;
   mPlayerTraversalStartValid = mPlayerVerticalHeightInitialized;
+  mPlayerPhysicalFrameFraction = mPlayerZone.current() == bw::core::ZoneId::Phantom ? 0.0f : 1.0f;
 
   // Uses last frame's settled position/feet elevation - this frame's movement
   // has not been computed yet - which is exactly the submersion state that
@@ -1146,7 +1276,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
   playerPosition = newPosition;
   playerAngle = bw::app::worldViewAngle(newAngle);
 
-  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection()}, {0, 0});
+  world->update(frameTime, {playerPosition, playerAngle, BW_PLAYER_RADIUS, BW_PLAYER_FOV, BW_PLAYER_VIEW_DISTANCE, playerMoved, playerTurned, layerSelection(), false}, {0, 0});
 
   auto rebuiltWorldData = world->getWorldData();
   auto const worldSnapshotChanged = rebuiltWorldData != mWorldData;
@@ -1160,7 +1290,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
     auto& physicalStats = getPlayerPhysicalStats();
     auto reconciliation = bw::app::reconcilePlayerAfterWorldRebuild(
         *mWorldData, *rebuiltWorldData, physicalStats.position,
-        {physicalStats.feetElevation, mPlayerVerticalVelocity});
+        {physicalStats.feetElevation, mPlayerVerticalVelocity}, mPlayerZone.current());
     physicalStats.feetElevation = reconciliation.vertical.feetElevation;
     mPlayerVerticalVelocity = reconciliation.vertical.verticalVelocity;
     mPlayerRebuildNeedsLocationRecovery =
@@ -1212,6 +1342,24 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
     }
   }
 
+  auto exitSide = mPlayerPortalUpdateState.exitSide;
+  bw::app::updatePortalExitSideState(
+      *mWorldData, curPosition, BW_PLAYER_RADIUS, exitSide);
+  mPlayerPortalUpdateState = {};
+  mPlayerPortalUpdateState.exitSide = exitSide;
+  auto const& portalStats = getPlayerPhysicalStats();
+  auto horizontalVelocity =
+      frameTime > 0.0f ? (newPosition - curPosition) / frameTime
+                       : wp::Vector2{};
+  mPlayerPortalMotion = {
+      curPosition,
+      portalStats.feetElevation,
+      newAngle,
+      portalStats.pitch,
+      horizontalVelocity,
+      mPlayerVerticalVelocity,
+      newPosition - curPosition};
+
   // Supply the physics step with walls around the predicted destination. Player
   // location is evaluated only after that step has resolved movement.
   createWorldCollisions(newPosition);
@@ -1235,7 +1383,9 @@ void StatePlayBooleanWorld::updateAudio(float frameTime) {
 void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
   auto& physicalStats = getPlayerPhysicalStats();
 
-  if (mPlayerTraversalStartValid && mWorldData) {
+  if (mPlayerTraversalStartValid && mWorldData &&
+      mPlayerZone.current() != bw::core::ZoneId::Phantom &&
+      mPlayerPortalUpdateState.crossings == 0) {
     auto traversal = bw::app::evaluatePlayerSurfaceTraversal(
         *mWorldData, mPlayerTraversalStartPosition, physicalStats.position,
         mPlayerTraversalStartFeetElevation,
@@ -1250,6 +1400,16 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
     }
   }
 
+  if (mPlayerPortalUpdateState.crossings > 0) {
+    physicalStats.angle = mPlayerPortalMotion.yaw;
+    // The collider is already authoritative after the recursive transformed
+    // sweep; publish its destination before any location-dependent query.
+    physicalStats.position = mPlayerCollider->getCentre();
+    if (mPlayerPortalUpdateState.cameraCut && mCamera3d) {
+      mCamera3d->markCut();
+    }
+  }
+
   auto location = bw::app::evaluatePlayerLocation(
       *mWorldData, physicalStats.position, BW_PLAYER_RADIUS);
   mPlayerPolygonIndex = location.faceIndex;
@@ -1261,7 +1421,7 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
     // ...
   }
 
-  updatePlayerVerticalPhysics(frameTime);
+  updatePlayerVerticalPhysics(frameTime * mPlayerPhysicalFrameFraction);
 
   // After the vertical step, so a swimmer rising toward the surface is tested
   // at the float height it has just settled them at rather than one frame
@@ -1281,6 +1441,13 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
 
 void StatePlayBooleanWorld::updatePlayerVerticalPhysics(float frameTime) {
   auto& physicalStats = getPlayerPhysicalStats();
+  if (mPlayerZone.current() == bw::core::ZoneId::Phantom) {
+    auto next = bw::app::stepPlayerVerticalPhysics(
+        {physicalStats.feetElevation, mPlayerVerticalVelocity}, {.zone = bw::core::ZoneId::Phantom});
+    physicalStats.feetElevation = next.feetElevation;
+    mPlayerVerticalVelocity = next.verticalVelocity;
+    return;
+  }
 
   if (!mPlayerVerticalHeightInitialized) {
     // Before mWorldData exists (very start of map load) the floor query
@@ -1385,32 +1552,22 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
   // Move the light horizontally from the player's eye along the current yaw;
   // pitch does not affect it.
   //
-  // The configured distance is the maximum. Carrying the Torch on through a
-  // wall would light the far side of it and shadow everything the player can
-  // actually see, so the reach is cut to the near side of the first surface
-  // the offset crosses. The test runs at the Torch's own height, which is
-  // what lets it pass over a low floor step and under a high ceiling step
-  // instead of stopping at every change in floor or ceiling level.
+  // Trace the maximum reach through active front-facing Portal apertures,
+  // transforming the remaining direction and elevation at each exit. Solid
+  // walls still stop the Torch at its own height, including beyond an exit.
+  // The real light, its shadow origin, and its marker share this one placement.
   auto lightDirection = Vector2::fromAngle(
       bw::app::worldViewAngle(physicalStats.angle), Clockwise);
-  auto lightDistance = mDebugDisplay.lightDistance;
-  if (lightDistance > 0.0f && mWorldData) {
-    lightDistance = bw::app::playerTorchDistance(
-        lightDistance,
-        mWorldData->distanceToFirstWallCrossing(
-            physicalStats.position,
-            physicalStats.position + lightDirection * lightDistance,
-            playerViewHeight));
-  }
-  auto lightOffset = lightDirection * lightDistance;
+  auto torch = mPlayerZone.current() == bw::core::ZoneId::Phantom
+      ? bw::app::PlayerTorchPlacement{physicalStats.position + lightDirection * mDebugDisplay.lightDistance, playerViewHeight}
+      : bw::app::placePlayerTorch(*mWorldData, physicalStats.position, playerViewHeight,
+            lightDirection, mDebugDisplay.lightDistance);
   glm::vec3 playerPosition{
       physicalStats.position.x,
       playerViewHeight,
       -physicalStats.position.y};
-  glm::vec3 lightPosition{
-      playerPosition.x + lightOffset.x,
-      playerPosition.y,
-      playerPosition.z - lightOffset.y};
+  auto lightPosition = bw::app::worldToRendererAudioPosition(
+      torch.position, torch.elevation);
   updatePlayerTorchMarker(lightPosition);
   auto const domainName = std::string(bw::app::playerTorchShadowDomain);
   auto const& sessionShadows = mDebugDisplay.playerTorchShadows;
@@ -1430,6 +1587,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
     mwRenderSystem->configureShadowDomain(domainName, desiredOptions);
   }
   mPlayerTorchShadowRequestedEnabled = desiredOptions.enabled;
+  mwRenderer->setZone(mPlayerZone.current());
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,
       mDebugDisplay.playerTorch, mDebugDisplay.liquidOpacityOverride,
@@ -1474,11 +1632,9 @@ void StatePlayBooleanWorld::handleClippingUpdate(
 
     PreparedGenerationArtifacts artifacts;
     artifacts.worldData = details.worldData;
-    auto const viewerPosition = glm::vec3{
-        details.viewerPosition.x, 0.0f, -details.viewerPosition.y};
     try {
       artifacts.renderData = mwRenderer->prepareWorldRenderData(
-          details.worldData, viewerPosition);
+          details.worldData);
     } catch (std::exception const& error) {
       artifacts.renderError = error.what();
     }
@@ -1746,9 +1902,8 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   // a newly created map renderer.
   mwRenderer->setWireframe(mDebugDisplay.wireframe);
   mwRenderer->setFragmentOverdraw(mDebugDisplay.fragmentOverdraw);
-  // MPP orders every 3D draw command while WorldRenderer orders the triangles
-  // inside each material command. Together these exercise the complete
-  // closest-first diagnostic path for this scene.
+  // MPP orders 3D draw commands. WorldRenderer can additionally order
+  // horizontal triangles; immutable wall buffers retain snapshot order.
   renderSystem->setSortGeometryFrontToBack(
       mDebugDisplay.sortGeometryFrontToBack);
 
@@ -1761,8 +1916,10 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
   if (captureRenderGraph) {
     pipeline->requestGraphImageCapture();
   }
-  renderSystem->renderScene(
-      mScene, mCamera3d, {0.0f, 0.0f}, pipeline->getName());
+  mwRenderer->renderScene(
+      *mWorldData, mCamera3d, pipeline,
+      static_cast<uint32_t>(worldTarget->getWidth()),
+      static_cast<uint32_t>(worldTarget->getHeight()));
   if (pipeline->planarReflectionRuntimeFailed() &&
       !mPlanarReflectionSessionFailed) {
     mPlanarReflectionSessionFailed = true;
@@ -1778,74 +1935,11 @@ void StatePlayBooleanWorld::renderWorldThroughTarget(mpp::RenderSystem* renderSy
         pipeline->getLastGraphExecutionStats());
   }
 
-  // The named output is always the final offscreen shaded image, addressed by
-  // its position among the pipeline's graph images. Every image MPP creates
-  // ahead of it shifts that position: generated water appends the resolved
-  // scene copy and WaterComposite, AO adds three, MRT-normal GTAO also
-  // inserts two scene attachments, an active shadow domain inserts its
-  // imported depth image between the scene depth and the AO images, and the
-  // scene extra outputs are created before all of those. Miscounting does not
-  // fail cleanly - it silently addresses a different image, and presenting one
-  // with no colour attachment (the imported shadow cube) crashes in
-  // Texture::bind on an empty texture list. Derive the extras count from the
-  // same function the pipeline is built from rather than restating it.
-  auto ambientOcclusionEnabled =
-      !mDebugDisplay.fragmentOverdraw &&
-      mDebugDisplay.ambientOcclusionEnabled &&
-      mDebugDisplay.ambientOcclusion != bw::app::AmbientOcclusion::None;
-  auto usesMrtNormals =
-      ambientOcclusionEnabled &&
-      mDebugDisplay.ambientOcclusion == bw::app::AmbientOcclusion::GtaoNormals;
-  auto activeShadowImage =
-      !mDebugDisplay.fragmentOverdraw &&
-      renderSystem->getShadowDomainDepthTarget(
-          std::string(bw::app::playerTorchShadowDomain)) != nullptr;
-  auto sceneExtraOutputCount =
-      ambientOcclusionEnabled
-          ? static_cast<std::uint32_t>(
-                worldSceneExtraOutputs(usesMrtNormals).size())
-          : 0u;
-  auto preWaterOutputImage = ambientOcclusionEnabled
-                                 ? (usesMrtNormals ? 6u : 4u) +
-                                       sceneExtraOutputCount +
-                                       (activeShadowImage ? 1u : 0u)
-                                 : 0u;
-  // Without AO, SceneDepth (and optionally the shadow import) sits between
-  // SceneLdr and the generated-water images. With AO, those earlier images are
-  // already included in preWaterOutputImage, so only the technique-specific
-  // reflection images and WaterComposite remain to be added.
-  auto screenSpaceWater =
-      technique == bw::app::WaterReflectionTechnique::ScreenSpace;
-  auto planarRequested =
-      technique == bw::app::WaterReflectionTechnique::Planar &&
-      !planarPlanes.empty();
-  auto planarWater = planarRequested && !mPlanarReflectionSessionFailed;
-  auto failedPlanarWater = planarRequested && mPlanarReflectionSessionFailed;
-  auto outputImage = preWaterOutputImage;
-  if (mDebugDisplay.fragmentOverdraw) {
-    outputImage = preWaterOutputImage;
-  } else if (ambientOcclusionEnabled) {
-    // Each Planar plane declares its colour and depth images before the opaque
-    // and AO images, then WaterComposite follows the final AO image.
-    outputImage =
-        preWaterOutputImage +
-        (planarWater         ? 2u * static_cast<std::uint32_t>(planarPlanes.size()) + 1u
-         : failedPlanarWater ? 1u
-         : screenSpaceWater  ? 2u
-                             : 0u);
-  } else if (screenSpaceWater) {
-    outputImage = 3u + (activeShadowImage ? 1u : 0u);
-  } else if (planarWater) {
-    outputImage = 2u +
-                  2u * static_cast<std::uint32_t>(planarPlanes.size()) +
-                  (activeShadowImage ? 1u : 0u);
-  } else if (failedPlanarWater) {
-    outputImage = 2u + (activeShadowImage ? 1u : 0u);
-  } else {
-    outputImage = 0u;
-  }
-  auto sceneTarget = pipeline->getGraphImageRenderTarget({outputImage, 1});
-  assert(sceneTarget);
+  // Retrieve the declared final output directly. Its graph image and latest
+  // produced version may move whenever AO, water, shadows, bloom, or MRT
+  // topology changes; the pipeline keeps that implementation detail private.
+  auto sceneTarget = pipeline->getOutputRenderTarget(
+      mDebugDisplay.fragmentOverdraw ? "FragmentOverdraw" : "World");
   auto sceneTexture = static_cast<mpp::RenderTexture*>(sceneTarget.get());
   auto worldTexture = static_cast<mpp::RenderTexture*>(worldTarget.get());
 
@@ -3113,8 +3207,9 @@ void StatePlayBooleanWorld::debug_renderOptions() {
         0.0f, 256.0f, "%.1f");
     ImGui::TextDisabled(
         "Maximum offset from the player's eye along the current facing "
-        "direction. The Torch stops short of the first wall in the way, "
-        "passing over low floor steps and under high ceiling steps.");
+        "direction, continuing through Portals. The Torch stops short of "
+        "the first solid wall along that path, passing over low floor steps "
+        "and under high ceiling steps.");
     ImGui::SliderFloat(
         "Attenuation radius##PlayerTorch",
         &mDebugDisplay.playerTorch.attenuationRadius,

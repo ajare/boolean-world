@@ -29,15 +29,12 @@ void everyWorldPathUsesThePostWaterWorld() {
               state.find("discoverLiquidReflectionPlanes") !=
                   std::string::npos,
           "gameplay does not select generated Water technique and Planar planes");
-  require(state.find("planarPlanes.size()) + 1u") != std::string::npos &&
-              state.find("2u * static_cast<std::uint32_t>(planarPlanes.size())") !=
-                  std::string::npos,
-          "gameplay does not address zero-through-four Planar graph outputs");
-  require(state.find("if (mDebugDisplay.fragmentOverdraw) {") !=
+  require(state.find("getOutputRenderTarget(") != std::string::npos &&
+              state.find("? \"FragmentOverdraw\" : \"World\"") !=
                   std::string::npos &&
-              state.find("outputImage = preWaterOutputImage") !=
-                  std::string::npos,
-          "fragment-overdraw diagnostics no longer retain their pre-water output");
+              state.find("getGraphImageRenderTarget") == std::string::npos &&
+              state.find("preWaterOutputImage") == std::string::npos,
+          "gameplay does not retrieve its final image by declared pipeline output name");
   require(state.find("Override liquid reflectance") != std::string::npos &&
               state.find("Override liquid F0") != std::string::npos &&
               state.find("Enable water reflections") != std::string::npos &&
@@ -65,11 +62,15 @@ void everyWorldPathUsesThePostWaterWorld() {
                   std::string::npos &&
               preview.find("options.generatedWater = true") !=
                   std::string::npos &&
-              preview.find("WaterReflectionTechnique::ScreenSpace") !=
+              // Preview supports both reflection techniques; verify forwarding
+              // rather than requiring an obsolete hard-coded default.
+              preview.find("options.waterReflections = waterReflections") !=
                   std::string::npos &&
-              preview.find("constexpr std::uint32_t outputImageIndex = 6u") !=
-                  std::string::npos,
-          "editor preview does not select the generated post-water output");
+              preview.find("getOutputRenderTarget(\"World\")") !=
+                  std::string::npos &&
+              preview.find("getGraphImageRenderTarget") == std::string::npos &&
+              preview.find("outputImageIndex") == std::string::npos,
+          "editor preview does not retrieve the generated post-water output by name");
   require(preview.find("WorldRenderer::WallRenderVariantResolver{}, \"World\", true") !=
               std::string::npos,
           "editor preview does not defer Liquid into WaterScene");

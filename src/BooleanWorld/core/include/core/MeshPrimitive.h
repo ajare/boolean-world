@@ -197,6 +197,11 @@ public:
   [[nodiscard]] bool isEdgeVisibilityEditable(uint32_t edgeIndex) const;
   bool setEdgeVisible(uint32_t edgeIndex, bool visible);
 
+  // Dormant authored relationship, independent of collision and visibility.
+  // Internal edges have no effective Other Zone and reject edits.
+  [[nodiscard]] std::optional<ZoneId> getEdgeOtherZone(uint32_t edgeIndex) const;
+  bool setEdgeOtherZone(uint32_t edgeIndex, ZoneId zone);
+
   // Versioned Wall normal-map override. Internal edges always read Unset and
   // reject mutation, matching the other authored wall-edge controls.
   [[nodiscard]] WallNormalMapOverride getEdgeNormalMapOverride(

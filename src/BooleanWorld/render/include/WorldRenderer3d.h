@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 
+#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <mpp/RenderSystem.h>
@@ -14,6 +15,8 @@
 #include <willpower/application/resourcesystem/Resource.h>
 
 #include <willpower/common/Logger.h>
+
+#include <core/ZoneId.h>
 
 #include "SecondaryMaterialOptions.h"
 #include "VideoOptions.h"
@@ -29,6 +32,7 @@ class WorldRenderer3d {
   wp::application::resourcesystem::ResourcePtr mFragmentOverdrawMaterial;
   WorldSurfaceSet mSurfaceSet;
   bool mDeferToWaterPass;
+  bool mApertureOnly;
 
   SurfaceMaterialResolver const* mwResolver;
   std::vector<WallRenderSurface> mWallRenderSurfaces;
@@ -53,9 +57,20 @@ class WorldRenderer3d {
   // The renderer-owned 1x1 zero mask texture bound to TEX2 for every wall
   // mesh without a mask, keeping the shader's mask contract uniform.
   mpp::ResourcePtr mWallMaskZeroTexture;
+  mpp::ResourcePtr mPortalMaterial;
+  mpp::ResourcePtr mPortalFallbackTexture;
+  struct PortalMeshBinding {
+    std::string meshName;
+    std::shared_ptr<mpp::UniformCollection> uniforms;
+    uint32_t textureUnit{};
+    uint32_t endpointBucket{};
+  };
+  std::vector<PortalMeshBinding> mPortalMeshBindings;
+  std::set<std::string> mPortalMeshNames;
   std::string mBatchNamePrefix;
 
   float mGlobalTime;
+  bw::core::ZoneId mZone{bw::core::ZoneId::Euclidean};
 
   wp::Logger* mwLogger;
 
@@ -76,7 +91,8 @@ public:
       SurfaceMaterialResolver const* resolver,
       std::vector<WallRenderSurface> wallRenderSurfaces = {},
       bool deferToWaterPass = false,
-      std::string batchNamePrefix = "World3d");
+      std::string batchNamePrefix = "World3d",
+      bool apertureOnly = false);
 
   virtual ~WorldRenderer3d();
 
@@ -105,6 +121,18 @@ public:
   // Replaces every material bucket with the fixed-cost overdraw material and
   // enables blending so repeated fragments accumulate in the scene target.
   void setFragmentOverdraw(bool enabled);
+
+  // Stable endpoint buckets select a completed child image per pass. Reset
+  // before each pass so an endpoint can never sample the current render target.
+  void setPortalFallback();
+  void setPortalView(
+      uint32_t endpointBucket,
+      mpp::ResourcePtr const& texture,
+      glm::mat4 const& sourceProjectiveTransform, bool clampNearPlane = false);
+
+  void setZone(bw::core::ZoneId zone) { mZone = zone; }
+  void setHighlightedWall(int32_t wall);
+  [[nodiscard]] uint64_t geometryUploadCount() const;
 
   void update(
       glm::vec3 const& playerPosition,

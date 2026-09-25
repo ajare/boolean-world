@@ -174,6 +174,8 @@ void renderSelectedPrefabView(
   if (ImGui::IsItemDeactivated()) {
     editingPrefab = nullptr;
   }
+
+  renderPrefabBuildVariablesEditor(context, step, prefab);
 }
 
 void renderPrefabThumbnail(

@@ -4,11 +4,32 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include <mpp/Resource.h>
 #include <mpp/UniformCollection.h>
 
 #include <core/SurfaceMaterialReference.h>
+
+// This number identifies a stable endpoint bucket, not a transient recursive
+// render-target slot. It is not bounded by PortalViewSlotCount.
+inline std::string portalWallRenderVariantIdentity(uint32_t bucket) {
+  return "portal-endpoint-" + std::to_string(bucket);
+}
+
+inline std::optional<uint32_t> portalWallRenderVariantBucket(
+    std::string const& identity) {
+  constexpr std::string_view prefix = "portal-endpoint-";
+  if (!identity.starts_with(prefix)) return std::nullopt;
+  auto suffix = identity.substr(prefix.size());
+  if (suffix.empty()) return std::nullopt;
+  uint32_t bucket{};
+  for (auto character : suffix) {
+    if (character < '0' || character > '9') return std::nullopt;
+    bucket = bucket * 10u + static_cast<uint32_t>(character - '0');
+  }
+  return bucket;
+}
 
 // Rendering-only data that distinguishes one wall surface from another without
 // changing the Surface material it resolves. `identity` is the complete stable

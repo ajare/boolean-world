@@ -243,9 +243,13 @@ DocumentHover Document::getHover(
                : DocumentHover{HoverableType::Primitive, std::move(primitiveIndices)};
   }
 
-  // Primitive mode exposes Primitive areas only. Generated World vertices
-  // and TriggerLines belong to neither Primitive-area selection nor Mesh
-  // sub-object selection, so they do not participate in this mode's hover.
+  // Portal endpoints are explicit authored handles and take precedence over
+  // overlapping Primitive areas in Primitive mode.
+  auto portalEndpoint = getHoveredPortalEndpoint(mouseWorldPos, settings);
+  if (!portalEndpoint.empty()) {
+    return {HoverableType::PortalEndpoint, std::move(portalEndpoint)};
+  }
+
   auto primitiveIndices = getHoveredPrimitiveIndices(mouseWorldPos, settings);
   return primitiveIndices.empty()
              ? DocumentHover{}
@@ -406,6 +410,17 @@ bool Document::setActiveMeshEdgeCollisionOverride(
   if (!mActiveMesh->setEdgeCollisionOverride(edgeIndex, collides)) {
     return false;
   }
+  commitMeshPolygons(mActiveMeshPrimitiveIndex);
+  return true;
+}
+
+optional<bw::core::ZoneId> Document::getActiveMeshEdgeOtherZone(uint32_t edgeIndex) const {
+  return mActiveMesh ? mActiveMesh->getEdgeOtherZone(edgeIndex) : nullopt;
+}
+
+bool Document::setActiveMeshEdgeOtherZone(uint32_t edgeIndex, bw::core::ZoneId zone) {
+  if (!mActiveMesh || mActiveMeshPrimitiveIndex == ~0u ||
+      !mActiveMesh->setEdgeOtherZone(edgeIndex, zone)) return false;
   commitMeshPolygons(mActiveMeshPrimitiveIndex);
   return true;
 }
@@ -2299,10 +2314,19 @@ bool Document::primitivePermitsDirectEditing(uint32_t primitiveIndex) const {
 
 bool Document::selectedPrimitivesPermitDirectEditing() const {
   auto const& selection = getSelectedPrimitiveIndices();
-  return !selection.empty() &&
-         all_of(selection.begin(), selection.end(), [&](uint32_t index) {
-           return primitivePermitsDirectEditing(index);
-         });
+  if (selection.empty() || !mWorld || !mWorld->getActiveLayer()) {
+    return false;
+  }
+
+  auto* activeStep = mWorld->getActiveLayer()->getActiveStep();
+  return all_of(selection.begin(), selection.end(), [&](uint32_t index) {
+    // The ghost is not owned by the step it previews: it stays in the first
+    // PrimitiveField while Create Primitive writes to the active step. Let it
+    // use that active step's creation capability for transform gestures too.
+    return index == uint32_t(ED_GHOST_INDEX)
+               ? activeStep->acceptsNewPrimitives()
+               : primitivePermitsDirectEditing(index);
+  });
 }
 
 uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
@@ -2311,6 +2335,28 @@ uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, 
                    mouseWorldPos, settings.triggerLineSelectionDistance,
                    settings.triggerLineHandleRadius)
              : ~0u;
+}
+
+vector<uint32_t> Document::getHoveredPortalEndpoint(
+    wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
+  if (!isActive() || settings.mode == Settings::Mode::Mesh) return {};
+  auto const* layer = mWorld->getActiveLayer();
+  auto const radiusSquared = settings.triggerLineHandleRadius *
+                             settings.triggerLineHandleRadius;
+  auto bestDistance = numeric_limits<float>::max();
+  vector<uint32_t> result;
+  for (auto const& pair : layer->getPortalPairs()) {
+    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
+      auto const distance = pair.getEndpoint(endpointIndex)
+                                .getAperture()
+                                .centre.distanceToSq(mouseWorldPos);
+      if (distance <= radiusSquared && distance < bestDistance) {
+        bestDistance = distance;
+        result = {pair.getId(), endpointIndex};
+      }
+    }
+  }
+  return result;
 }
 
 void Document::setPlayerProxyPosition(wp::Vector2 const& pos) {

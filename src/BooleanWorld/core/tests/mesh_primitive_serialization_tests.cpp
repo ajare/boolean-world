@@ -323,6 +323,156 @@ void authoredCollidesValuesRoundTripThroughSaveAndLoad() {
           "collision override states did not round-trip through binary save/load");
 }
 
+void otherZonesRoundTripAndValidateAtomically() {
+  using bw::core::ZoneId;
+  auto source = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
+      Primitive::Operation::Union, {{square(-2, -2, 2, 2), {}}}));
+  auto proxy = source->createEditingProxy();
+  require(proxy->setEdgeOtherZone(proxy->getFirstEdgeIndex(), ZoneId::Euclidean),
+          "could not author Other Zone");
+  proxy->commitTo(*source);
+  auto verify = [](MeshPrimitive const& value, size_t expectedEuclidean) {
+    auto proxy = value.createEditingProxy();
+    size_t euclidean = 0, negative = 0;
+    for (auto edge = proxy->getFirstEdgeIndex(); !proxy->edgeIndexIterationFinished(edge);
+         edge = proxy->getNextEdgeIndex(edge)) {
+      euclidean += proxy->getEdgeOtherZone(edge) == ZoneId::Euclidean;
+      negative += proxy->getEdgeOtherZone(edge) == ZoneId::NegativeSpace;
+    }
+    require(euclidean == expectedEuclidean && negative == 4 - expectedEuclidean,
+            "Other Zones changed during persistence");
+  };
+  MeshPrimitive loaded(*source);
+  auto yaml = serializeYaml(*source);
+  auto binary = serializeBinary(*source);
+  require(deserializeYaml(yaml, loaded), "Other Zone YAML failed");
+  verify(loaded, 1);
+  require(deserializeBinary(binary, loaded), "Other Zone binary failed");
+  verify(loaded, 1);
+  auto before = serializeYaml(loaded);
+  for (auto const* invalid : {"unknown_zone", "123", "[]", "{}", "null"}) {
+    auto bad = yaml;
+    auto pos = bad.find("otherZone: euclidean");
+    require(pos != std::string::npos, "missing symbolic Zone identity");
+    bad.replace(pos, std::string("otherZone: euclidean").size(),
+                std::string("otherZone: ") + invalid);
+    require(!deserializeYaml(bad, loaded), "invalid Other Zone accepted");
+    require(containsMessage(loaded.getDeserializationErrors(), "Other Zone"),
+            "invalid Other Zone lacks diagnostic");
+    require(serializeYaml(loaded) == before, "invalid Zone partially mutated target");
+  }
+  // Strip new fields to model keyed pre-Zone data.
+  auto legacy = yaml;
+  for (size_t pos; (pos = legacy.find("otherZone:")) != std::string::npos;) {
+    auto start = legacy.rfind('\n', pos) + 1;
+    legacy.erase(start, legacy.find('\n', pos) - start + 1);
+  }
+  legacy.replace(legacy.find("edgeOverrideFormat: 8"),
+                 std::string("edgeOverrideFormat: 8").size(), "edgeOverrideFormat: 7");
+  require(deserializeYaml(legacy, loaded), "legacy Other Zone migration failed");
+  verify(loaded, 0);
+
+  // Positional format: magic, version, Shell item marker, vertex item marker,
+  // then p (two floats), flags, ZoneId, metadata markers and override states.
+  uint32_t magic = 0x4d545245;
+  auto tree = binary.find(std::string(reinterpret_cast<char*>(&magic), sizeof(magic)));
+  require(tree != std::string::npos, "missing binary tree marker");
+  auto firstZone = tree + 8 + 2 + 12;
+  auto badBinary = binary;
+  uint32_t unknown = 999;
+  badBinary.replace(firstZone, 4, reinterpret_cast<char*>(&unknown), 4);
+  before = serializeYaml(loaded);
+  require(!deserializeBinary(badBinary, loaded) &&
+              containsMessage(loaded.getDeserializationErrors(), "Other Zone"),
+          "unknown binary Zone accepted or lacks diagnostic");
+  require(serializeYaml(loaded) == before, "binary Zone failure mutated target");
+  auto oldBinary = binary;
+  for (int i = 3; i >= 0; --i) oldBinary.erase(firstZone + i * 21, 4);
+  uint32_t oldVersion = 7;
+  oldBinary.replace(tree + 4, 4, reinterpret_cast<char*>(&oldVersion), 4);
+  require(deserializeBinary(oldBinary, loaded), "legacy binary Zone migration failed");
+  verify(loaded, 0);
+
+  bw::core::World world(100.0f, 10.0f);
+  world.addPrimitive(source.release());
+  bw::core::World yamlWorld, binaryWorld;
+  // World owns its root map (unlike the standalone Primitive helpers above).
+  auto yamlWriter = std::shared_ptr<bw::core::YamlSerializer>(bw::core::YamlSerializer::toString());
+  auto binaryWriter = std::shared_ptr<bw::core::BinarySerializer>(bw::core::BinarySerializer::toString());
+  bw::core::SerializationWorkData workData;
+  world.serialize(yamlWriter, workData);
+  world.serialize(binaryWriter, workData);
+  auto yamlReader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::YamlSerializer::fromString(yamlWriter->getSerializedString()));
+  auto binaryReader = std::shared_ptr<bw::core::Serializer>(
+      bw::core::BinarySerializer::fromString(binaryWriter->getSerializedString()));
+  yamlReader->deserialize();
+  binaryReader->deserialize();
+  bw::core::SerializationWorkData readWorkData{10.0f};
+  auto yamlLoaded = yamlWorld.deserialize(yamlReader, readWorkData);
+  std::string errors;
+  for (auto const& error : yamlWorld.getDeserializationErrors()) errors += error + "\n";
+  require(yamlLoaded, "World Other Zone YAML failed: " + errors);
+  bw::core::SerializationWorkData binaryReadWorkData{10.0f};
+  require(binaryWorld.deserialize(binaryReader, binaryReadWorkData), "World Other Zone binary failed");
+  verify(*static_cast<MeshPrimitive*>(yamlWorld.getPrimitive(0)), 1);
+  verify(*static_cast<MeshPrimitive*>(binaryWorld.getPrimitive(0)), 1);
+}
+
+void phantomWorldPersistenceAndValidation() {
+  using namespace bw::core;
+  World source(100.0f, 10.0f);
+  auto* mesh = MeshPrimitive::fromTree(Primitive::Operation::Union, {{square(-20, -20, 20, 20), {}}});
+  auto proxy = mesh->createEditingProxy();
+  auto edge = proxy->getFirstEdgeIndex();
+  proxy->setEdgeOtherZone(edge, ZoneId::Phantom);
+  proxy->setEdgeVisible(edge, false);
+  proxy->setEdgeCollisionOverride(edge, false);
+  proxy->commitTo(*mesh);
+  source.addPrimitive(mesh);
+  for (bool binary : {false, true}) {
+    auto save = [&]() {
+      std::shared_ptr<Serializer> writer = binary
+          ? std::shared_ptr<Serializer>(BinarySerializer::toString())
+          : std::shared_ptr<Serializer>(YamlSerializer::toString());
+      SerializationWorkData work;
+      source.serialize(writer, work);
+      return binary ? static_cast<BinarySerializer&>(*writer).getSerializedString()
+                    : static_cast<YamlSerializer&>(*writer).getSerializedString();
+    };
+    World destination;
+    auto load = [&](std::string const& text) {
+      std::shared_ptr<Serializer> reader = binary
+          ? std::shared_ptr<Serializer>(BinarySerializer::fromString(text))
+          : std::shared_ptr<Serializer>(YamlSerializer::fromString(text));
+      reader->deserialize();
+      SerializationWorkData work{10.0f};
+      return destination.deserialize(reader, work);
+    };
+    require(load(save()), "valid Phantom World failed to load");
+    auto loaded = static_cast<MeshPrimitive*>(destination.getPrimitive(0))->createEditingProxy();
+    bool found = false;
+    for (auto e = loaded->getFirstEdgeIndex(); !loaded->edgeIndexIterationFinished(e); e = loaded->getNextEdgeIndex(e))
+      found |= loaded->getEdgeOtherZone(e) == ZoneId::Phantom;
+    require(found, "Phantom identity did not round trip");
+    auto before = destination.getPrimitive(0);
+    proxy->setEdgeVisible(edge, true);
+    bool generationRejected = false;
+    try { proxy->commitTo(*mesh); }
+    catch (std::invalid_argument const&) { generationRejected = true; }
+    require(generationRejected, "live generation accepted a visible Phantom opening");
+    require(!load(save()) && destination.getPrimitive(0) == before &&
+        containsMessage(destination.getDeserializationErrors(), "Phantom"),
+        "invalid visible Phantom World load was not atomic/diagnosed");
+    proxy->setEdgeCollisionOverride(edge, true);
+    proxy->commitTo(*mesh);
+    require(load(save()), "dormant Phantom Other Zone rejected on load");
+    proxy->setEdgeVisible(edge, false);
+    proxy->setEdgeCollisionOverride(edge, false);
+    proxy->commitTo(*mesh);
+  }
+}
+
 void authoredVisibleValuesRoundTripThroughSaveAndLoad() {
   auto primitive = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-2.0f, -2.0f, 2.0f, 2.0f), {}}}));
@@ -426,9 +576,9 @@ void authoredNormalMapValuesRoundTripAndRejectFutureVersions() {
   require(binaryOk, "normal maps did not load from binary: " + binaryErrors);
   verify(*binaryLoaded);
 
-  auto marker = yaml.find("edgeOverrideFormat: 7");
+  auto marker = yaml.find("edgeOverrideFormat: 8");
   require(marker != std::string::npos, "normal-map format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 7").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 8").size(),
                "edgeOverrideFormat: 99");
   auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
@@ -547,9 +697,9 @@ void authoredWallMaskValuesRoundTripAndRejectFutureVersions() {
   require(binaryOk, "Wall masks did not load from binary: " + binaryErrors);
   verify(*binaryLoaded);
 
-  auto marker = yaml.find("edgeOverrideFormat: 7");
+  auto marker = yaml.find("edgeOverrideFormat: 8");
   require(marker != std::string::npos, "Wall-mask format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 7").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 8").size(),
                "edgeOverrideFormat: 99");
   auto rejected = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
       Primitive::Operation::Union, {{square(-1, -1, 1, 1), {}}}));
@@ -573,9 +723,9 @@ void format4LoadsWallMaskUnsetWithZeroBlendParameters() {
   proxy->commitTo(*primitive);
 
   auto yaml = serializeYaml(*primitive);
-  auto marker = yaml.find("edgeOverrideFormat: 7");
+  auto marker = yaml.find("edgeOverrideFormat: 8");
   require(marker != std::string::npos, "Wall-mask format is not versioned");
-  yaml.replace(marker, std::string("edgeOverrideFormat: 7").size(),
+  yaml.replace(marker, std::string("edgeOverrideFormat: 8").size(),
                "edgeOverrideFormat: 4");
 
   auto loaded = std::unique_ptr<MeshPrimitive>(MeshPrimitive::fromTree(
@@ -593,7 +743,7 @@ void format4LoadsWallMaskUnsetWithZeroBlendParameters() {
 }
 
 std::string asLegacyCollisionYaml(std::string yaml, bool retainFormat) {
-  auto marker = yaml.find("edgeOverrideFormat: 7");
+  auto marker = yaml.find("edgeOverrideFormat: 8");
   require(marker != std::string::npos,
           "serialized MeshPrimitive had no edge override format marker");
   auto markerLineStart = yaml.rfind('\n', marker) + 1;
@@ -811,6 +961,8 @@ int main() {
     aggregateLimitsRejectOversizedInputBeforeCommit();
     authoredCollidesValuesRoundTripThroughSaveAndLoad();
     authoredVisibleValuesRoundTripThroughSaveAndLoad();
+    otherZonesRoundTripAndValidateAtomically();
+    phantomWorldPersistenceAndValidation();
     authoredNormalMapValuesRoundTripAndRejectFutureVersions();
     wallMaskValueValidation();
     authoredWallMaskValuesRoundTripAndRejectFutureVersions();

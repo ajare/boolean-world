@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <optional>
 #include <utility>
@@ -1227,10 +1228,28 @@ void AddRebuiltFaceHorizontal(
   };
 
   addBoundary(face.outerBoundary, face.outerBoundaryVertices);
-  auto holes = std::min(
-      face.innerBoundaries.size(), face.innerBoundaryVertices.size());
-  for (size_t hole = 0; hole < holes; ++hole) {
-    addBoundary(face.innerBoundaries[hole], face.innerBoundaryVertices[hole]);
+  // Chip rebuilds replace the base face triangles entirely. They must use the
+  // same excluded-region union as base triangulation, not the touching child
+  // cycles. Preserve edge identities so footprints and corner cuts still land
+  // on their original Arrangement edges after the boundaries are stitched.
+  std::map<std::pair<uint32_t, uint32_t>, uint32_t> holeEdges;
+  for (size_t hole = 0; hole < face.innerBoundaryVertices.size(); ++hole) {
+    auto const& vertices = face.innerBoundaryVertices[hole];
+    auto const& edges = face.innerBoundaries[hole];
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      holeEdges.emplace(
+          std::make_pair(vertices[i], vertices[(i + 1) % vertices.size()]),
+          edges.at(i));
+    }
+  }
+  for (auto const& vertices : TriangulationHoleBoundaries(face)) {
+    std::vector<uint32_t> edges;
+    edges.reserve(vertices.size());
+    for (size_t i = 0; i < vertices.size(); ++i) {
+      edges.push_back(holeEdges.at(
+          {vertices[i], vertices[(i + 1) % vertices.size()]}));
+    }
+    addBoundary(edges, vertices);
   }
 
   detail.addSuppressed(source);
@@ -1257,6 +1276,27 @@ void DetailGeometry::addSuppressed(DetailSurfaceKey const& key) {
 
 void DetailGeometry::addTriangle(DetailTriangle const& triangle) {
   mTriangles.push_back(triangle);
+}
+
+void DetailGeometry::replaceSurface(
+    DetailSurfaceKey const& key,
+    std::vector<DetailTriangle> replacements) {
+  if (std::find(mSuppressed.begin(), mSuppressed.end(), key) ==
+      mSuppressed.end()) {
+    mSuppressed.push_back(key);
+  }
+  std::erase_if(
+      mTriangles,
+      [&](DetailTriangle const& triangle) { return triangle.source == key; });
+  mTriangles.insert(
+      mTriangles.end(),
+      std::make_move_iterator(replacements.begin()),
+      std::make_move_iterator(replacements.end()));
+}
+
+void DetailGeometry::removeTrianglesIf(
+    std::function<bool(DetailTriangle const&)> const& predicate) {
+  std::erase_if(mTriangles, predicate);
 }
 
 void DetailGeometry::countChip() {
@@ -2304,5 +2344,269 @@ DetailGeometry BuildChipDetail(
 
   detail.sort();
   return detail;
+}
+namespace {
+struct PortalCutRectangle {
+  float minDistance{};
+  float maxDistance{};
+  float bottom{};
+  float top{};
+};
+
+DetailVertex InterpolateDetailVertex(
+    DetailVertex const& a, DetailVertex const& b, float t) {
+  DetailVertex result;
+  for (size_t component = 0; component < 3; ++component) {
+    result.position[component] =
+        std::lerp(a.position[component], b.position[component], t);
+    result.normal[component] =
+        std::lerp(a.normal[component], b.normal[component], t);
+  }
+  auto normalLength = std::sqrt(
+      result.normal[0] * result.normal[0] +
+      result.normal[1] * result.normal[1] +
+      result.normal[2] * result.normal[2]);
+  if (normalLength > 0.0f) {
+    for (auto& component : result.normal) component /= normalLength;
+  }
+  for (size_t component = 0; component < 2; ++component) {
+    result.uv[component] = std::lerp(a.uv[component], b.uv[component], t);
+  }
+  return result;
+}
+
+template <typename Value, typename Inside>
+std::vector<DetailVertex> ClipDetailPolygon(
+    std::vector<DetailVertex> const& polygon,
+    Value value,
+    Inside inside,
+    float boundary) {
+  std::vector<DetailVertex> output;
+  if (polygon.empty()) return output;
+  auto previous = polygon.back();
+  auto previousValue = value(previous);
+  auto previousInside = inside(previousValue, boundary);
+  for (auto const& current : polygon) {
+    auto currentValue = value(current);
+    auto currentInside = inside(currentValue, boundary);
+    if (currentInside != previousInside) {
+      auto denominator = currentValue - previousValue;
+      auto t = std::abs(denominator) <= 1.0e-8f
+                   ? 0.0f
+                   : (boundary - previousValue) / denominator;
+      output.push_back(InterpolateDetailVertex(
+          previous, current, std::clamp(t, 0.0f, 1.0f)));
+    }
+    if (currentInside) output.push_back(current);
+    previous = current;
+    previousValue = currentValue;
+    previousInside = currentInside;
+  }
+  return output;
+}
+
+std::vector<DetailTriangle> ClipTriangleOutsidePortal(
+    DetailTriangle const& triangle,
+    ArrangementWallOrientation const& orientation,
+    PortalCutRectangle const& aperture) {
+  auto tangent = (orientation.v1 - orientation.v0).normalisedCopy();
+  auto distance = [&](DetailVertex const& vertex) {
+    return (wp::Vector2{vertex.position[0], vertex.position[1]} -
+            orientation.v0)
+        .dot(tangent);
+  };
+  auto elevation = [](DetailVertex const& vertex) {
+    return vertex.position[2];
+  };
+  auto less = [](float value, float boundary) {
+    return value <= boundary + MinimumChipSize;
+  };
+  auto greater = [](float value, float boundary) {
+    return value >= boundary - MinimumChipSize;
+  };
+
+  std::vector<std::vector<DetailVertex>> pieces;
+  std::vector<DetailVertex> source{
+      triangle.v[0], triangle.v[1], triangle.v[2]};
+  pieces.push_back(ClipDetailPolygon(
+      source, distance, less, aperture.minDistance));
+  pieces.push_back(ClipDetailPolygon(
+      source, distance, greater, aperture.maxDistance));
+  auto middle = ClipDetailPolygon(
+      source, distance, greater, aperture.minDistance);
+  middle = ClipDetailPolygon(
+      middle, distance, less, aperture.maxDistance);
+  pieces.push_back(ClipDetailPolygon(
+      middle, elevation, less, aperture.bottom));
+  pieces.push_back(ClipDetailPolygon(
+      middle, elevation, greater, aperture.top));
+
+  std::vector<DetailTriangle> result;
+  for (auto const& piece : pieces) {
+    if (piece.size() < 3) continue;
+    for (size_t corner = 1; corner + 1 < piece.size(); ++corner) {
+      auto emitted = triangle;
+      emitted.v = {piece[0], piece[corner], piece[corner + 1]};
+      result.push_back(std::move(emitted));
+    }
+  }
+  return result;
+}
+
+std::vector<DetailTriangle> PlainWallTriangles(
+    ArrangementResult const& arrangement,
+    ArrangementWall const& wall,
+    uint32_t wallIndex) {
+  auto surface = BuildArrangementWallSurface(arrangement, wall);
+  auto orientation = OrientArrangementWall(arrangement, wall);
+  auto length = orientation.v0.distanceTo(orientation.v1);
+  auto height = wall.maxZ - wall.minZ;
+  std::vector<DetailTriangle> result;
+  for (uint8_t corner = 1; corner + 1 < surface.vertexCount; ++corner) {
+    DetailTriangle triangle;
+    triangle.source = {DetailSurfaceKind::Wall, wallIndex};
+    triangle.kind = DetailTriangleKind::SurfaceRemainder;
+    triangle.followsWallFacing = true;
+    std::array<uint8_t, 3> indices{0, corner, uint8_t(corner + 1)};
+    for (size_t index = 0; index < indices.size(); ++index) {
+      auto const& vertex = surface.vertices[indices[index]];
+      triangle.v[index] = {
+          {vertex.position.x, vertex.position.y, vertex.elevation},
+          {orientation.normal.x, orientation.normal.y, 0.0f},
+          {vertex.position.distanceTo(orientation.v0) / length,
+           (vertex.elevation - wall.minZ) / height}};
+    }
+    result.push_back(std::move(triangle));
+  }
+  return result;
+}
+}  // namespace
+
+void ApplyPortalApertures(
+    DetailGeometry& detail,
+    ArrangementResult const& arrangement,
+    std::vector<ArrangementWall> const& walls,
+    std::vector<ResolvedPortalPair> const& portalPairs) {
+  std::map<uint32_t, std::vector<PortalCutRectangle>> cutsByWall;
+  struct Fallback {
+    uint32_t wallIndex;
+    ResolvedAperture const* aperture;
+  };
+  std::vector<Fallback> fallbacks;
+
+  for (auto const& pair : portalPairs) {
+    if (!pair.active) continue;
+    for (auto const& endpoint : pair.endpoints) {
+      auto const& aperture = endpoint.aperture;
+      if (aperture.wallIndices.empty()) continue;
+      fallbacks.push_back({aperture.wallIndices.front(), &aperture});
+      auto halfWidth = aperture.width * 0.5f;
+      auto apertureStart = aperture.centre - aperture.tangent * halfWidth;
+      auto apertureEnd = aperture.centre + aperture.tangent * halfWidth;
+      for (auto wallIndex : aperture.wallIndices) {
+        if (wallIndex >= walls.size()) continue;
+        auto orientation = OrientArrangementWall(arrangement, walls[wallIndex]);
+        auto tangent = orientation.v1 - orientation.v0;
+        auto length = static_cast<float>(tangent.normalise());
+        if (length <= MinimumChipSize) continue;
+        auto a = (apertureStart - orientation.v0).dot(tangent);
+        auto b = (apertureEnd - orientation.v0).dot(tangent);
+        auto begin = std::clamp(std::min(a, b), 0.0f, length);
+        auto end = std::clamp(std::max(a, b), 0.0f, length);
+        if (end - begin > MinimumChipSize) {
+          cutsByWall[wallIndex].push_back(
+              {begin, end, aperture.bottom, aperture.top});
+        }
+      }
+    }
+  }
+
+  for (auto& [wallIndex, cuts] : cutsByWall) {
+    DetailSurfaceKey key{DetailSurfaceKind::Wall, wallIndex};
+    std::vector<DetailTriangle> triangles;
+    if (detail.isSuppressed(key.kind, key.index)) {
+      auto existing = detail.replacementsFor(key.kind, key.index);
+      triangles.assign(existing.begin(), existing.end());
+    } else {
+      triangles = PlainWallTriangles(arrangement, walls[wallIndex], wallIndex);
+    }
+    auto orientation = OrientArrangementWall(arrangement, walls[wallIndex]);
+    for (auto const& cut : cuts) {
+      std::vector<DetailTriangle> clipped;
+      for (auto const& triangle : triangles) {
+        auto pieces = ClipTriangleOutsidePortal(triangle, orientation, cut);
+        clipped.insert(
+            clipped.end(), std::make_move_iterator(pieces.begin()),
+            std::make_move_iterator(pieces.end()));
+      }
+      triangles = std::move(clipped);
+    }
+    detail.replaceSurface(key, std::move(triangles));
+  }
+
+  // Wedges are additive horizontal-surface detail rather than wall
+  // replacements, so they were not covered by cutsByWall. Omit any facet
+  // attached inside an aperture instead of letting it protrude into the
+  // opening. Other floor/ceiling detail remains untouched.
+  detail.removeTrianglesIf([&](DetailTriangle const& triangle) {
+    if (triangle.kind != DetailTriangleKind::WedgeFacet) return false;
+    for (auto const& pair : portalPairs) {
+      if (!pair.active) continue;
+      for (auto const& endpoint : pair.endpoints) {
+        auto const& aperture = endpoint.aperture;
+        auto minimumTangent = std::numeric_limits<float>::infinity();
+        auto maximumTangent = -std::numeric_limits<float>::infinity();
+        auto minimumElevation = std::numeric_limits<float>::infinity();
+        auto maximumElevation = -std::numeric_limits<float>::infinity();
+        for (auto const& vertex : triangle.v) {
+          wp::Vector2 position{vertex.position[0], vertex.position[1]};
+          auto planeDistance =
+              std::abs((position - aperture.centre).dot(aperture.front));
+          if (planeDistance > MinimumChipSize) continue;
+          auto tangent =
+              (position - aperture.centre).dot(aperture.tangent);
+          minimumTangent = std::min(minimumTangent, tangent);
+          maximumTangent = std::max(maximumTangent, tangent);
+          minimumElevation =
+              std::min(minimumElevation, vertex.position[2]);
+          maximumElevation =
+              std::max(maximumElevation, vertex.position[2]);
+        }
+        auto halfWidth = aperture.width * 0.5f;
+        if (minimumTangent <= halfWidth + MinimumChipSize &&
+            maximumTangent >= -halfWidth - MinimumChipSize &&
+            minimumElevation <= aperture.top + MinimumChipSize &&
+            maximumElevation >= aperture.bottom - MinimumChipSize) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+
+  // The fallback lies exactly in the now-empty wall plane. Since no intact or
+  // replacement wall triangle remains inside the rectangle, this introduces
+  // neither hidden overdraw nor coplanar z-fighting.
+  for (auto const& fallback : fallbacks) {
+    auto const& aperture = *fallback.aperture;
+    auto half = aperture.tangent * (aperture.width * 0.5f);
+    auto left = aperture.centre - half;
+    auto right = aperture.centre + half;
+    DetailSurfaceKey source{DetailSurfaceKind::Wall, fallback.wallIndex};
+    Vertex3 bottomLeft{left.x, left.y, aperture.bottom};
+    Vertex3 bottomRight{right.x, right.y, aperture.bottom};
+    Vertex3 topRight{right.x, right.y, aperture.top};
+    Vertex3 topLeft{left.x, left.y, aperture.top};
+    Vertex3 reference{aperture.front.x, aperture.front.y, 0.0f};
+    AddTriangle(
+        detail, source, bottomLeft, topLeft, topRight, reference,
+        {0.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}, true,
+        DetailTriangleKind::PortalFallback);
+    AddTriangle(
+        detail, source, bottomLeft, topRight, bottomRight, reference,
+        {0.0f, 0.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}, true,
+        DetailTriangleKind::PortalFallback);
+  }
+  detail.sort();
 }
 }  // namespace bw::core::arr

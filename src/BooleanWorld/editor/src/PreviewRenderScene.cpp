@@ -16,15 +16,6 @@
 namespace editor {
 namespace {
 
-// The named output is always the final offscreen shaded image. Ambient
-// occlusion adds three graph images ahead of its composite; generated water
-// then appends SceneColourResolved and WaterComposite. See
-// StatePlayBooleanWorld::renderWorldThroughTarget, which derives the same
-// layout for gameplay. GTAO from depth adds no scene attachments of its own,
-// so the MRT-normal variant's higher index does not apply here. An active
-// shadow domain inserts one imported graph image before AO output.
-constexpr std::uint32_t outputImageIndex = 6u;
-
 // Launcher's own defaults (StatePlayBooleanWorld::DebugDisplay), so the
 // preview lights the world exactly as the game does. Exposing these as
 // editor-side preview settings is deliberately a later ticket.
@@ -36,7 +27,8 @@ constexpr SecondaryMaterialOptions secondaryMaterial{};
 // per-render-scale and anti-aliasing variants the preview has no settings
 // for: one named offscreen output with ambient occlusion on, so bloom,
 // tonemapping and AO all reach the preview exactly as they reach Launcher.
-mpp::RenderPipelineOptions pipelineOptions() {
+mpp::RenderPipelineOptions pipelineOptions(
+    mpp::WaterReflectionOptions const& waterReflections) {
   mpp::RenderPipelineOptions options;
   options.mode = mpp::RenderPipelineMode::GraphLegacyForward;
 
@@ -50,13 +42,19 @@ mpp::RenderPipelineOptions pipelineOptions() {
   output.antiAliasing.fxaa = false;
   options.outputs.push_back(output);
   options.generatedWater = true;
-  // The editor has no Launcher video configuration and deliberately keeps the
-  // established Screen-space reflection source explicit.
-  options.waterReflections.technique =
-      mpp::WaterReflectionTechnique::ScreenSpace;
+  // Default previews use Screen-space; explicit Planar views share the same
+  // scene buckets and Zone uniforms, never a separately prepared World.
+  options.waterReflections = waterReflections;
 
   options.ambientOcclusion.method = mpp::AmbientOcclusionMethod::Gtao;
   options.ambientOcclusion.gtao.normalSource = mpp::GTAONormalSource::Depth;
+  // Match gameplay's fixed shader output locations and AO modulation.
+  // Unlit Negative Space backs write zero retention to remain pure white.
+  options.sceneExtraOutputs = {
+      {"BLOOM_MASK", mpp::GraphImageFormat::R8},
+      {"SHADING_NORMAL", mpp::GraphImageFormat::R8},
+      {"LIQUID_RETENTION", mpp::GraphImageFormat::R8}};
+  options.ambientOcclusion.modulationInput = "SceneExtra.LIQUID_RETENTION";
   // This render system is separate from Launcher’s, but its single preview
   // pipeline joins the same Player Torch domain contract.
   bw::app::joinPlayerTorchShadowDomain(options);
@@ -73,7 +71,8 @@ PreviewRenderScene::PreviewRenderScene(
     bw::app::HorizontalMaterials horizontalMaterials,
     bw::app::ShadowOptions shadowOptions,
     std::string instanceName,
-    bool loadWorldDependencies)
+    bool loadWorldDependencies,
+    mpp::WaterReflectionOptions waterReflections)
     : mwRenderSystem(renderSystem.renderSystem()),
       mShadowOptions(shadowOptions),
       mPipelineName("Editor." + instanceName + ".World"),
@@ -90,7 +89,8 @@ PreviewRenderScene::PreviewRenderScene(
       bw::app::playerTorchMppShadowOptions(mShadowOptions, glm::vec3{}));
 
   mPipeline =
-      mwRenderSystem->getOrCreateRenderPipeline(mPipelineName, pipelineOptions());
+      mwRenderSystem->getOrCreateRenderPipeline(
+          mPipelineName, pipelineOptions(waterReflections));
   mPipeline->resize(mWidth, mHeight);
 
   if (loadWorldDependencies) {
@@ -108,7 +108,6 @@ PreviewRenderScene::PreviewRenderScene(
   mRenderer = std::make_unique<WorldRenderer>(
       renderSystem.resourceManager(), renderSystem.logger(),
       bw::app::RenderTextureFilter::Linear, horizontalMaterials,
-      WorldRenderer::WallUpdatePolicy::EditorEveryUpdate,
       std::vector<WallRenderSurface>{},
       WorldRenderer::WallRenderVariantResolver{}, "World", true,
       "World3d." + instanceName);
@@ -193,6 +192,33 @@ std::uint32_t PreviewRenderScene::worldSurfaceTriangleCount(
   return mRenderer->getSurfaceTriangleCount(surfaceSet);
 }
 
+bool PreviewRenderScene::renderedPortalView() const {
+  return mRenderer->getSelectedPortal().has_value();
+}
+
+PortalViewPlan const& PreviewRenderScene::portalViewDiagnostics() const {
+  return mRenderer->getPortalViewDiagnostics();
+}
+
+std::uint32_t PreviewRenderScene::portalRenderedPassCount() const {
+  return mRenderer->getPortalViewDiagnostics().renderedPassCount;
+}
+
+std::uint32_t PreviewRenderScene::portalSelectedEndpointCount() const {
+  return static_cast<std::uint32_t>(
+      mRenderer->getPortalViewDiagnostics().rootChildren.size());
+}
+
+std::array<std::uint64_t, 2> PreviewRenderScene::wallGeometryCounters() const {
+  auto counters = mRenderer->wallGeometryDiagnostics();
+  return {counters.revision, counters.uploads};
+}
+
+std::array<std::uint64_t, 2> PreviewRenderScene::surfaceGeometryCounters(WorldSurfaceSet set) const {
+  auto counters = mRenderer->surfaceGeometryDiagnostics(set);
+  return {counters.revision, counters.uploads};
+}
+
 void PreviewRenderScene::worldGeometryChanged() {
   mRenderer->setWorldChanged();
   // WorldRenderer rebuilds model resources lazily. Mark the domain as well so
@@ -209,7 +235,8 @@ std::uint32_t PreviewRenderScene::render(
     float frameTime,
     std::vector<PreviewOutline> const& outlines,
     std::int32_t horizontalMaterialIndexOverride,
-    std::int32_t wallMaterialIndexOverride) {
+    std::int32_t wallMaterialIndexOverride,
+    bw::core::ZoneId zone) {
   // The Player proxy is represented by the preview camera. Keep the Torch at
   // that eye position, as the game does, and use the shared release defaults
   // (range, near plane, biases, PCF filtering, and fade semantics).
@@ -219,6 +246,7 @@ std::uint32_t PreviewRenderScene::render(
 
   // No highlighted triangle or wall: the preview marks the surface under the
   // pointer by outlining it below, not by tinting the material.
+  mRenderer->setZone(zone);
   mRenderer->update(
       world, worldData, cameraPosition, cameraPosition,
       bw::app::PlayerTorchOptions{}, std::nullopt, std::nullopt, std::nullopt,
@@ -228,19 +256,13 @@ std::uint32_t PreviewRenderScene::render(
       pixelSize, secondaryMaterial, frameTime);
 
   mScene->setViewport(0, 0, mWidth, mHeight);
-  mwRenderSystem->renderScene(
-      mScene, camera, {0.0f, 0.0f}, mPipeline->getName());
+  mRenderer->renderScene(
+      worldData, camera, mPipeline,
+      static_cast<uint32_t>(mWidth), static_cast<uint32_t>(mHeight));
 
-  auto activeShadowImage =
-      mwRenderSystem->getShadowDomainOptions(
-                        std::string(bw::app::playerTorchShadowDomain))
-          .enabled;
-  auto target = mPipeline->getGraphImageRenderTarget(
-      {outputImageIndex + (activeShadowImage ? 1u : 0u), 1});
-  if (!target) {
-    return 0;
-  }
-
+  // The declared output follows the generated graph's latest WaterComposite
+  // version regardless of images inserted by AO, shadows, or later features.
+  auto target = mPipeline->getOutputRenderTarget("World");
   auto textureId = static_cast<mpp::RenderTexture*>(target.get())->getId();
 
   // After every pass the pipeline runs, straight over the image it resolved.

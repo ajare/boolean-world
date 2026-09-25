@@ -353,7 +353,8 @@ void checkedInConfigurationsDeclareAcceptedFiveSecondInterval() {
            "resources/Shipping/Game.yaml",
            "support/ASTRALEMPRESS/Debug/Game.yaml",
            "support/ASTRALEMPRESS/MemCheck/Game.yaml",
-           "support/ASTRALEMPRESS/Release/Game.yaml"}) {
+           "support/ASTRALEMPRESS/Release/Game.yaml",
+           "support/ygernasaturna/Release/Game.yaml"}) {
     auto options = parseProgramOptions((root / relative).string());
     require(options.worldDataGeneration.mode ==
                     bw::app::WorldDataGenerationMode::Asynchronous &&

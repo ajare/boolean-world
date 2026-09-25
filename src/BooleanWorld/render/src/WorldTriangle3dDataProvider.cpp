@@ -7,7 +7,7 @@
 
 #include <glm/geometric.hpp>
 
-static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 13 * sizeof(uint32_t));
+static_assert(sizeof(WorldTriangle3dDataProvider::DrawVert) == 15 * sizeof(uint32_t));
 
 size_t WorldTriangle3dDataProvider::VertexKeyHash::operator()(
     VertexKey const& key) const noexcept {
@@ -36,6 +36,7 @@ void WorldTriangle3dDataProvider::getBounds(glm::vec3& bMin, glm::vec3& bMax) {
 
 void WorldTriangle3dDataProvider::clear() {
   updateInternals(std::vector<uint32_t>(mMeshData.size()));
+  ++mRevision;
 }
 
 void WorldTriangle3dDataProvider::setMeshCount(uint32_t numMeshes) {
@@ -174,6 +175,7 @@ void WorldTriangle3dDataProvider::updateInternals(
 }
 
 void WorldTriangle3dDataProvider::finalizeInternals() {
+  ++mRevision;
   mTriangleOrder = TriangleOrder::Authored;
   for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
     auto& meshData = mMeshData[meshIndex];
@@ -213,6 +215,8 @@ void WorldTriangle3dDataProvider::replaceData(
   std::swap(mTriangleOrder, completed.mTriangleOrder);
   setNumPrimitives(getNumTriangles());
   completed.setNumPrimitives(completed.getNumTriangles());
+  ++mRevision;
+  ++completed.mRevision;
 }
 
 void WorldTriangle3dDataProvider::orderTrianglesForView(
@@ -224,6 +228,7 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     return;
   }
 
+  bool changed = false;
   for (uint32_t meshIndex = 0; meshIndex < mMeshData.size(); ++meshIndex) {
     auto& mesh = mMeshData[meshIndex];
     auto& authored = mAuthoredIndices[meshIndex];
@@ -238,8 +243,11 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
       continue;
     }
 
-    std::copy(authored.begin(), authored.end(), mesh.indexData);
     if (order == TriangleOrder::Authored || mesh.numTriangles < 2) {
+      if (!std::equal(authored.begin(), authored.end(), mesh.indexData)) {
+        std::copy(authored.begin(), authored.end(), mesh.indexData);
+        changed = true;
+      }
       continue;
     }
 
@@ -274,10 +282,15 @@ void WorldTriangle3dDataProvider::orderTrianglesForView(
     auto* destination = mesh.indexData;
     for (auto const& triangle : triangleOrder) {
       auto source = triangle.triangle * 3;
-      *destination++ = authored[source];
-      *destination++ = authored[source + 1];
-      *destination++ = authored[source + 2];
+      for (uint32_t corner = 0; corner < 3; ++corner) {
+        auto index = authored[source + corner];
+        changed |= *destination != index;
+        *destination++ = index;
+      }
     }
   }
   mTriangleOrder = order;
+  // A Zone-only frame (and an empty Liquid set) must not trigger GPU uploads
+  // merely because the view-ordering pass ran again.
+  if (changed) ++mRevision;
 }

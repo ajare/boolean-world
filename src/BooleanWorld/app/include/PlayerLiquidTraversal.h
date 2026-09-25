@@ -21,9 +21,13 @@ namespace bw::app {
   return forwardDotTargetDirection > 0.0f;
 }
 
-[[nodiscard]] inline bool maySuppressOverlappingTallStep(bool swimming) {
-  // Swimmers must leave liquid only through the checked climb-out action.
-  return !swimming;
+[[nodiscard]] inline bool maySuppressOverlappingTallStep(
+    bool swimming, float playerFeetElevation, float lowerFloorElevation) {
+  // Suppression lets a dry player leave the high side before gravity marks
+  // them as descending. Once they have landed on the lower floor, the wall
+  // must return so they cannot walk through it and be raised to the rim.
+  return !swimming &&
+         playerFeetElevation - lowerFloorElevation > BW_PLAYER_STEP_HEIGHT;
 }
 
 [[nodiscard]] inline bool isDescendingForTallStepTraversal(

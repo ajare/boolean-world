@@ -82,7 +82,9 @@ void SubMaterialThumbnailRenderer::rebuild() {
           bw::core::Primitive::Operation::Union, {{{ring, {}}}});
       auto properties = primitive->getProperties();
       properties.floorZ = 0.0f;
-      properties.ceilingZ = 1.0f;
+      // Keep the camera and its Torch inside the swatch room. A ceiling
+      // below the camera occludes the floor and blocks its illumination.
+      properties.ceilingZ = 32.0f;
       properties.floorMaterial = bw::core::SurfaceMaterialReference::subMaterial(material.id);
       properties.ceilingMaterial = bw::core::SurfaceMaterialReference::subMaterial(material.id);
       properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial(material.id);

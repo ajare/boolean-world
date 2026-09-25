@@ -20,10 +20,12 @@
 #include <core/Emboss.h>
 #include <core/World.h>
 #include <core/WorldData.h>
+#include <core/ZoneId.h>
 
 #include "PreviewOutlineRenderer.h"
 
 class WorldRenderer;
+struct PortalViewPlan;
 enum class WorldSurfaceSet;
 
 namespace wp::application::resourcesystem {
@@ -60,7 +62,9 @@ public:
   // uniform collection per material mesh bucket, and seeding buckets for
   // out-of-scope Primitives is harmless. Internal synthetic scenes set
   // `loadWorldDependencies` false so they cannot replace the dependencies
-  // retained for the editor's active World.
+  // retained for the editor's active World. `waterReflections` defaults to
+  // Screen-space; callers supplying Planar descriptors use the production
+  // mirrored-camera passes over the same World, not replacement geometry.
   PreviewRenderScene(
       EditorRenderSystem& renderSystem,
       bw::core::World* world,
@@ -70,7 +74,8 @@ public:
           bw::app::HorizontalMaterials::TwoDimensional,
       bw::app::ShadowOptions shadowOptions = {},
       std::string instanceName = "Preview3D",
-      bool loadWorldDependencies = true);
+      bool loadWorldDependencies = true,
+      mpp::WaterReflectionOptions waterReflections = {});
   ~PreviewRenderScene();
 
   PreviewRenderScene(PreviewRenderScene const&) = delete;
@@ -99,8 +104,15 @@ public:
 
   [[nodiscard]] std::uint32_t worldSurfaceTriangleCount(
       WorldSurfaceSet surfaceSet) const;
+  // CPU payload revision and completed GPU upload count, respectively.
+  [[nodiscard]] std::array<std::uint64_t, 2> wallGeometryCounters() const;
+  [[nodiscard]] std::array<std::uint64_t, 2> surfaceGeometryCounters(WorldSurfaceSet set) const;
+  [[nodiscard]] PortalViewPlan const& portalViewDiagnostics() const;
+  [[nodiscard]] bool renderedPortalView() const;
+  [[nodiscard]] std::uint32_t portalRenderedPassCount() const;
+  [[nodiscard]] std::uint32_t portalSelectedEndpointCount() const;
 
-  // Rebuilds this frame's world geometry and renders it into the pipeline's
+  // Renders published world geometry into the pipeline's
   // offscreen images. Returns the OpenGL texture id of the resolved output
   // image, or zero if the pipeline produced no target.
   //
@@ -121,7 +133,8 @@ public:
       float frameTime,
       std::vector<PreviewOutline> const& outlines = {},
       std::int32_t horizontalMaterialIndexOverride = -1,
-      std::int32_t wallMaterialIndexOverride = -1);
+      std::int32_t wallMaterialIndexOverride = -1,
+      bw::core::ZoneId zone = bw::core::ZoneId::Euclidean);
 
 private:
   mpp::RenderSystem* mwRenderSystem{};

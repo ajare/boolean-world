@@ -65,6 +65,36 @@ be allocated. The domain is disabled after one warning, while direct Player
 Torch lighting remains available; it does not mean a deliberately disabled
 configuration failed.
 
+## Portal paths
+
+The Torch can contribute through up to three Portal hops. Planning has three
+independent fixed limits: `PortalLightHopLimit` (3),
+`PortalLightAttachmentLimit` (2 retained virtual lights), and
+`PortalLightShadowPassLimit` (8 folded-segment cubemap passes). A path with N
+hops costs N+1 shadow passes. Setting `PortalLightLimits::maxHops` to zero
+disables transmitted lighting; setting it to one preserves one-hop-only
+behaviour.
+
+A path records both endpoints at every crossing and may not revisit either one.
+Candidates are ranked by descending estimated attenuated strength, descending
+aperture visibility, and then stable Layer/pair/endpoint identity. This makes a
+fixed World and Torch state produce the same retained list every frame. Every
+candidate is reported by `WorldRenderer::getPortalLightDiagnostics()` as
+retained, rejected for geometry or an endpoint cycle, deduplicated, cut by a
+named budget, or unavailable because its complete shadow allocation failed.
+
+Equivalent paths are deduplicated only when they have the same hop count and
+folded geometry: renderer-space positions and aperture dimensions are compared
+within `1e-4` World units, unit axes within `1e-5`, and inverse-transform matrix
+elements within `1e-5`. These tolerances are also declared beside the planner
+contract in `PortalLight.h`.
+
+Each retained path folds the receiver ray backwards through every resolved
+aperture. Its N+1 point-shadow cubemaps cover the real-light-to-first-source
+segment, every destination-to-next-source segment, and the final destination-
+to-receiver segment. Publication is atomic: a missing map rejects the whole
+path rather than leaving an unshadowed recursive contribution.
+
 ## Manual validation
 
 1. Move, then stop: Player Torch shadows follow movement; stationary frames

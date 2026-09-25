@@ -21,6 +21,9 @@ protected:
   std::set<uint32_t> mSelectedPrimitiveIndices;
   uint32_t mSelectedWorldVertexIndex{~0u};
   uint32_t mSelectedTriggerLineIndex{~0u};
+  uint32_t mSelectedPortalLayerId{~0u};
+  uint32_t mSelectedPortalPairId{~0u};
+  uint32_t mSelectedPortalEndpointIndex{~0u};
   std::set<uint32_t> mSelectedMeshVertexIndices;
   std::set<uint32_t> mSelectedMeshEdgeIndices;
   std::set<uint32_t> mSelectedMeshRingIndices;
@@ -33,6 +36,8 @@ public:
 
   void setSelectedWorldVertexIndex(uint32_t index);
   void setSelectedTriggerLineIndex(uint32_t index);
+  void setSelectedPortalEndpoint(
+      uint32_t layerId, uint32_t pairId, uint32_t endpointIndex);
   void setSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
   void addSelectedPrimitiveIndex(uint32_t index);
   void addSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
@@ -47,6 +52,10 @@ public:
   [[nodiscard]] bool anyPrimitiveIndicesSelected(std::vector<uint32_t> const& indices) const;
   [[nodiscard]] uint32_t getSelectedWorldVertexIndex() const;
   [[nodiscard]] uint32_t getSelectedTriggerLineIndex() const;
+  [[nodiscard]] uint32_t getSelectedPortalLayerId() const;
+  [[nodiscard]] uint32_t getSelectedPortalPairId() const;
+  [[nodiscard]] uint32_t getSelectedPortalEndpointIndex() const;
+  [[nodiscard]] bool hasSelectedPortalEndpoint() const;
   [[nodiscard]] bool hasSelection() const;
 
   [[nodiscard]] std::set<uint32_t> const& getSelectedMeshSubObjectIndices(
