@@ -344,6 +344,7 @@ public:
   [[nodiscard]] uint32_t addPortal(AuthoredAperture const& aperture);
   void removePortal(uint32_t portalId);
   void setPortalTarget(uint32_t portalId, uint32_t targetId);
+  void setPortalBlocksWater(uint32_t portalId, bool blocksWater);
   void setPortalName(uint32_t portalId, std::string const& name);
   void setPortalAperture(uint32_t portalId, AuthoredAperture const& aperture);
   [[nodiscard]] Portal const* getPortal(uint32_t portalId) const;

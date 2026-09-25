@@ -177,8 +177,8 @@ void legacyBinaryVersionsAndMixedNamesMigrate() {
   auto base = writer->getSerializedString();
   uint32_t currentVersion{};
   std::memcpy(&currentVersion, base.data() + 4, sizeof(currentVersion));
-  require(currentVersion == 5 && base.substr(base.size() - 6) == std::string(6, '\0'),
-          "v5 writer did not emit exactly the named-only empty Layer tail");
+  require(currentVersion == 6 && base.substr(base.size() - 6) == std::string(6, '\0'),
+          "v6 writer did not emit exactly the named-only empty Layer tail");
   base.resize(base.size() - 6);
   auto readBinary = [](std::string const& bytes) {
     auto reader = std::shared_ptr<bw::core::BinarySerializer>(bw::core::BinarySerializer::fromString(bytes));
@@ -190,9 +190,9 @@ void legacyBinaryVersionsAndMixedNamesMigrate() {
     require(result.deserialize(reader, work), "legacy binary failed to deserialize");
     return result;
   };
-  for (uint32_t version = 1; version <= 4; ++version) {
+  for (uint32_t version = 1; version <= 5; ++version) {
     auto tail = std::shared_ptr<bw::core::BinarySerializer>(bw::core::BinarySerializer::toString());
-    if (version >= 2) {
+    if (version >= 2 && version <= 4) {
       tail->writeUint32("nextLegacyId", 1);
       tail->beginArray("legacy");
       tail->beginMap("loop");
@@ -222,7 +222,7 @@ void legacyBinaryVersionsAndMixedNamesMigrate() {
       tail->endMap();
       tail->endArray();
     }
-    if (version == 4) {
+    if (version >= 4) {
       tail->writeUint32("nextPortalId", 3);
       tail->beginArray("portals");
       tail->beginMap("portal");
@@ -247,6 +247,9 @@ void legacyBinaryVersionsAndMixedNamesMigrate() {
     auto const* layer = loaded.getActiveLayer();
     if (version == 1) {
       require(layer->getPortals().empty(), "v1 World acquired Portals");
+    } else if (version == 5) {
+      require(layer->getPortal(2) && !layer->getPortal(2)->getBlocksWater(),
+              "v5 Portal did not default to unblocked");
     } else {
       auto first = version == 4 ? 3u : 0u;
       auto const* portal = layer->getPortal(first);
@@ -264,6 +267,40 @@ void legacyBinaryVersionsAndMixedNamesMigrate() {
       require(rejected, "truncated legacy binary was accepted");
     }
   }
+}
+
+void waterBlockingPersistsAndDefaultsOff() {
+  bw::core::World world(200, 10);
+  auto* layer = world.getActiveLayer();
+  auto a = layer->addPortal(aperture(50, 0));
+  auto b = layer->addPortal(aperture(-50, 0));
+  require(!layer->getPortal(a)->getBlocksWater(), "new Portal blocks water");
+  layer->setPortalBlocksWater(a, true);
+  layer->setPortalTarget(a, b);
+  layer->setPortalTarget(b, a);
+  layer->setPortalName(a, "Blocked");
+  auto verify = [&](bw::core::World const& copy) {
+    auto const* copied = copy.getActiveLayer();
+    require(copied->getPortal(a)->getBlocksWater() &&
+                !copied->getPortal(b)->getBlocksWater(),
+            "copy/serialization/retarget/rename lost independent water flags");
+  };
+  verify(world);
+  verify(bw::core::World(world));
+  verify(binaryRoundTrip(world));
+  auto yaml = serializeWorld(world);
+  verify(deserializeWorld(yaml));
+  for (int i = 0; i < 2; ++i) {
+    auto pos = yaml.find("blocksWater:");
+    require(pos != std::string::npos, "missing serialized water flag");
+    auto start = yaml.rfind('\n', pos) + 1;
+    auto end = yaml.find('\n', pos);
+    yaml.erase(start, end == std::string::npos ? end : end - start + 1);
+  }
+  auto legacy = deserializeWorld(yaml);
+  require(!legacy.getActiveLayer()->getPortal(a)->getBlocksWater() &&
+              !legacy.getActiveLayer()->getPortal(b)->getBlocksWater(),
+          "older YAML did not default water flags off");
 }
 
 void namedCyclesFollowStableTargets() {
@@ -963,6 +1000,7 @@ int main() {
     bw::core::LayerBuildStep::registerCoreTypes();
     legacyMigrationIsDeterministicAcrossLoopsAndLayers();
     legacyBinaryVersionsAndMixedNamesMigrate();
+    waterBlockingPersistsAndDefaultsOff();
     namedMirrorsRoundTripAndResolveIndependently();
     namedCyclesFollowStableTargets();
     incompleteNamedTargetGraphsRemainAuthoredAndInactive();

@@ -486,6 +486,13 @@ bool setPortalTarget(Document*, bw::core::Layer* layer, uint32_t portalId, uint3
   return true;
 }
 
+bool setPortalBlocksWater(Document*, bw::core::Layer* layer, uint32_t portalId, bool blocksWater) {
+  auto const* portal = layer ? layer->getPortal(portalId) : nullptr;
+  if (!portal || portal->getBlocksWater() == blocksWater) return false;
+  layer->setPortalBlocksWater(portalId, blocksWater);
+  return true;
+}
+
 bool setPortalName(Document*, bw::core::Layer* layer, uint32_t portalId, string const& name) {
   auto const* portal = layer ? layer->getPortal(portalId) : nullptr;
   if (!portal) return false;

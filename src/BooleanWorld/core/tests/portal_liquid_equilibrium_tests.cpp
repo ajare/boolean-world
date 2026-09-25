@@ -86,6 +86,51 @@ TwoRoomResult twoRooms(
   return {world.getWorldData(), firstPortalId};
 }
 
+void waterBlockingIsDirectionalAndRegenerates() {
+  for (bool reverse : {false, true}) {
+    World world(300.0f, 10.0f);
+    addRoom(world, {-75, 0}, 0, 40, reverse ? 0 : 20);
+    addRoom(world, {75, 0}, 0, 40, reverse ? 20 : 0);
+    auto* layer = world.getActiveLayer();
+    auto a = bw::test::addPortalCycle(layer,
+        aperture(-50, 0, 5), aperture(50, 0, 5));
+    auto b = layer->getPortal(a)->getTargetId();
+    auto original = world.getWorldData();
+    layer->setPortalBlocksWater(a, true);
+    auto blocked = world.getWorldData();
+    require(blocked->getPortalLoops().front().active &&
+                blocked->getPortalLiquidDiagnostics().empty() &&
+                blocked->getPortalLiquidAdjacency().size() == 1 &&
+                blocked->getPortalLiquidAdjacency().front().sourceEndpointId == b,
+            "blocking a source removed incoming transport or deactivated the loop");
+    requireNear(blocked->getLiquidDepth({-75, 0}), reverse ? 10 : 20,
+                "blocked source lost water or refused incoming water");
+    requireNear(blocked->getLiquidDepth({75, 0}), reverse ? 10 : 0,
+                "directional blocking produced incorrect destination water");
+    require(original->getPortalLiquidAdjacency().size() == 2,
+            "changing authored flag mutated a previous snapshot");
+    layer->setPortalBlocksWater(b, true);
+    auto sealed = world.getWorldData();
+    require(sealed->getPortalLiquidAdjacency().empty() &&
+                sealed->getPortalLiquidDiagnostics().empty(),
+            "fully blocked pair retained transport or emitted a diagnostic");
+    requireNear(sealed->getLiquidDepth({-75, 0}), reverse ? 0 : 20,
+                "regeneration did not restore authored water inputs");
+    layer->setPortalBlocksWater(a, false);
+    layer->setPortalBlocksWater(b, false);
+    require(world.getWorldData()->getLiquidPoolElevations() ==
+                original->getLiquidPoolElevations(),
+            "clearing flags did not restore original settlement");
+    layer->setPortalTarget(a, a);
+    layer->setPortalTarget(b, b);
+    for (bool flag : {false, true}) {
+      layer->setPortalBlocksWater(a, flag);
+      require(world.getWorldData()->getPortalLiquidAdjacency().empty(),
+              "mirror transported Liquid");
+    }
+  }
+}
+
 void portalAdjacencyIsSeparateAndWaitsForItsSill() {
   auto below = twoRooms(4.0f);
   require(below.data->getPortalLiquidAdjacency().size() == 2,
@@ -270,7 +315,7 @@ double liquidVolume(ArrangementWorldDataPtr const& data) {
 
 ArrangementWorldDataPtr directedRooms(
     float seed, float intermediateFloor, bool reverse = false,
-    bool drain = false) {
+    bool drain = false, bool blockMiddle = false) {
   World world(400.0f, 10.0f);
   addRoom(world, {-100.0f, 0.0f}, 0.0f, 50.0f, seed);
   auto* middle = addRoom(world, {0.0f, 0.0f}, intermediateFloor, 60.0f);
@@ -288,11 +333,12 @@ ArrangementWorldDataPtr directedRooms(
   layer->setPortalTarget(first, reverse ? third : second);
   layer->setPortalTarget(second, reverse ? first : third);
   layer->setPortalTarget(third, reverse ? second : first);
+  layer->setPortalBlocksWater(second, blockMiddle);
   auto data = world.getWorldData();
   require(data->getPortalLiquidDiagnostics().empty(),
           "directed loop unexpectedly failed Liquid validation");
-  require(data->getPortalLiquidAdjacency().size() == 3,
-          "a three-endpoint loop must produce exactly three directed hops");
+  require(data->getPortalLiquidAdjacency().size() == (blockMiddle ? 2 : 3),
+          "a three-endpoint loop must omit only blocked outgoing hops");
   auto const& resolved = data->getPortalLoops().front();
   for (auto const& hop : data->getPortalLiquidAdjacency()) {
     require(hop.destinationEndpointId == bw::core::NextPortalEndpointId(
@@ -349,6 +395,13 @@ void directedSpillCannotSkipAnIntermediateSill() {
 }
 
 void directedLoopsReachEquilibriumAndOrdinaryDrains() {
+  auto blockedMiddle = directedRooms(30.0f, 10.0f, false, false, true);
+  requireNear(blockedMiddle->getLiquidDepth({100, 0}), 0,
+              "Liquid crossed a blocked intermediate Portal");
+  requireNear(liquidVolume(blockedMiddle), 30.0 * 2500.0,
+              "blocked longer cycle lost volume");
+  require(blockedMiddle->getLiquidDepth({0, 0}) > 0,
+          "blocked intermediate Portal refused incoming Liquid");
   auto filled = directedRooms(60.0f, 10.0f);
   for (auto x : {-100.0f, 0.0f, 100.0f}) {
     requireNear(filled->getLiquidDepth({x, 0.0f}), 20.0,
@@ -520,6 +573,22 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
             "stable loop order did not produce stable directed hops");
   }
 
+  // Blocking the two conflicting outgoing hops leaves the first hop valid.
+  // Their constraints and missing-cell checks must not poison enabled hops.
+  layer->setPortalBlocksWater(layer->getPortal(rejected)->getTargetId(), true);
+  layer->setPortalBlocksWater(last, true);
+  layer->setPortalBlocksWater(later, true);
+  layer->setPortalBlocksWater(layer->getPortal(later)->getTargetId(), true);
+  auto unblockedTrial = world.getWorldData();
+  require(unblockedTrial->getPortalLiquidDiagnostics().empty() &&
+              unblockedTrial->getPortalLiquidAdjacency().size() == 3,
+          "blocked hops retained contradictory elevation constraints");
+  auto blockedLoop = *unblockedTrial->findPortalLoop(layer->getId(), rejected);
+  auto partial = bw::core::BuildPortalLiquidAdjacency(
+      data->getArrangement(), data->getWalls(), cells, {blockedLoop});
+  require(partial.diagnostics.empty() && partial.adjacency.size() == 1,
+          "blocked hops still required unused incident cells");
+
   // Independent cycles arbitrate by their smallest stable Portal ID.
   auto named = after->getPortalLoops();
   auto resolveNamed = [&] {
@@ -548,6 +617,7 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
 int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
+    waterBlockingIsDirectionalAndRegenerates();
     portalAdjacencyIsSeparateAndWaitsForItsSill();
     differingFloorsMapRelativeElevationAndConserveVolume();
     widthDoesNotChangeInstantaneousEquilibriumAndDrainsStillWork();

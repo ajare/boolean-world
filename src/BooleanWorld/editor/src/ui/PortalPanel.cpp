@@ -39,6 +39,20 @@ void renderPortalsView(ViewContext& context) {
   if (!authored) return;
 
   ImGui::SeparatorText("Selected Portal");
+  auto blocksWater = portal->getBlocksWater();
+  if (ImGui::Checkbox("Blocks water", &blocksWater)) {
+    transactUndoableActionAtomically(doc, CommandId::SetPortalBlocksWater,
+        [=](Document* document) {
+          return setPortalBlocksWater(document, layer, portalId, blocksWater);
+        });
+    // Transactions may replace the document snapshot and invalidate pointers.
+    return;
+  }
+  ImGui::SameLine();
+  widgets::HelpMarker(
+      "Blocks all Liquid leaving this Portal, but allows Liquid arriving from "
+      "another Portal. Mirrors never transport Liquid. Changes regenerate "
+      "Liquid from authored inputs.");
   {
     auto const* portal = layer->getPortal(portalId);
     auto name = portal->getName();

@@ -790,6 +790,30 @@ void audioEmitterEditsAreUndoableAndPreserveIdentity() {
           "redo did not delete the AudioEmitter again");
 }
 
+void portalWaterBlockingIsTransactional() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto id = layer->addPortal({{1, 3}, 28, 0, 24});
+  editor::transactUndoableActionAtomically(
+      &document, editor::CommandId::SetPortalBlocksWater,
+      [=](editor::Document* doc) {
+        return editor::setPortalBlocksWater(
+            doc, doc->getWorld()->getActiveLayer(), id, true);
+      });
+  auto blocked = [&] {
+    return document.getWorld()->getActiveLayer()->getPortal(id)->getBlocksWater();
+  };
+  require(blocked(), "water-blocking action did not set the flag");
+  require(!editor::setPortalBlocksWater(&document,
+              document.getWorld()->getActiveLayer(), id, true),
+          "unchanged water flag was not a no-op");
+  editor::undo(&document);
+  require(!blocked(), "water-blocking undo failed");
+  editor::redo(&document);
+  require(blocked(), "water-blocking redo failed");
+}
+
 void namedTargetsAreTransactional() {
   editor::Document document;
   document.newDoc();
@@ -1017,6 +1041,7 @@ int main() {
     newDocClearsUndoHistory();
     audioEmitterEditsAreUndoableAndPreserveIdentity();
     mirrorAuthoringRestoresStableSelection();
+    portalWaterBlockingIsTransactional();
     namedTargetsAreTransactional();
     namedPortalLifecycleIsAtomic();
     portalAuthoringIsTransactionalAndRestoresStableSelection();

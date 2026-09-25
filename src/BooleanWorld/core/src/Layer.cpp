@@ -310,6 +310,7 @@ void Layer::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
         serializer->writeFloat("bottom", aperture.bottom);
         serializer->writeFloat("top", aperture.top);
         serializer->writeUint32("targetId", portal.getTargetId());
+        serializer->writeBool("blocksWater", portal.getBlocksWater());
         serializer->endMap();
       }
       serializer->endArray();
@@ -501,6 +502,8 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
           aperture.top = serializer->readFloat("top");
           auto targetId = serializer->readUint32("targetId");
           portals.emplace_back(portalId, move(portalName), aperture, targetId);
+          if (serializer->hasField("blocksWater"))
+            portals.back().mBlocksWater = serializer->readBool("blocksWater");
           serializer->endMap();
         }
         serializer->endArray();
@@ -1691,6 +1694,14 @@ void Layer::setPortalTarget(uint32_t portalId, uint32_t targetId) {
   if (found == mPortals.end() || !getPortal(targetId))
     throw CoreException("Portal source and target must belong to the same Layer");
   found->mTargetId = targetId;
+  modify();
+}
+
+void Layer::setPortalBlocksWater(uint32_t portalId, bool blocksWater) {
+  auto found = ranges::find(mPortals, portalId, &Portal::getId);
+  if (found == mPortals.end()) throw CoreException("Portal not found in Layer");
+  if (found->mBlocksWater == blocksWater) return;
+  found->mBlocksWater = blocksWater;
   modify();
 }
 

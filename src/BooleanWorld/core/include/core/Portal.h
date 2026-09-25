@@ -36,6 +36,7 @@ class BW_API Portal {
   std::string mName;
   AuthoredAperture mAperture{};
   uint32_t mTargetId{};
+  bool mBlocksWater{false};
   friend class Layer;
 public:
   Portal(uint32_t id, std::string name, AuthoredAperture aperture,
@@ -44,6 +45,8 @@ public:
   [[nodiscard]] std::string const& getName() const { return mName; }
   [[nodiscard]] AuthoredAperture const& getAperture() const { return mAperture; }
   [[nodiscard]] uint32_t getTargetId() const { return mTargetId; }
+  // Restricts outgoing Liquid transport only, never incoming hops.
+  [[nodiscard]] bool getBlocksWater() const { return mBlocksWater; }
 };
 
 // Target-graph validity is independent of aperture resolution. Every Portal
@@ -103,6 +106,7 @@ struct ResolvedPortalEndpoint {
   // The authored Layer-local Portal ID, never an index or loop-local ID.
   uint32_t endpointId{};
   AuthoredAperture authored{};
+  bool blocksWater{false};
   bool resolved{false};
   PortalTargetGraphDiagnostic targetGraphDiagnostic{
       PortalTargetGraphDiagnostic::None};
@@ -225,8 +229,9 @@ FindNearestLegalPortalCentre(
 
 // Resolves active apertures onto their incident Hydraulic cells, then accepts
 // inferred Portal loops in stable (Layer id, smallest member Portal id) order.
-// Ordinary links participate in the offset graph. A loop that would close a contradictory elevation cycle
-// is diagnosed and omitted atomically.
+// Blocked outgoing hops contribute neither adjacency nor offset constraints.
+// Ordinary links participate in the offset graph. If the enabled hops close a
+// contradictory elevation cycle, they are diagnosed and omitted atomically.
 [[nodiscard]] BW_API PortalLiquidAdjacencyResult
 BuildPortalLiquidAdjacency(
     arr::ArrangementResult const& arrangement,

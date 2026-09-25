@@ -129,6 +129,7 @@ ResolvedPortalEndpoint resolveEndpoint(
   ResolvedPortalEndpoint result;
   result.endpointId = endpoint.getId();
   result.authored = endpoint.getAperture();
+  result.blocksWater = endpoint.getBlocksWater();
 
   struct Candidate {
     uint32_t index;
@@ -750,8 +751,8 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
       });
 
   for (auto const* portalLoop : orderedLoops) {
-    // Stage the complete loop. Neither constraints nor hops escape a failed
-    // trial, including failures discovered only at a later endpoint.
+    // Stage all enabled hops in the loop. Neither constraints nor hops escape
+    // a failed trial, including failures discovered only at a later endpoint.
     auto trial = offsets;
     std::vector<PortalLiquidAdjacency> hops;
     auto missingCells = false;
@@ -767,6 +768,9 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
         missingCells = true;
         break;
       }
+      // A blocked source contributes neither transport nor offset constraints.
+      // Destinations remain usable even when their own outgoing hop is blocked.
+      if (sourceEndpoint->blocksWater) continue;
       auto firstCells = incidentCells(*sourceEndpoint);
       auto secondCells = incidentCells(*destinationEndpoint);
       if (firstCells.empty() || secondCells.empty()) {
