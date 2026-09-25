@@ -790,6 +790,31 @@ void audioEmitterEditsAreUndoableAndPreserveIdentity() {
           "redo did not delete the AudioEmitter again");
 }
 
+void namedTargetsAreTransactional() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto a = layer->addPortal({{1, 3}, 28, 0, 24});
+  auto b = layer->addPortal({{11, -7}, 20, 3, 27});
+  auto c = layer->addPortal({{-9, 15}, 24, 6, 30});
+  layer->setPortalTarget(a, c);
+  layer->setPortalTarget(c, b);
+  editor::transactUndoableActionAtomically(&document, editor::CommandId::SetPortalTarget,
+      [=](editor::Document* doc) {
+        return editor::setPortalTarget(doc, doc->getWorld()->getActiveLayer(), b, a);
+      });
+  require(document.getWorld()->getActiveLayer()->getPortal(b)->getTargetId() == a,
+          "target action did not close named cycle");
+  editor::undo(&document);
+  require(document.getWorld()->getActiveLayer()->getPortal(b)->getTargetId() == b,
+          "target undo failed");
+  editor::redo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPortal(b)->getTargetId() == a &&
+          layer->getPortal(a)->getTargetId() == c && layer->getPortal(c)->getTargetId() == b,
+          "target redo lost directed relationships");
+}
+
 void mirrorAuthoringRestoresStableSelection() {
   editor::Document document;
   document.newDoc();
@@ -1027,6 +1052,7 @@ int main() {
     newDocClearsUndoHistory();
     audioEmitterEditsAreUndoableAndPreserveIdentity();
     mirrorAuthoringRestoresStableSelection();
+    namedTargetsAreTransactional();
     portalAuthoringIsTransactionalAndRestoresStableSelection();
     aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry();
     std::cout << "Undo history regressions passed\n";

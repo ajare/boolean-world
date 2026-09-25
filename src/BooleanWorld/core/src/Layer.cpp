@@ -529,6 +529,10 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
           serializer->endMap();
         }
         serializer->endArray();
+        for (auto const& portal : portals) {
+          if (!ids.contains(portal.getTargetId()))
+            throw CoreException("Portal target must belong to the same Layer");
+        }
       }
       serializer->endMap();  // layer
     }
@@ -1678,6 +1682,32 @@ void Layer::removePortal(uint32_t portalId) {
   auto found = ranges::find(mPortals, portalId, &Portal::getId);
   if (found == mPortals.end()) throw CoreException("Portal not found in Layer");
   mPortals.erase(found);
+  // Deleting a destination restores incoming sources to Mirror behavior.
+  for (auto& portal : mPortals)
+    if (portal.mTargetId == portalId) portal.mTargetId = portal.mId;
+  modify();
+}
+
+void Layer::setPortalTarget(uint32_t portalId, uint32_t targetId) {
+  auto found = ranges::find(mPortals, portalId, &Portal::getId);
+  if (found == mPortals.end() || !getPortal(targetId))
+    throw CoreException("Portal source and target must belong to the same Layer");
+  found->mTargetId = targetId;
+  modify();
+}
+
+void Layer::setPortalName(uint32_t portalId, string const& name) {
+  auto found = ranges::find(mPortals, portalId, &Portal::getId);
+  if (found == mPortals.end()) throw CoreException("Portal not found in Layer");
+  Portal validated(portalId, name, found->mAperture, found->mTargetId);
+  auto fold = [](string text) {
+    for (auto& c : text) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+    return text;
+  };
+  for (auto const& portal : mPortals)
+    if (portal.getId() != portalId && fold(portal.getName()) == fold(name))
+      throw CoreException("Duplicate Portal name in Layer");
+  found->mName = name;
   modify();
 }
 

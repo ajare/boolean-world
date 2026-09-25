@@ -479,6 +479,13 @@ bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, 
   return true;
 }
 
+bool setPortalTarget(Document*, bw::core::Layer* layer, uint32_t portalId, uint32_t targetId) {
+  auto const* portal = layer ? layer->getPortal(portalId) : nullptr;
+  if (!portal || !layer->getPortal(targetId) || portal->getTargetId() == targetId) return false;
+  layer->setPortalTarget(portalId, targetId);
+  return true;
+}
+
 bool createPortal(Document* doc, bw::core::Layer* layer) {
   bw::core::AuthoredAperture aperture;
   aperture.centre = doc->getGhost()->getPosition();

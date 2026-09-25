@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <set>
 #include <stdexcept>
@@ -339,10 +340,10 @@ PortalMapping BuildPortalMapping(
 Portal::Portal(uint32_t id, std::string name, AuthoredAperture aperture,
                uint32_t targetId)
     : mId(id), mName(std::move(name)), mAperture(aperture), mTargetId(targetId) {
-  if (id == ~0u || targetId != id || !AuthoredApertureIsValid(aperture) ||
+  if (id == ~0u || targetId == ~0u || !AuthoredApertureIsValid(aperture) ||
       mName.empty() || mName.find_first_not_of(" \t\r\n") != 0 ||
       mName.find_last_not_of(" \t\r\n") != mName.size() - 1) {
-    throw CoreException("Invalid Mirror Portal ID, name, aperture, or self target");
+    throw CoreException("Invalid Portal ID, name, aperture, or target");
   }
 }
 
@@ -650,18 +651,54 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     std::vector<PortalLoopSnapshot> const& loops) {
   std::vector<ResolvedPortalLoop> result;
   result.reserve(loops.size());
+  struct Input {
+    uint32_t layerId, loopId;
+    std::vector<uint32_t> order;
+    std::vector<PortalEndpoint> endpoints;
+  };
+  std::vector<Input> inputs;
+  std::map<uint32_t, std::map<uint32_t, Portal const*>> named;
   for (auto const& snapshot : loops) {
-    ResolvedPortalLoop resolved;
-    resolved.layerId = snapshot.layerId;
-    resolved.loopId = snapshot.portal ? IndependentPortalLoopId : snapshot.loop.getId();
-    auto const authoredOrder = snapshot.loop.getTraversalOrder();
-    resolved.traversalOrder.assign(authoredOrder.begin(), authoredOrder.end());
-    auto authoredEndpoints = snapshot.loop.getEndpoints();
     if (snapshot.portal) {
-      auto const& portal = *snapshot.portal;
-      resolved.traversalOrder = {portal.getId()};
-      authoredEndpoints = {PortalEndpoint{portal.getId(), portal.getAperture()}};
+      named[snapshot.layerId].emplace(snapshot.portal->getId(), &*snapshot.portal);
+    } else {
+      auto order = snapshot.loop.getTraversalOrder();
+      inputs.push_back({snapshot.layerId, snapshot.loop.getId(),
+          {order.begin(), order.end()}, snapshot.loop.getEndpoints()});
     }
+  }
+  // A functional graph may contain tails as well as cycles. Only closed
+  // cycles participate. Start each at its smallest stable ID, never storage
+  // order; the endpoint key retains the independent-Portal namespace.
+  for (auto const& [layerId, portals] : named) {
+    std::set<uint32_t> visited;
+    for (auto const& [start, unused] : portals) {
+      std::vector<uint32_t> path;
+      auto id = start;
+      while (portals.contains(id) && visited.insert(id).second) {
+        path.push_back(id);
+        id = portals.at(id)->getTargetId();
+      }
+      auto begin = std::ranges::find(path, id);
+      if (begin == path.end()) continue;
+      std::vector<uint32_t> order(begin, path.end());
+      std::rotate(order.begin(), std::ranges::min_element(order), order.end());
+      Input input{layerId, IndependentPortalLoopId, order, {}};
+      for (auto endpointId : order)
+        input.endpoints.emplace_back(endpointId, portals.at(endpointId)->getAperture());
+      inputs.push_back(std::move(input));
+    }
+  }
+  std::ranges::sort(inputs, [](auto const& a, auto const& b) {
+    return std::tie(a.layerId, a.loopId, a.order.front()) <
+           std::tie(b.layerId, b.loopId, b.order.front());
+  });
+  for (auto const& input : inputs) {
+    ResolvedPortalLoop resolved;
+    resolved.layerId = input.layerId;
+    resolved.loopId = input.loopId;
+    resolved.traversalOrder = input.order;
+    auto const& authoredEndpoints = input.endpoints;
     auto const firstHeight = authoredEndpoints.front().getAperture().top -
                              authoredEndpoints.front().getAperture().bottom;
     auto width = std::numeric_limits<float>::infinity();
@@ -767,8 +804,8 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
   }
   std::sort(
       orderedLoops.begin(), orderedLoops.end(), [](auto* left, auto* right) {
-        return std::tie(left->layerId, left->loopId) <
-               std::tie(right->layerId, right->loopId);
+        return std::tie(left->layerId, left->loopId, left->traversalOrder.front()) <
+               std::tie(right->layerId, right->loopId, right->traversalOrder.front());
       });
 
   for (auto const* portalLoop : orderedLoops) {
@@ -828,7 +865,9 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
       result.diagnostics.push_back(
           {portalLoop->layerId, portalLoop->loopId,
            missingCells ? PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint
-                        : PortalLiquidDiagnostic::ContradictoryElevationCycle});
+                        : PortalLiquidDiagnostic::ContradictoryElevationCycle,
+           portalLoop->loopId == IndependentPortalLoopId
+               ? portalLoop->traversalOrder.front() : ~0u});
       continue;
     }
     offsets = std::move(trial);

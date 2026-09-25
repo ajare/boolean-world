@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <PortalView.h>
+#include <core/Arrangement.h>
 
 namespace {
 void require(bool condition, char const* message) {
@@ -237,7 +238,7 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
           "Portal visibility and projected-area cutoff diagnostics were incomplete");
 }
 
-void threeEndpointViewsUseDirectedDestinations() {
+void threeEndpointViewsUseDirectedDestinations(bool named = false) {
   auto loop = makeLoop(7, 11, {0.0f, 4.0f}, {0.0f, -1.0f});
   loop.endpoints.push_back({});
   loop.endpoints[2].endpointId = 2;
@@ -246,6 +247,20 @@ void threeEndpointViewsUseDirectedDestinations() {
       {-8.0f, 2.0f}, {0.0f, 1.0f}, {1.0f, 0.0f},
       2.0f, 5.0f, 7.0f, {2}};
   loop.traversalOrder = {0, 1, 2};
+  if (named) {
+    std::vector<bw::core::PortalLoopSnapshot> inputs;
+    for (auto const& endpoint : loop.endpoints) {
+      auto const& aperture = endpoint.aperture;
+      inputs.push_back({7, {}, bw::core::Portal(endpoint.endpointId,
+          "Portal " + std::to_string(endpoint.endpointId),
+          {aperture.centre, aperture.width, aperture.bottom, aperture.top},
+          (endpoint.endpointId + 2) % 3)});
+    }
+    auto inferred = bw::core::ResolvePortalLoops({}, {}, inputs);
+    require(inferred.size() == 1, "named view cycle not inferred");
+    loop.loopId = inferred.front().loopId;
+    loop.traversalOrder = inferred.front().traversalOrder;
+  }
   auto view = glm::lookAt(
       glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
@@ -265,7 +280,7 @@ void threeEndpointViewsUseDirectedDestinations() {
     require(
         near(transformed.x, expected.x) && near(-transformed.z, expected.y) &&
             bw::core::NextPortalEndpoint(loop, sourceId)->endpointId ==
-                (sourceId + 1) % 3,
+                (sourceId + (named ? 2 : 1)) % 3,
         "public Portal view construction did not distinguish A -> B -> C -> A");
   }
 }
@@ -424,6 +439,7 @@ int main() {
     loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots();
     invisibleAndSubThresholdBranchesConsumeNoSlots();
     threeEndpointViewsUseDirectedDestinations();
+    threeEndpointViewsUseDirectedDestinations(true);
     observingCameraUsesTheCanonicalRigidTransformAndExactProjection();
     std::cout << "Bounded Portal view planning and transforms passed\n";
     return 0;

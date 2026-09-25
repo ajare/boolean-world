@@ -486,7 +486,7 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   }
 }
 
-void threeEndpointLoopTraversesOnlyInDirectedOrder() {
+void threeEndpointLoopTraversesOnlyInDirectedOrder(bool named = false) {
   bw::core::World world{200.0f, 10.0f};
   auto* room = new bw::core::RectanglePolygon(
       bw::core::Primitive::Operation::Union,
@@ -494,13 +494,24 @@ void threeEndpointLoopTraversesOnlyInDirectedOrder() {
   room->setSize(100.0f, 100.0f);
   world.addPrimitive(room);
   auto* layer = world.getActiveLayer();
-  auto const loopId = layer->addPortalLoop(
-      {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f},
-      {{50.0f, 0.0f}, 20.0f, 0.0f, 24.0f});
-  auto const thirdId = layer->addPortalEndpointAfter(
-      loopId, 1, {{0.0f, 50.0f}, 20.0f, 0.0f, 24.0f});
+  auto loopId = bw::core::IndependentPortalLoopId;
+  uint32_t thirdId;
+  if (named) {
+    auto a = layer->addPortal({{-50, 7}, 28, 0, 24});
+    auto b = layer->addPortal({{50, -11}, 20, 0, 24});
+    thirdId = layer->addPortal({{13, 50}, 24, 0, 24});
+    layer->setPortalTarget(a, b);
+    layer->setPortalTarget(b, thirdId);
+    layer->setPortalTarget(thirdId, a);
+  } else {
+    loopId = layer->addPortalLoop(
+        {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f},
+        {{50.0f, 0.0f}, 20.0f, 0.0f, 24.0f});
+    thirdId = layer->addPortalEndpointAfter(
+        loopId, 1, {{0.0f, 50.0f}, 20.0f, 0.0f, 24.0f});
+  }
   auto data = world.getWorldData();
-  auto const* loop = data->findPortalLoop(layer->getId(), loopId);
+  auto const* loop = data->findPortalLoop(layer->getId(), loopId, 0);
   require(loop && loop->active && loop->endpoints.size() == 3,
           "three-endpoint player Portal fixture did not resolve");
 
@@ -621,6 +632,7 @@ int main() {
     collisionSweepContinuesItsTransformedRemainder();
     collisionSweepContinuesItsTransformedRemainder(true);
     threeEndpointLoopTraversesOnlyInDirectedOrder();
+    threeEndpointLoopTraversesOnlyInDirectedOrder(true);
     exitSideAndSameUpdateGuardsAreGeometricAndFinite();
     std::cout << "Player Portal traversal passed\n";
     return 0;

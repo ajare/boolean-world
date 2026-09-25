@@ -325,8 +325,9 @@ void renderPortalOverlays(
     drawList->AddCircle(centre, 6.0f, colour, 12, 2.0f);
     auto active = generated && generated->active;
     auto diagnostic = endpoint ? bw::core::PortalResolutionDiagnosticText(endpoint->diagnostic)
-                               : std::string_view{"Waiting for generation"};
-    auto label = std::format("{} (Mirror) — {}", portal.getName(), diagnostic);
+                               : std::string_view{"Not in a closed target cycle"};
+    auto label = std::format("{}{} — {}", portal.getName(),
+        portal.getTargetId() == portal.getId() ? " (Mirror)" : "", diagnostic);
     drawList->AddText({centre.x + 9.0f, centre.y + 7.0f},
                      active ? colour : inactiveColour, label.c_str());
   }

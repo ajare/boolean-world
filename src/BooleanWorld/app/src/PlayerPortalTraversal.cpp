@@ -149,7 +149,7 @@ void updatePortalExitSideState(
     PortalExitSideState& state) {
   if (!state.active) return;
   auto const* portalLoop = world.findPortalLoop(
-      state.endpoint.layerId, state.endpoint.loopId);
+      state.endpoint.layerId, state.endpoint.loopId, state.endpoint.endpointId);
   auto const* endpoint = portalLoop
                              ? core::FindPortalEndpoint(
                                    *portalLoop, state.endpoint.endpointId)

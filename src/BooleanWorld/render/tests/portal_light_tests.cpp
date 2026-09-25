@@ -4,6 +4,8 @@
 #include <vector>
 
 #include <PortalLight.h>
+#include <core/World.h>
+#include <core/RectanglePolygon.h>
 
 namespace {
 void require(bool condition, char const* message) {
@@ -33,6 +35,39 @@ bw::core::ResolvedPortalLoop translationLoop(
   portalLoop.endpoints[1].aperture = {
       {destinationX, destinationY}, {-1.0f, 0.0f}, {0.0f, -1.0f}, resolvedWidth, 0.0f, 4.0f, {1}};
   return portalLoop;
+}
+
+void namedCycleLightsUseExplicitTargets() {
+  bw::core::World world(200, 10);
+  auto* room = new bw::core::RectanglePolygon(bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f);
+  room->setSize(100, 100);
+  world.addPrimitive(room);
+  auto* layer = world.getActiveLayer();
+  auto a = layer->addPortal({{-50, 7}, 28, 0, 24});
+  auto b = layer->addPortal({{50, -11}, 20, 3, 27});
+  auto c = layer->addPortal({{13, 50}, 24, 6, 30});
+  layer->setPortalTarget(a, c);
+  layer->setPortalTarget(c, b);
+  layer->setPortalTarget(b, a);
+  auto data = world.getWorldData();
+  auto const& loop = data->getPortalLoops().front();
+  require(loop.active, "named light cycle did not resolve");
+  for (auto const& endpoint : loop.endpoints) {
+    auto p = endpoint.aperture.centre + endpoint.aperture.front * 5 + endpoint.aperture.tangent * 2;
+    glm::vec3 torch{p.x, endpoint.aperture.bottom + 9, -p.y};
+    auto light = BuildPortalLightAttachment(loop, endpoint.endpointId, torch, {});
+    auto mapping = bw::core::BuildPortalMapping(loop, endpoint.endpointId);
+    auto expected = mapping.transformPoint(p);
+    require(light && near(light->position.x, expected.x) && near(light->position.z, -expected.y) &&
+            near(light->position.y, mapping.transformElevation(torch.y)) &&
+            light->hops.front().destinationEndpoint.endpointId ==
+                layer->getPortal(endpoint.endpointId)->getTargetId(),
+            "named Portal Torch placement did not follow explicit target");
+    auto unfolded = light->hops.front().destinationToSource * glm::vec4(light->position, 1);
+    require(glm::length(glm::vec3(unfolded) - torch) < 1e-4f,
+            "named Portal shadow folding did not invert canonical mapping");
+  }
 }
 
 void mirrorLightReflectsAndRemainsGated() {
@@ -331,6 +366,7 @@ void attachmentsFailAtomicallyWithoutCompleteShadows() {
 int main() {
   try {
     mirrorLightReflectsAndRemainsGated();
+    namedCycleLightsUseExplicitTargets();
     canonicalTransformPreservesThePlayerTorch();
     stableIdentityPreservesLightOutput();
     multiHopCompositionGatesEveryAperture();

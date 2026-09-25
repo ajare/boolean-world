@@ -281,10 +281,12 @@ ArrangementWorldDataPtr directedRooms(
     proxy->commitTo(*middle);
   }
   auto* layer = world.getActiveLayer();
-  auto loop = layer->addPortalLoop(
-      aperture(-75.0f, 0.0f, 5.0f), aperture(-25.0f, 0.0f, 15.0f));
-  auto third = layer->addPortalEndpointAfter(
-      loop, reverse ? 0 : 1, aperture(75.0f, 0.0f, 25.0f));
+  auto first = layer->addPortal(aperture(-75.0f, 0.0f, 5.0f));
+  auto second = layer->addPortal(aperture(-25.0f, 0.0f, 15.0f));
+  auto third = layer->addPortal(aperture(75.0f, 0.0f, 25.0f));
+  layer->setPortalTarget(first, reverse ? third : second);
+  layer->setPortalTarget(second, reverse ? first : third);
+  layer->setPortalTarget(third, reverse ? second : first);
   auto data = world.getWorldData();
   require(data->getPortalLiquidDiagnostics().empty(),
           "directed loop unexpectedly failed Liquid validation");
@@ -519,6 +521,36 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
                 actual.sourceEndpointId == expected.sourceEndpointId &&
                 actual.cell0 == expected.cell0 && actual.cell1 == expected.cell1,
             "stable loop order did not produce stable directed hops");
+  }
+
+  // The transitional independent namespace is shared by multiple cycles.
+  // Conflict arbitration and diagnostics must use their stable member IDs.
+  auto named = after->getPortalLoops();
+  for (auto& cycle : named) {
+    auto offset = cycle.loopId * 10;
+    for (auto& endpoint : cycle.endpoints) endpoint.endpointId += offset;
+    for (auto& id : cycle.traversalOrder) id += offset;
+    cycle.loopId = bw::core::IndependentPortalLoopId;
+  }
+  auto resolveNamed = [&] {
+    return bw::core::BuildPortalLiquidAdjacency(after->getArrangement(),
+        after->getWalls(), after->getHydraulicCells(), named);
+  };
+  auto namedResult = resolveNamed();
+  std::ranges::reverse(named);
+  auto reversedNamed = resolveNamed();
+  require(namedResult.diagnostics.size() == 1 && reversedNamed.diagnostics.size() == 1 &&
+          namedResult.diagnostics.front().cyclePortalId == rejected * 10 &&
+          reversedNamed.diagnostics.front().cyclePortalId == rejected * 10 &&
+          namedResult.adjacency.size() == 4 && reversedNamed.adjacency.size() == 4,
+          "independent-cycle conflict handling lost atomicity or stable identity");
+  for (size_t i = 0; i < namedResult.adjacency.size(); ++i) {
+    auto const& expected = namedResult.adjacency[i];
+    auto const& actual = reversedNamed.adjacency[i];
+    require(expected.sourceEndpointId == actual.sourceEndpointId &&
+            expected.destinationEndpointId == actual.destinationEndpointId &&
+            expected.cell0 == actual.cell0 && expected.cell1 == actual.cell1,
+            "independent-cycle Liquid arbitration depended on storage order");
   }
 }
 }  // namespace

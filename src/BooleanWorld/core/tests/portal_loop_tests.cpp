@@ -77,6 +77,89 @@ bw::core::World binaryRoundTrip(bw::core::World const& world) {
   return result;
 }
 
+void namedCyclesFollowStableTargets() {
+  bw::core::World world(200, 10);
+  auto* room = addRoom(world);
+  {
+    auto mutation = room->mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance)
+        .setPoints({{0, 0}, {1, 0}});
+  }
+  auto* layer = world.getActiveLayer();
+  auto a = layer->addPortal(aperture(-50, 7, 28));
+  auto b = layer->addPortal(aperture(50, -11, 20, 3, 27));
+  auto c = layer->addPortal(aperture(13, 50, 24, 6, 30));
+  layer->setPortalTarget(a, c);
+  layer->setPortalTarget(c, b);
+  layer->setPortalTarget(b, a);
+  layer->setPortalName(c, "Destination C");
+  auto verify = [&](bw::core::World& copy, std::string const& stage) {
+    auto* owner = copy.getActiveLayer();
+    require(owner->getPortal(a)->getTargetId() == c &&
+            owner->getPortal(c)->getTargetId() == b &&
+            owner->getPortal(b)->getTargetId() == a &&
+            owner->getPortal(c)->getName() == "Destination C",
+            "copy, rename or persistence changed target IDs");
+    auto data = copy.getWorldData();
+    auto* loop = data->findPortalLoop(owner->getId(), bw::core::IndependentPortalLoopId, b);
+    require(loop != nullptr, "named cycle missing");
+    require(loop->active, stage + ": named cycle inactive: " +
+        std::string(bw::core::PortalResolutionDiagnosticText(loop->diagnostic)));
+    require(loop->traversalOrder == std::vector<uint32_t>{a, c, b},
+            "named directed cycle not inferred canonically");
+    for (auto const& endpoint : loop->endpoints) {
+      auto mapping = bw::core::BuildPortalMapping(*loop, endpoint.endpointId);
+      require(endpoint.aperture.width == 20 && !mapping.reversesHandedness() &&
+              bw::core::NextPortalEndpoint(*loop, endpoint.endpointId)->endpointId ==
+                  owner->getPortal(endpoint.endpointId)->getTargetId(),
+              "named cycle bypassed width normalization or ordinary mapping");
+      auto const& opening = endpoint.aperture;
+      require(data->circleIntersectsWall(opening.centre, 2) < 0 &&
+              data->circleIntersectsWall(opening.centre + opening.tangent * 9, 2) >= 0,
+              "named cycle did not cut collision aperture while retaining its frame");
+    }
+    return data;
+  };
+  auto data = verify(world, "original");
+  auto yamlCopy = deserializeWorld(serializeWorld(world));
+  verify(yamlCopy, "YAML");
+  auto binaryCopy = binaryRoundTrip(world);
+  verify(binaryCopy, "binary");
+  bw::core::World copy(world);
+  verify(copy, "copy");
+  std::vector<bw::core::PortalLoopSnapshot> snapshots;
+  for (auto const& portal : layer->getPortals()) snapshots.push_back({layer->getId(), {}, portal});
+  auto resolve = [&] { return bw::core::ResolvePortalLoops(data->getArrangement(), data->getWalls(), snapshots); };
+  auto original = resolve();
+  std::reverse(snapshots.begin(), snapshots.end());
+  auto reordered = resolve();
+  require(original.size() == 1 && reordered.size() == 1 &&
+          original.front().traversalOrder == reordered.front().traversalOrder &&
+          original.front().diagnostic == reordered.front().diagnostic,
+          "snapshot storage order changed inferred cycle");
+  auto* foreign = world.addLayer("Foreign");
+  for (int i = 0; i < 4; ++i) (void)foreign->addPortal(aperture(50, 0));
+  bool rejected = false;
+  try { layer->setPortalTarget(a, foreign->getPortals().back().getId()); } catch (bw::core::CoreException const&) { rejected = true; }
+  require(rejected && layer->getPortal(a)->getTargetId() == c, "invalid target mutated authoring");
+  layer->setPortalAperture(c, aperture(13, 50, 24, 6, 31));
+  auto invalid = world.getWorldData();
+  require(!invalid->findPortalLoop(layer->getId(), bw::core::IndependentPortalLoopId, a)->active,
+          "unequal-height cycle did not fail atomically");
+  layer->setPortalTarget(a, b);
+  layer->setPortalTarget(c, c);
+  auto pair = world.getWorldData();
+  auto const* resolvedPair = pair->findPortalLoop(layer->getId(), bw::core::IndependentPortalLoopId, a);
+  require(resolvedPair && resolvedPair->active && resolvedPair->endpoints.size() == 2 &&
+          bw::core::NextPortalEndpoint(*resolvedPair, a)->endpointId == b &&
+          bw::core::NextPortalEndpoint(*resolvedPair, b)->endpointId == a,
+          "two-Portal cycle did not preserve bidirectional routing");
+  layer->setPortalTarget(c, b);
+  layer->removePortal(b);
+  require(layer->getPortal(a)->getTargetId() == a && layer->getPortal(c)->getTargetId() == c,
+          "destination deletion left dangling targets");
+}
+
 void namedMirrorsRoundTripAndResolveIndependently() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
@@ -722,6 +805,7 @@ int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
     namedMirrorsRoundTripAndResolveIndependently();
+    namedCyclesFollowStableTargets();
     equalAndUnequalWidthsResolveWithoutChangingAuthoredState();
     invalidLoopsStayWholeAndDiagnosable();
     layerSelectionIncludesCompleteLoopsOnly();

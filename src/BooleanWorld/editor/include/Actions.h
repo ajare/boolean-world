@@ -295,6 +295,7 @@ bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex);
 
 bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::WorldTriggerLineSide side);
 
+bool setPortalTarget(Document* doc, bw::core::Layer* layer, uint32_t portalId, uint32_t targetId);
 bool createPortal(Document* doc, bw::core::Layer* layer);
 bool deletePortal(Document* doc, bw::core::Layer* layer, uint32_t portalId);
 bool createPortalLoop(

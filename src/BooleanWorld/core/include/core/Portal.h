@@ -30,7 +30,7 @@ struct AuthoredAperture {
   float top{24.0f};
 };
 
-// Independent authored Portal. This expansion slice supports self targets only.
+// Independent authored Portal with a same-Layer stable-ID target.
 class BW_API Portal {
   uint32_t mId{};
   std::string mName;
@@ -154,8 +154,9 @@ struct ResolvedPortalEndpoint {
 
 struct ResolvedPortalLoop {
   uint32_t layerId{};
-  // Independent singleton cycles use IndependentPortalLoopId here and the
-  // authored Layer-local Portal ID in endpointId/traversalOrder.
+  // Independent named cycles use IndependentPortalLoopId here and the
+  // authored Layer-local Portal ID in endpointId/traversalOrder. The first
+  // traversal ID is the smallest member and identifies the generated cycle.
   uint32_t loopId{};
   bool active{false};
   PortalResolutionDiagnostic diagnostic{PortalResolutionDiagnostic::None};
@@ -198,6 +199,9 @@ struct PortalLiquidAdjacencyDiagnostic {
   uint32_t loopId{};
   PortalLiquidDiagnostic diagnostic{
       PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint};
+  // Smallest member ID distinguishes independent cycles sharing the reserved
+  // loop namespace; absent for legacy authored loops.
+  uint32_t cyclePortalId{~0u};
 };
 
 struct PortalLiquidAdjacencyResult {
@@ -265,7 +269,8 @@ FindNearestLegalPortalCentre(
     std::vector<PortalLoopSnapshot> const& loops);
 
 // Resolves active apertures onto their incident Hydraulic cells, then accepts
-// Portal loops in stable (Layer id, loop id) order. Ordinary links participate
+// Portal loops in stable (Layer id, loop id, cycle-start Portal id) order.
+// Ordinary links participate
 // in the offset graph. A loop that would close a contradictory elevation cycle
 // is diagnosed and omitted atomically.
 [[nodiscard]] BW_API PortalLiquidAdjacencyResult

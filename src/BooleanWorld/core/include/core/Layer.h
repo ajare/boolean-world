@@ -344,9 +344,11 @@ public:
 
   [[nodiscard]] std::vector<WorldTriggerLine*> findTriggerLines(wp::BoundingBox const& bounds) const;
 
-  // --- Independent Mirror Portals ---
+  // --- Independent named Portals ---
   [[nodiscard]] uint32_t addPortal(AuthoredAperture const& aperture);
   void removePortal(uint32_t portalId);
+  void setPortalTarget(uint32_t portalId, uint32_t targetId);
+  void setPortalName(uint32_t portalId, std::string const& name);
   void setPortalAperture(uint32_t portalId, AuthoredAperture const& aperture);
   [[nodiscard]] Portal const* getPortal(uint32_t portalId) const;
   [[nodiscard]] std::vector<Portal> const& getPortals() const { return mPortals; }

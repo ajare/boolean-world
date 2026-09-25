@@ -14,7 +14,8 @@ void renderPortalsView(ViewContext& context) {
         [=](Document* document) { return createPortal(document, layer); });
   }
   for (auto const& portal : layer->getPortals()) {
-    auto label = format("{} — Mirror###portal{}", portal.getName(), portal.getId());
+    auto label = format("{}{}###portal{}", portal.getName(),
+        portal.getTargetId() == portal.getId() ? " — Mirror" : "", portal.getId());
     if (ImGui::Selectable(label.c_str(),
             doc->getSelectedPortalLayerId() == layer->getId() &&
             doc->getSelectedPortalId() == portal.getId())) {
@@ -74,11 +75,28 @@ void renderPortalsView(ViewContext& context) {
   auto const* authored = layer->findAuthoredPortalAperture(loopId, endpointId);
   if (!authored) return;
 
-  ImGui::SeparatorText(portalLoop ? "Selected Portal endpoint" : "Selected Mirror Portal");
+  ImGui::SeparatorText(portalLoop ? "Selected Portal endpoint" : "Selected Portal");
   if (portalLoop) {
     ImGui::Text("Destination: endpoint %u", portalLoop->getNextEndpointId(endpointId));
   } else {
-    ImGui::TextUnformatted("Target: self (Mirror)");
+    auto const* portal = layer->getPortal(endpointId);
+    auto targetLabel = [&](bw::core::Portal const& target) {
+      return target.getName() + (target.getId() == endpointId ? " (self — Mirror)" : "");
+    };
+    auto preview = targetLabel(*layer->getPortal(portal->getTargetId()));
+    if (ImGui::BeginCombo("Target", preview.c_str())) {
+      for (auto const& target : layer->getPortals()) {
+        auto label = targetLabel(target);
+        if (ImGui::Selectable(label.c_str(), target.getId() == portal->getTargetId())) {
+          auto targetId = target.getId();
+          transactUndoableActionAtomically(doc, CommandId::SetPortalTarget,
+              [=](Document* document) {
+                return setPortalTarget(document, layer, endpointId, targetId);
+              });
+        }
+      }
+      ImGui::EndCombo();
+    }
   }
   auto const aperture = *authored;
   float centre[2]{aperture.centre.x, aperture.centre.y};

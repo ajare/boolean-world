@@ -141,6 +141,7 @@ namespace editor {
   X(RenamePrefabBuildVariable, "Rename Prefab build variable", renamePrefabBuildVariable) \
   X(CreatePortal, "Create Mirror Portal", createPortal) \
   X(DeletePortal, "Delete Portal", deletePortal) \
+  X(SetPortalTarget, "Set Portal target", setPortalTarget) \
   X(CreatePortalLoop, "Create Portal loop", createPortalLoop) \
   X(DeletePortalLoop, "Delete Portal loop", deletePortalLoop) \
   X(AddPortalEndpoint, "Add Portal endpoint", addPortalEndpoint) \
