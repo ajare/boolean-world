@@ -420,7 +420,7 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   // so a resolved Image always has a bucket; Unset and Disabled intentionally
   // use the single existing unmapped bucket.
   for (auto const* layer : world->getLayers()) {
-    for (auto const& pair : layer->getPortalPairs()) {
+    for (auto const& pair : layer->getPortalLoops()) {
       for (auto const& endpoint : pair.getEndpoints()) {
         mPortalEndpointBuckets.emplace(
             PortalEndpointKey{
@@ -926,7 +926,7 @@ void WorldRenderer::updateWallDataProvider(
         if (triangle.kind == bw::core::arr::DetailTriangleKind::PortalFallback) {
           replacementMesh = backMesh;
           for (auto const& [key, bucket] : mPortalEndpointBuckets) {
-            auto const* pair = snapshot.findPortalPair(key.layerId, key.pairId);
+            auto const* pair = snapshot.findPortalLoop(key.layerId, key.loopId);
             if (!pair || !pair->active) continue;
             auto endpoint = std::ranges::find_if(pair->endpoints, [&](auto const& item) {
               return item.endpointId == key.endpointId;
@@ -1139,7 +1139,7 @@ void WorldRenderer::renderWorldScene(
   }
 
   mLastPortalViewPlan = mPortalViewPlanner.build(
-      worldData.getPortalPairs(), camera->getViewTransform(),
+      worldData.getPortalLoops(), camera->getViewTransform(),
       camera->getProjectionTransform(), camera->getNearClipDistance(),
       camera->getFarClipDistance(), width, height);
   mSelectedPortal = mLastPortalViewPlan.rootChildren.empty()
@@ -1155,7 +1155,7 @@ void WorldRenderer::renderWorldScene(
   // camera observing it. The same deterministically bounded path set is
   // attached to the primary view and every Auxiliary view.
   mLastPortalLightPlan = PlanPortalLights(
-      worldData.getPortalPairs(), mPlayerTorchPosition,
+      worldData.getPortalLoops(), mPlayerTorchPosition,
       mPlayerTorchOptions, mPortalLightLimits);
 
   std::vector<PortalLightShadowAttachment> portalLights;

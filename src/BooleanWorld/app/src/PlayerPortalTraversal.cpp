@@ -13,8 +13,8 @@ constexpr float BoundsTolerance = 0.001f;
 constexpr float RepeatedStateTolerance = 0.001f;
 
 PortalEndpointIdentity Identity(
-    core::ResolvedPortalPair const& pair, uint32_t endpointId) {
-  return {pair.layerId, pair.pairId, endpointId};
+    core::ResolvedPortalLoop const& pair, uint32_t endpointId) {
+  return {pair.layerId, pair.loopId, endpointId};
 }
 
 bool SameRepeatedState(
@@ -29,7 +29,7 @@ bool SameRepeatedState(
 
 PlayerPortalCrossingResult tryPlayerPortalCrossing(
     core::ArrangementWorldData const& world,
-    core::ResolvedPortalPair const& pair,
+    core::ResolvedPortalLoop const& pair,
     uint32_t sourceEndpointId,
     float playerRadius,
     float playerHeight,
@@ -148,8 +148,8 @@ void updatePortalExitSideState(
     float playerRadius,
     PortalExitSideState& state) {
   if (!state.active) return;
-  auto const* pair = world.findPortalPair(
-      state.endpoint.layerId, state.endpoint.portalId);
+  auto const* pair = world.findPortalLoop(
+      state.endpoint.layerId, state.endpoint.loopId);
   auto const* endpoint = pair
                              ? core::FindPortalEndpoint(
                                    *pair, state.endpoint.endpointId)

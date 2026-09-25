@@ -59,7 +59,7 @@ AuthoredAperture aperture(
 
 struct TwoRoomResult {
   ArrangementWorldDataPtr data;
-  uint32_t pairId{};
+  uint32_t loopId{};
 };
 
 TwoRoomResult twoRooms(
@@ -79,10 +79,10 @@ TwoRoomResult twoRooms(
     proxy->commitTo(*destination);
   }
   auto* layer = world.getActiveLayer();
-  auto pairId = layer->addPortalPair(
+  auto loopId = layer->addPortalLoop(
       aperture(-50.0f, 0.0f, 5.0f, width),
       aperture(50.0f, 0.0f, 15.0f, width));
-  return {world.getWorldData(), pairId};
+  return {world.getWorldData(), loopId};
 }
 
 void portalAdjacencyIsSeparateAndWaitsForItsSill() {
@@ -90,7 +90,7 @@ void portalAdjacencyIsSeparateAndWaitsForItsSill() {
   require(below.data->getPortalLiquidAdjacency().size() == 1,
           "an active resolved aperture did not expose portal liquid-adjacency");
   auto const& link = below.data->getPortalLiquidAdjacency().front();
-  require(link.pairId == below.pairId &&
+  require(link.loopId == below.loopId &&
               link.sourceEndpointId == 0 &&
               link.destinationEndpointId == 1 &&
               link.face0 != link.face1 && link.sill0 == 5.0 &&
@@ -198,13 +198,13 @@ CycleResult portalCycle(bool contradictory) {
   addRoom(world, {0.0f, 0.0f}, 10.0f, 50.0f);
   addRoom(world, {100.0f, 0.0f}, 20.0f, 60.0f);
   auto* layer = world.getActiveLayer();
-  [[maybe_unused]] auto firstPair = layer->addPortalPair(
+  [[maybe_unused]] auto firstPair = layer->addPortalLoop(
       aperture(-75.0f, 0.0f, 5.0f),
       aperture(-25.0f, 0.0f, 15.0f));
-  [[maybe_unused]] auto secondPair = layer->addPortalPair(
+  [[maybe_unused]] auto secondPair = layer->addPortalLoop(
       aperture(25.0f, 0.0f, 15.0f),
       aperture(75.0f, 0.0f, 25.0f));
-  auto closingPair = layer->addPortalPair(
+  auto closingPair = layer->addPortalLoop(
       aperture(125.0f, 0.0f, 25.0f),
       aperture(-125.0f, 0.0f, contradictory ? 6.0f : 5.0f));
   return {world.getWorldData(), closingPair};
@@ -226,14 +226,14 @@ void consistentAndContradictoryCyclesAreSettledDeterministically() {
           "a contradictory accumulated elevation cycle lacked one deterministic diagnostic");
   auto const& diagnostic =
       contradictory.data->getPortalLiquidDiagnostics().front();
-  require(diagnostic.pairId == contradictory.closingPair &&
+  require(diagnostic.loopId == contradictory.closingPair &&
               diagnostic.diagnostic ==
                   PortalLiquidDiagnostic::ContradictoryElevationCycle,
           "the contradictory cycle diagnostic did not identify the conflicting pair");
   require(std::ranges::none_of(
               contradictory.data->getPortalLiquidAdjacency(),
               [&](auto const& adjacency) {
-                return adjacency.pairId == contradictory.closingPair;
+                return adjacency.loopId == contradictory.closingPair;
               }),
           "the conflicting portal liquid-adjacency was not excluded");
   requireNear(contradictory.data->getLiquidDepth({-100.0f, 0.0f}), 10.0,
@@ -249,8 +249,8 @@ void consistentAndContradictoryCyclesAreSettledDeterministically() {
               rebuilt.data->getLiquidPoolElevations() ==
                   contradictory.data->getLiquidPoolElevations() &&
               rebuilt.data->getPortalLiquidDiagnostics().size() == 1 &&
-              rebuilt.data->getPortalLiquidDiagnostics().front().pairId ==
-                  diagnostic.pairId &&
+              rebuilt.data->getPortalLiquidDiagnostics().front().loopId ==
+                  diagnostic.loopId &&
               rebuilt.data->getPortalLiquidDiagnostics().front().diagnostic ==
                   diagnostic.diagnostic,
           "rebuilding an unchanged Portal cycle changed Liquid or diagnostics");

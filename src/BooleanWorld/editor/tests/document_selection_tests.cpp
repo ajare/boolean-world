@@ -847,11 +847,11 @@ void worldMines3BuildsPreviewWorldData(bw::core::ScriptRuntime& runtime) {
   // Include the editor's initial ghost: a game-only load does not exercise
   // its effect on the starting chamber's supporting Portal walls.
   auto portalData = world->getWorldData();
-  auto const* portalPair = portalData->findPortalPair(0, 0);
-  require(portalPair != nullptr, "mines example Portal pair missing in editor generation");
-  require(portalPair->active,
+  auto const* portalLoop = portalData->findPortalLoop(0, 0);
+  require(portalLoop != nullptr, "mines example Portal pair missing in editor generation");
+  require(portalLoop->active,
           "mines example Portal pair inactive in editor: " +
-              std::string(bw::core::PortalResolutionDiagnosticText(portalPair->diagnostic)));
+              std::string(bw::core::PortalResolutionDiagnosticText(portalLoop->diagnostic)));
   auto const selected = world->getWorldDataGenerator()->getLayerSelection();
   auto const inScope = editor::inScopePrimitives(*world, selected, settings);
   std::vector<bw::core::Primitive*> primitives;

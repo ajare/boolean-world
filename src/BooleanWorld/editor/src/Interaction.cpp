@@ -679,13 +679,13 @@ void EditorInteraction::updateDrag(
 
   auto const& primitiveSelection = doc->getSelectedPrimitiveIndices();
   auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
-  auto selectedPortalPairId = doc->getSelectedPortalPairId();
+  auto selectedPortalLoopId = doc->getSelectedPortalLoopId();
   if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u &&
-      selectedPortalPairId == ~0u) {
+      selectedPortalLoopId == ~0u) {
     return;
   }
 
-  if (selectedPortalPairId != ~0u) {
+  if (selectedPortalLoopId != ~0u) {
     if (input.leftReleased) {
       if (mMovingSelectedPortalEndpoint && undoableActionInProgress()) {
         commitUndoableAction(doc);
@@ -695,12 +695,12 @@ void EditorInteraction::updateDrag(
     } else if (input.leftDragging) {
       auto* portalLayer = doc->getWorld()->getLayer(
           doc->getSelectedPortalLayerId());
-      auto const* portalPair =
-          portalLayer ? portalLayer->getPortalPair(selectedPortalPairId)
+      auto const* portalLoop =
+          portalLayer ? portalLayer->getPortalLoop(selectedPortalLoopId)
                       : nullptr;
       auto const endpointId = doc->getSelectedPortalEndpointId();
       auto const* portalEndpoint =
-          portalPair ? portalPair->findEndpoint(endpointId) : nullptr;
+          portalLoop ? portalLoop->findEndpoint(endpointId) : nullptr;
       if (portalEndpoint) {
         if (!mMovingSelectedPortalEndpoint) {
           mMovingSelectedPortalEndpoint = true;
@@ -724,7 +724,7 @@ void EditorInteraction::updateDrag(
         if (worldData) {
           auto const& aperture = portalEndpoint->getAperture();
           auto resolvedWidth = std::numeric_limits<float>::infinity();
-          for (auto const& endpoint : portalPair->getEndpoints()) {
+          for (auto const& endpoint : portalLoop->getEndpoints()) {
             resolvedWidth = std::min(
                 resolvedWidth, endpoint.getAperture().width);
           }
@@ -740,7 +740,7 @@ void EditorInteraction::updateDrag(
               round(target.y / settings.gridSize) * settings.gridSize};
         }
         setPortalEndpointPosition(
-            doc, portalLayer, selectedPortalPairId, endpointId, target);
+            doc, portalLayer, selectedPortalLoopId, endpointId, target);
       }
     }
     return;

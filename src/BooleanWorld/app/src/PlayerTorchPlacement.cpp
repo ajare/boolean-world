@@ -24,10 +24,10 @@ PlayerTorchPlacement placePlayerTorch(
   }
   direction.normalise();
   for (uint32_t crossings = 0; ; ++crossings) {
-    core::ResolvedPortalPair const* nearestPair = nullptr;
+    core::ResolvedPortalLoop const* nearestPair = nullptr;
     core::ResolvedPortalEndpoint const* nearestEndpoint = nullptr;
     float nearestDistance = std::numeric_limits<float>::infinity();
-    for (auto const& pair : world.getPortalPairs()) {
+    for (auto const& pair : world.getPortalLoops()) {
       if (!pair.active) continue;
       for (auto const& endpoint : pair.endpoints) {
         auto const& aperture = endpoint.aperture;

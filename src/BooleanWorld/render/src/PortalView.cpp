@@ -140,7 +140,7 @@ struct CandidateEvaluation {
 };
 
 std::vector<CandidateEvaluation> evaluateCandidates(
-    std::span<bw::core::ResolvedPortalPair const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> pairs,
     glm::mat4 const& viewProjection,
     glm::vec3 const& position,
     uint32_t recursionDepth,
@@ -151,7 +151,7 @@ std::vector<CandidateEvaluation> evaluateCandidates(
 
   for (auto const& pair : pairs) {
     for (auto const& endpoint : pair.endpoints) {
-      PortalEndpointKey key{pair.layerId, pair.pairId, endpoint.endpointId};
+      PortalEndpointKey key{pair.layerId, pair.loopId, endpoint.endpointId};
       PortalViewDiagnostic diagnostic;
       diagnostic.endpoint = key;
       diagnostic.recursionDepth = recursionDepth;
@@ -263,7 +263,7 @@ CameraStateKey cameraStateKey(
 }  // namespace
 
 std::optional<SelectedPortalView> SelectPortalView(
-    std::span<bw::core::ResolvedPortalPair const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> pairs,
     glm::mat4 const& viewProjection,
     glm::vec3 const& cameraPositionValue) {
   auto evaluated = evaluateCandidates(
@@ -293,13 +293,13 @@ BuiltPortalView BuildPortalView(
     float farDistance,
     uint32_t width,
     uint32_t height) {
-  if (!selected.pair || !selected.pair->active || width == 0 || height == 0) {
+  if (!selected.loop || !selected.loop->active || width == 0 || height == 0) {
     throw std::invalid_argument(
         "A Portal view requires an active selection and non-zero dimensions");
   }
 
   auto rigid = bw::core::BuildPortalRigidTransform(
-      *selected.pair,
+      *selected.loop,
       selected.key.endpointId);
   auto sourceToDestination = sourceToDestinationMatrix(rigid);
   auto destinationView = observingView * glm::inverse(sourceToDestination);
@@ -378,7 +378,7 @@ void PortalViewPlanner::resetHistory() {
 }
 
 PortalViewPlan PortalViewPlanner::build(
-    std::span<bw::core::ResolvedPortalPair const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> pairs,
     glm::mat4 const& primaryView,
     glm::mat4 const& primaryProjection,
     float nearDistance,

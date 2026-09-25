@@ -25,7 +25,7 @@ class LayerBuildStep;
 class PrimitiveField;
 class World;
 
-// A named collection of Portal pairs, WorldTriggerLines, and the Primitives
+// A named collection of Portal loops, WorldTriggerLines, and the Primitives
 // its ordered LayerBuildSteps produce. A World holds an ordered set of Layers;
 // a generation selects a set of Layers by id and folds across their combined
 // content (docs/adr/0013, docs/adr/0047).
@@ -54,7 +54,7 @@ private:
 
   uint32_t mId;
   uint32_t mNextStepId;
-  uint32_t mNextPortalPairId;
+  uint32_t mNextPortalLoopId;
 
   std::string mName;
 
@@ -80,9 +80,9 @@ private:
 
   std::vector<WorldTriggerLine*> mTriggerLines;
 
-  // First-class authored Portal pairs. Unlike Primitives they are not recipe
-  // output: each pair belongs to this Layer for its complete lifetime.
-  std::vector<PortalPair> mPortalPairs;
+  // First-class authored Portal loops. Unlike Primitives they are not recipe
+  // output: each loop belongs to this Layer for its complete lifetime.
+  std::vector<PortalLoop> mPortalLoops;
 
   PrimitiveAccelerationGrid* mPrimitiveLookupGrid;
 
@@ -342,16 +342,24 @@ public:
 
   [[nodiscard]] std::vector<WorldTriggerLine*> findTriggerLines(wp::BoundingBox const& bounds) const;
 
-  // --- Portal pairs ---
-  [[nodiscard]] uint32_t addPortalPair(
+  // --- Portal loops ---
+  [[nodiscard]] uint32_t addPortalLoop(
       AuthoredAperture const& first, AuthoredAperture const& second);
-  void removePortalPair(uint32_t pairId);
-  void setPortalEndpointAperture(
-      uint32_t pairId, uint32_t endpointId,
+  void removePortalLoop(uint32_t loopId);
+  [[nodiscard]] uint32_t addPortalEndpointAfter(
+      uint32_t loopId, uint32_t afterEndpointId,
       AuthoredAperture const& aperture);
-  [[nodiscard]] PortalPair* getPortalPair(uint32_t pairId);
-  [[nodiscard]] PortalPair const* getPortalPair(uint32_t pairId) const;
-  [[nodiscard]] std::vector<PortalPair> const& getPortalPairs() const;
+  void removePortalEndpoint(uint32_t loopId, uint32_t endpointId);
+  [[nodiscard]] bool movePortalEndpointEarlier(
+      uint32_t loopId, uint32_t endpointId);
+  [[nodiscard]] bool movePortalEndpointLater(
+      uint32_t loopId, uint32_t endpointId);
+  void setPortalEndpointAperture(
+      uint32_t loopId, uint32_t endpointId,
+      AuthoredAperture const& aperture);
+  [[nodiscard]] PortalLoop* getPortalLoop(uint32_t loopId);
+  [[nodiscard]] PortalLoop const* getPortalLoop(uint32_t loopId) const;
+  [[nodiscard]] std::vector<PortalLoop> const& getPortalLoops() const;
 };
 
 }  // namespace core

@@ -1720,10 +1720,10 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   document.newDoc();
   addRectangle(document, {0.0f, 0.0f}, 100.0f);
   auto* layer = document.getWorld()->getActiveLayer();
-  auto const pairId = layer->addPortalPair(
+  auto const loopId = layer->addPortalLoop(
       {{-40.0f, 0.0f}, 16.0f, 0.0f, 24.0f},
       {{50.0f, 0.0f}, 16.0f, 0.0f, 24.0f});
-  document.setSelectedPortalEndpoint(layer->getId(), pairId, 0);
+  document.setSelectedPortalEndpoint(layer->getId(), loopId, 0);
   auto snapshot = document.getWorld()->getWorldData();
 
   editor::Settings settings;
@@ -1736,7 +1736,7 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   drag.leftDragging = true;
   drag.dragDelta = {-8.0f, 0.0f};
   interaction.updateDrag(&document, settings, drag, snapshot.get());
-  require(layer->getPortalPair(pairId)
+  require(layer->getPortalLoop(loopId)
                   ->findEndpoint(0)
                   ->getAperture()
                   .centre == wp::Vector2{-50.0f, 0.0f},
@@ -1747,7 +1747,7 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   // the endpoint must detach rather than becoming stuck at its snapped centre.
   drag.dragDelta = {4.0f, 0.0f};
   interaction.updateDrag(&document, settings, drag, snapshot.get());
-  require(layer->getPortalPair(pairId)
+  require(layer->getPortalLoop(loopId)
                   ->findEndpoint(0)
                   ->getAperture()
                   .centre == wp::Vector2{-44.0f, 0.0f},

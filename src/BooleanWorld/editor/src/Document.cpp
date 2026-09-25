@@ -2345,7 +2345,7 @@ vector<uint32_t> Document::getHoveredPortalEndpoint(
                              settings.triggerLineHandleRadius;
   auto bestDistance = numeric_limits<float>::max();
   vector<uint32_t> result;
-  for (auto const& pair : layer->getPortalPairs()) {
+  for (auto const& pair : layer->getPortalLoops()) {
     for (auto endpointId : pair.getTraversalOrder()) {
       auto const* endpoint = pair.findEndpoint(endpointId);
       auto const distance = endpoint->getAperture().centre.distanceToSq(

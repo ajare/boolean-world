@@ -18,7 +18,7 @@
 
 struct PortalEndpointKey {
   uint32_t layerId{};
-  uint32_t pairId{};
+  uint32_t loopId{};
   uint32_t endpointId{};
 
   auto operator<=>(PortalEndpointKey const&) const = default;
@@ -26,7 +26,7 @@ struct PortalEndpointKey {
 
 struct SelectedPortalView {
   PortalEndpointKey key{};
-  bw::core::ResolvedPortalPair const* pair{};
+  bw::core::ResolvedPortalLoop const* loop{};
   float projectedCoverage{};
   float cameraDistance{};
 };
@@ -35,7 +35,7 @@ struct SelectedPortalView {
 // Coverage, distance, and stable authored identity are deterministic ordering
 // keys, in that order. Multi-view planning below uses the same evaluation.
 [[nodiscard]] std::optional<SelectedPortalView> SelectPortalView(
-    std::span<bw::core::ResolvedPortalPair const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> pairs,
     glm::mat4 const& viewProjection,
     glm::vec3 const& cameraPosition);
 
@@ -142,7 +142,7 @@ public:
   explicit PortalViewPlanner(PortalViewLimits limits = {});
 
   [[nodiscard]] PortalViewPlan build(
-      std::span<bw::core::ResolvedPortalPair const> pairs,
+      std::span<bw::core::ResolvedPortalLoop const> pairs,
       glm::mat4 const& primaryView,
       glm::mat4 const& primaryProjection,
       float nearDistance,

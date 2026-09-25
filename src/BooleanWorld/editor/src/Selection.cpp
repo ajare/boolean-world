@@ -19,10 +19,10 @@ void Selection::setSelectedTriggerLineIndex(uint32_t index) {
 }
 
 void Selection::setSelectedPortalEndpoint(
-    uint32_t layerId, uint32_t pairId, uint32_t endpointId) {
+    uint32_t layerId, uint32_t loopId, uint32_t endpointId) {
   clearSelections();
   mSelectedPortalLayerId = layerId;
-  mSelectedPortalPairId = pairId;
+  mSelectedPortalLoopId = loopId;
   mSelectedPortalEndpointId = endpointId;
 }
 
@@ -52,7 +52,7 @@ void Selection::clearSelections() {
   mSelectedWorldVertexIndex = ~0u;
   mSelectedTriggerLineIndex = ~0u;
   mSelectedPortalLayerId = ~0u;
-  mSelectedPortalPairId = ~0u;
+  mSelectedPortalLoopId = ~0u;
   mSelectedPortalEndpointId = ~0u;
   clearMeshSelections();
 }
@@ -77,14 +77,14 @@ void Selection::revalidateSelection() {
       mSelectedTriggerLineIndex >= world->getNumTriggerLines()) {
     mSelectedTriggerLineIndex = ~0u;
   }
-  if (mSelectedPortalPairId != ~0u) {
+  if (mSelectedPortalLoopId != ~0u) {
     auto const* layer = world->getLayer(mSelectedPortalLayerId);
     auto const* pair = layer
-                           ? layer->getPortalPair(mSelectedPortalPairId)
+                           ? layer->getPortalLoop(mSelectedPortalLoopId)
                            : nullptr;
     if (!pair || !pair->findEndpoint(mSelectedPortalEndpointId)) {
       mSelectedPortalLayerId = ~0u;
-      mSelectedPortalPairId = ~0u;
+      mSelectedPortalLoopId = ~0u;
       mSelectedPortalEndpointId = ~0u;
     }
   }
@@ -117,8 +117,8 @@ uint32_t Selection::getSelectedPortalLayerId() const {
   return mSelectedPortalLayerId;
 }
 
-uint32_t Selection::getSelectedPortalPairId() const {
-  return mSelectedPortalPairId;
+uint32_t Selection::getSelectedPortalLoopId() const {
+  return mSelectedPortalLoopId;
 }
 
 uint32_t Selection::getSelectedPortalEndpointId() const {
@@ -126,12 +126,12 @@ uint32_t Selection::getSelectedPortalEndpointId() const {
 }
 
 bool Selection::hasSelectedPortalEndpoint() const {
-  return mSelectedPortalPairId != ~0u;
+  return mSelectedPortalLoopId != ~0u;
 }
 
 bool Selection::hasSelection() const {
   return !mSelectedPrimitiveIndices.empty() || mSelectedTriggerLineIndex != ~0u ||
-         mSelectedPortalPairId != ~0u ||
+         mSelectedPortalLoopId != ~0u ||
          mSelectedWorldVertexIndex != ~0u || !mSelectedMeshVertexIndices.empty() ||
          !mSelectedMeshEdgeIndices.empty() || !mSelectedMeshRingIndices.empty();
 }

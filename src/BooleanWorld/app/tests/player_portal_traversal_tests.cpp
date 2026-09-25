@@ -29,7 +29,7 @@ void require(bool condition, std::string const& message) {
 struct Fixture {
   bw::core::World world{200.0f, 10.0f};
   bw::core::ArrangementWorldDataPtr data;
-  bw::core::ResolvedPortalPair const* pair{};
+  bw::core::ResolvedPortalLoop const* pair{};
 
   Fixture(bw::core::AuthoredAperture second =
               {{50.0f, 0.0f}, 20.0f, 0.0f, 24.0f}) {
@@ -39,10 +39,10 @@ struct Fixture {
     room->setSize(100.0f, 100.0f);
     world.addPrimitive(room);
     auto* layer = world.getActiveLayer();
-    auto pairId = layer->addPortalPair(
+    auto loopId = layer->addPortalLoop(
         {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f}, second);
     data = world.getWorldData();
-    pair = data->findPortalPair(layer->getId(), pairId);
+    pair = data->findPortalLoop(layer->getId(), loopId);
     require(pair && pair->active, "player Portal fixture did not resolve");
   }
 };
@@ -188,7 +188,7 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   routedPair.endpoints[1].endpointId = 9;
   routedPair.traversalOrder = {41, 9};
   struct Endpoint {
-    bw::core::ResolvedPortalPair const* pair;
+    bw::core::ResolvedPortalLoop const* pair;
     uint32_t endpointId;
   };
   std::vector<Endpoint> endpoints;
@@ -242,7 +242,7 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   auto const& destination = routedPair.endpoints[1].aperture;
   require(state.crossings == 1 &&
               state.exitSide.endpoint == bw::app::PortalEndpointIdentity{
-                  routedPair.layerId, routedPair.pairId,
+                  routedPair.layerId, routedPair.loopId,
                   routedPair.endpoints[1].endpointId} &&
               (player->getCentre() - destination.centre)
                       .dot(destination.front) > (smallSteps ? 0.0f : 19.9f),
@@ -312,6 +312,58 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   }
 }
 
+void threeEndpointLoopTraversesOnlyInDirectedOrder() {
+  bw::core::World world{200.0f, 10.0f};
+  auto* room = new bw::core::RectanglePolygon(
+      bw::core::Primitive::Operation::Union,
+      bw::core::Primitive::FillRule::NonZero, 1.0f);
+  room->setSize(100.0f, 100.0f);
+  world.addPrimitive(room);
+  auto* layer = world.getActiveLayer();
+  auto const loopId = layer->addPortalLoop(
+      {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f},
+      {{50.0f, 0.0f}, 20.0f, 0.0f, 24.0f});
+  auto const thirdId = layer->addPortalEndpointAfter(
+      loopId, 1, {{0.0f, 50.0f}, 20.0f, 0.0f, 24.0f});
+  auto data = world.getWorldData();
+  auto const* loop = data->findPortalLoop(layer->getId(), loopId);
+  require(loop && loop->active && loop->endpoints.size() == 3,
+          "three-endpoint player Portal fixture did not resolve");
+
+  for (auto sourceId : loop->traversalOrder) {
+    auto const* source = bw::core::FindPortalEndpoint(*loop, sourceId);
+    auto const* destination = bw::core::NextPortalEndpoint(*loop, sourceId);
+    auto movement = -source->aperture.front * 30.0f;
+    bw::app::PlayerPortalMotion motion{
+        source->aperture.centre + source->aperture.front * 10.0f,
+        0.0f, movement.clockwiseAngle(), 0.0f,
+        movement.normalisedCopy() * 100.0f, 0.0f, movement};
+    bw::app::PlayerPortalUpdateState state;
+    require(
+        bw::app::tryPlayerPortalCrossing(
+            *data, *loop, sourceId, BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT,
+            motion, state) ==
+            bw::app::PlayerPortalCrossingResult::Traversed &&
+            (motion.position - destination->aperture.centre)
+                    .dot(destination->aperture.front) > 0.0f,
+        "a directed three-endpoint Portal hop used the wrong destination");
+  }
+
+  auto const* first = bw::core::FindPortalEndpoint(*loop, 0);
+  auto reverseMovement = first->aperture.front * 30.0f;
+  bw::app::PlayerPortalMotion reverse{
+      first->aperture.centre - first->aperture.front * 10.0f,
+      0.0f, reverseMovement.clockwiseAngle(), 0.0f,
+      reverseMovement.normalisedCopy() * 100.0f, 0.0f, reverseMovement};
+  bw::app::PlayerPortalUpdateState state;
+  require(
+      bw::app::tryPlayerPortalCrossing(
+          *data, *loop, 0, BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT,
+          reverse, state) != bw::app::PlayerPortalCrossingResult::Traversed,
+      "a Portal endpoint accepted direct reverse traversal");
+  require(thirdId == 2, "three-endpoint fixture did not use stable identity");
+}
+
 void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
   Fixture fixture;
   auto motion = crossingMotion();
@@ -367,7 +419,7 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
 
   auto repeatedMotion = crossingMotion();
   bw::app::PlayerPortalUpdateState repeated;
-  repeated.visited.push_back({{fixture.pair->layerId, fixture.pair->pairId,
+  repeated.visited.push_back({{fixture.pair->layerId, fixture.pair->loopId,
                                fixture.pair->endpoints[0].endpointId},
                               fixture.pair->endpoints[0].aperture.centre,
                               {-20.0f, 0.0f}});
@@ -392,6 +444,7 @@ int main() {
     validApproachesDoNotTeleportBeforeTheCentreReachesThePlane();
     collisionSweepContinuesItsTransformedRemainder();
     collisionSweepContinuesItsTransformedRemainder(true);
+    threeEndpointLoopTraversesOnlyInDirectedOrder();
     exitSideAndSameUpdateGuardsAreGeometricAndFinite();
     std::cout << "Player Portal traversal passed\n";
     return 0;

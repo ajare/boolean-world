@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -41,31 +40,34 @@ public:
   [[nodiscard]] AuthoredAperture const& getAperture() const;
 
 private:
-  friend class PortalPair;
+  friend class PortalLoop;
   friend class Layer;
   void setAperture(AuthoredAperture const& aperture);
 };
 
-// A permanently Layer-owned link with exactly two stable endpoint identities.
+// A permanently Layer-owned ordered cycle of stable endpoint identities.
 // Endpoint storage is independent of its explicit directed traversal order.
-class BW_API PortalPair {
+class BW_API PortalLoop {
   uint32_t mId{};
-  std::array<PortalEndpoint, 2> mEndpoints{
+  uint32_t mNextEndpointId{2};
+  std::vector<PortalEndpoint> mEndpoints{
       PortalEndpoint{0, {}}, PortalEndpoint{1, {}}};
   // Stable endpoint IDs in directed traversal order. Keeping this separate
   // from storage prevents authored identity from becoming a container index.
-  std::array<uint32_t, 2> mTraversalOrder{0, 1};
+  std::vector<uint32_t> mTraversalOrder{0, 1};
 
 public:
-  PortalPair() = default;
-  PortalPair(
+  PortalLoop() = default;
+  PortalLoop(
       uint32_t id, AuthoredAperture first, AuthoredAperture second);
-  PortalPair(
-      uint32_t id, std::array<PortalEndpoint, 2> endpoints,
-      std::array<uint32_t, 2> traversalOrder);
+  PortalLoop(
+      uint32_t id, uint32_t nextEndpointId,
+      std::vector<PortalEndpoint> endpoints,
+      std::vector<uint32_t> traversalOrder);
 
   [[nodiscard]] uint32_t getId() const;
-  [[nodiscard]] std::array<PortalEndpoint, 2> const& getEndpoints() const;
+  [[nodiscard]] uint32_t getNextEndpointAllocator() const;
+  [[nodiscard]] std::vector<PortalEndpoint> const& getEndpoints() const;
   [[nodiscard]] PortalEndpoint const* findEndpoint(uint32_t endpointId) const;
   [[nodiscard]] std::span<uint32_t const> getTraversalOrder() const;
   [[nodiscard]] uint32_t getNextEndpointId(uint32_t endpointId) const;
@@ -73,9 +75,14 @@ public:
 private:
   friend class Layer;
   [[nodiscard]] PortalEndpoint* findEndpointMutable(uint32_t endpointId);
+  [[nodiscard]] uint32_t addEndpointAfter(
+      uint32_t afterEndpointId, AuthoredAperture const& aperture);
+  void removeEndpoint(uint32_t endpointId);
+  bool moveEndpointEarlier(uint32_t endpointId);
+  bool moveEndpointLater(uint32_t endpointId);
 };
 
-// First reason an authored endpoint or its pair cannot participate in this
+// First reason an authored endpoint or its loop cannot participate in this
 // generation. Diagnostics are snapshot data, not authored state.
 enum class PortalResolutionDiagnostic : uint8_t {
   None,
@@ -91,8 +98,8 @@ enum class PortalResolutionDiagnostic : uint8_t {
     PortalResolutionDiagnostic diagnostic);
 
 // Liquid-specific generation failures do not deactivate rendering or player
-// traversal. A conflicting pair remains an active Portal but contributes no
-// portal liquid-adjacency to this snapshot.
+// traversal. A conflicting loop remains active but contributes no Portal
+// liquid-adjacency to this snapshot.
 enum class PortalLiquidDiagnostic : uint8_t {
   NoHydraulicCellAtEndpoint,
   ContradictoryElevationCycle
@@ -115,7 +122,7 @@ struct ResolvedAperture {
 };
 
 struct ResolvedPortalEndpoint {
-  uint8_t endpointId{};
+  uint32_t endpointId{};
   AuthoredAperture authored{};
   bool resolved{false};
   PortalResolutionDiagnostic diagnostic{
@@ -123,29 +130,24 @@ struct ResolvedPortalEndpoint {
   ResolvedAperture aperture{};
 };
 
-struct ResolvedPortalPair {
+struct ResolvedPortalLoop {
   uint32_t layerId{};
-  uint32_t pairId{};
+  uint32_t loopId{};
   bool active{false};
   PortalResolutionDiagnostic diagnostic{PortalResolutionDiagnostic::None};
-  std::array<ResolvedPortalEndpoint, 2> endpoints{};
-  std::array<uint32_t, 2> traversalOrder{0, 1};
+  std::vector<ResolvedPortalEndpoint> endpoints{2};
+  std::vector<uint32_t> traversalOrder{0, 1};
 };
 
 // Canonical directed routing seam. Order contains stable endpoint IDs, not
 // vector indices; missing sources and cycles shorter than two are invalid.
 [[nodiscard]] BW_API uint32_t NextPortalEndpointId(
     std::span<uint32_t const> order, uint32_t sourceId);
-// Pair-facing adapter retained for render consumers during migration. The
-// next position is obtained from stable traversal identity.
-[[nodiscard]] BW_API uint32_t NextPortalEndpointIndex(
-    ResolvedPortalPair const& pair, uint32_t sourceIndex);
-// Stable-identity adapters for consumers migrating away from endpoint
-// positions. The pair's current endpoint sequence is its traversal order.
+// Stable-identity lookup used by every generated Portal consumer.
 [[nodiscard]] BW_API ResolvedPortalEndpoint const* FindPortalEndpoint(
-    ResolvedPortalPair const& pair, uint32_t endpointId);
+    ResolvedPortalLoop const& pair, uint32_t endpointId);
 [[nodiscard]] BW_API ResolvedPortalEndpoint const* NextPortalEndpoint(
-    ResolvedPortalPair const& pair, uint32_t sourceEndpointId);
+    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId);
 
 // A generated, bidirectional connection between Hydraulic cells touching the
 // two resolved apertures. This is intentionally distinct from ordinary
@@ -154,7 +156,7 @@ struct ResolvedPortalPair {
 // sill1 are the two resolved lower edges and differ by that same offset.
 struct PortalLiquidAdjacency {
   uint32_t layerId{};
-  uint32_t pairId{};
+  uint32_t loopId{};
   uint32_t sourceEndpointId{};
   uint32_t destinationEndpointId{};
   uint32_t cell0{};
@@ -169,7 +171,7 @@ struct PortalLiquidAdjacency {
 
 struct PortalLiquidAdjacencyDiagnostic {
   uint32_t layerId{};
-  uint32_t pairId{};
+  uint32_t loopId{};
   PortalLiquidDiagnostic diagnostic{
       PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint};
 };
@@ -196,14 +198,14 @@ struct PortalRigidTransform {
 };
 
 [[nodiscard]] BW_API PortalRigidTransform BuildPortalRigidTransform(
-    ResolvedPortalPair const& pair, uint32_t sourceEndpointId);
+    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId);
 
 // A value-only copy made on the generation-requesting thread. It is safe to
 // carry to the asynchronous arrangement worker with the other generation
 // inputs.
-struct PortalPairSnapshot {
+struct PortalLoopSnapshot {
   uint32_t layerId{};
-  PortalPair pair{};
+  PortalLoop loop{};
 };
 
 [[nodiscard]] BW_API bool AuthoredApertureIsValid(
@@ -220,20 +222,20 @@ FindNearestLegalPortalCentre(
     AuthoredAperture const& aperture, float resolvedWidth,
     wp::Vector2 const& target, float maxDistance);
 
-[[nodiscard]] BW_API std::vector<ResolvedPortalPair> ResolvePortalPairs(
+[[nodiscard]] BW_API std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
-    std::vector<PortalPairSnapshot> const& pairs);
+    std::vector<PortalLoopSnapshot> const& pairs);
 
 // Resolves active apertures onto their incident Hydraulic cells, then accepts
-// Portal pairs in stable (Layer id, pair id) order. Ordinary links participate
-// in the offset graph. A pair that would close a contradictory elevation cycle
+// Portal loops in stable (Layer id, loop id) order. Ordinary links participate
+// in the offset graph. A loop that would close a contradictory elevation cycle
 // is diagnosed and omitted atomically.
 [[nodiscard]] BW_API PortalLiquidAdjacencyResult
 BuildPortalLiquidAdjacency(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
     std::vector<arr::HydraulicCell> const& cells,
-    std::vector<ResolvedPortalPair> const& pairs);
+    std::vector<ResolvedPortalLoop> const& pairs);
 
 }  // namespace bw::core

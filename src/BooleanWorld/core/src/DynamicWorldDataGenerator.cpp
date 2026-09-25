@@ -329,7 +329,7 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
       primitives, generatedPriorities, getChipParametersResolver());
   auto sourcePrimitives = snapshotPrimitiveMetadata(primitives);
   auto layerSelection = getLayerSelection();
-  auto portalPairs = snapshotPortalPairs(*world, layerSelection);
+  auto portalLoops = snapshotPortalLoops(*world, layerSelection);
 
   mNextClipping.primitives = sourcePrimitives;
   mNextClipping.updatedPrimitives = updatedPrimitives;
@@ -340,7 +340,7 @@ DynamicWorldDataGenerator::snapshotGenerationInput(
           move(sourcePrimitives),
           move(updatedPrimitives),
           layerSelection,
-          move(portalPairs),
+          move(portalLoops),
           primStats,
           world->getExtents(),
           float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX),
@@ -380,7 +380,7 @@ Stats DynamicWorldDataGenerator::generateWorldData(
       &stats.arrangement,
       input.wedgeGenerationParameters,
       input.createWayfinderMesh,
-      input.portalPairs);
+      input.portalLoops);
 
   mLastGenTime = timer.elapsedNanoseconds();
   stats.generationRequests.coalescedRequestCount =

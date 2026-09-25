@@ -14,13 +14,13 @@ bool near(float left, float right, float tolerance = 1e-4f) {
   return std::abs(left - right) <= tolerance;
 }
 
-bw::core::ResolvedPortalPair translationPair(
-    uint32_t pairId, float sourceY, float destinationY,
+bw::core::ResolvedPortalLoop translationPair(
+    uint32_t loopId, float sourceY, float destinationY,
     float sourceX = 0.0f, float destinationX = 0.0f,
     float resolvedWidth = 2.0f) {
-  bw::core::ResolvedPortalPair pair;
+  bw::core::ResolvedPortalLoop pair;
   pair.layerId = 3;
-  pair.pairId = pairId;
+  pair.loopId = loopId;
   pair.active = true;
   pair.endpoints[0].endpointId = 0;
   pair.endpoints[0].resolved = true;
@@ -126,8 +126,8 @@ void multiHopCompositionGatesEveryAperture() {
   auto plan = PlanPortalLights(
       pairs, {0.0f, 2.0f, -2.0f}, bw::app::PlayerTorchOptions{}, limits);
   auto found = std::ranges::find_if(plan.lights, [](auto const& light) {
-    return light.path.size() == 2 && light.path[0].pairId == 10 &&
-           light.path[1].pairId == 11;
+    return light.path.size() == 2 && light.path[0].loopId == 10 &&
+           light.path[1].loopId == 11;
   });
   require(found != plan.lights.end(),
           "a visible two-hop Portal path was not retained");
@@ -214,7 +214,7 @@ void independentBudgetsUseDeterministicRanking() {
   auto first = PlanPortalLights(pairs, torch, options, lightLimited);
   auto second = PlanPortalLights(pairs, torch, options, lightLimited);
   require(first.lights.size() == 1 &&
-              first.lights.front().path.front().pairId == 30 &&
+              first.lights.front().path.front().loopId == 30 &&
               first.count(
                   PortalLightDiagnosticReason::VirtualLightBudget) != 0,
           "virtual-light budget did not retain the strongest path");

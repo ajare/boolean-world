@@ -73,6 +73,7 @@ struct RenderFixture {
   bool continuityJunction{};
   bool portal{};
   bool manyPortalEndpoints{};
+  bool threeEndpointPortal{};
   bool stablePortalIdentity{};
   bool portalBackSurface{};
   bool portalBackDecorated{};
@@ -354,40 +355,49 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     });
   }
   generator.generate(primitives);
-  std::vector<bw::core::PortalPairSnapshot> portalPairs;
+  std::vector<bw::core::PortalLoopSnapshot> portalLoops;
   if (fixture.portal) {
     auto* layer = world.getActiveLayer();
     if (fixture.manyPortalEndpoints) {
       // Reserve more endpoint buckets than the recursive GPU target budget.
       // The active endpoints below must still bind correctly at higher IDs.
       for (uint32_t i = 0; i < PortalViewSlotCount; ++i) {
-        auto id = layer->addPortalPair(
+        auto id = layer->addPortalLoop(
             {{1000.0f + float(i) * 20.0f, 1000.0f}, 12.0f, 4.0f, 36.0f},
             {{1000.0f + float(i) * 20.0f, -1000.0f}, 12.0f, 4.0f, 36.0f});
-        portalPairs.push_back({layer->getId(), *layer->getPortalPair(id)});
+        portalLoops.push_back({layer->getId(), *layer->getPortalLoop(id)});
       }
     }
-    for (auto centreX : {-8.0f, 8.0f}) {
-      auto pairId = layer->addPortalPair(
+    auto const portalCentres = fixture.threeEndpointPortal
+                                   ? std::vector<float>{-8.0f}
+                                   : std::vector<float>{-8.0f, 8.0f};
+    for (auto centreX : portalCentres) {
+      auto loopId = layer->addPortalLoop(
           {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
           {{centreX, -16.0f}, 12.0f, 4.0f, 36.0f});
-      auto* pair = layer->getPortalPair(pairId);
+      auto* pair = layer->getPortalLoop(loopId);
+      if (fixture.threeEndpointPortal) {
+        [[maybe_unused]] auto const thirdEndpointId =
+            layer->addPortalEndpointAfter(
+                loopId, 1,
+                {{8.0f, 16.0f}, 12.0f, 4.0f, 36.0f});
+      }
       if (fixture.stablePortalIdentity) {
         auto first = pair->getEndpoints()[0].getAperture();
         auto second = pair->getEndpoints()[1].getAperture();
-        *pair = bw::core::PortalPair{
-            pairId,
+        *pair = bw::core::PortalLoop{
+            loopId, 94,
             {bw::core::PortalEndpoint{93, second},
              bw::core::PortalEndpoint{17, first}},
             {17, 93}};
       }
-      portalPairs.push_back({layer->getId(), *pair});
+      portalLoops.push_back({layer->getId(), *pair});
     }
   }
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
-      world.getWedgeGenerationParameters(), false, portalPairs);
+      world.getWedgeGenerationParameters(), false, portalLoops);
   if (fixture.phantomFarWindow && std::ranges::count_if(result->getWalls(),
           [](auto const& wall) { return !wall.visible && wall.sideZones.has_value(); }) != 2)
     throw std::runtime_error("Phantom overlap fixture lost an aperture");
@@ -876,6 +886,17 @@ void portalRendersThroughPublicSceneAndNamedFinalOutput(
           "stable endpoint IDs or reordered storage changed the final Portal image");
   require(secondPasses == firstPasses && secondSelected == firstSelected,
           "the GPU Portal loop changed its deterministic selected endpoint or pass count");
+
+  uint32_t threePasses{};
+  uint32_t threeSelected{};
+  auto directed = render(
+      renderSystem, {.portal = true, .threeEndpointPortal = true}, nullptr,
+      &threePasses, &threeSelected);
+  require(threeSelected >= 2 && threePasses >= 3 &&
+              threePasses <= PortalViewSlotCount,
+          "public render-scene did not render bounded A -> B -> C -> A views");
+  require(regionDifference(image, directed) > 0.0005,
+          "three directed Portal destinations were not visibly distinguished");
 }
 
 void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
@@ -896,7 +917,7 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
     throw std::runtime_error("mines world could not load");
   }
   auto data = world.getWorldData();
-  require(data->findPortalPair(0, 0) && data->findPortalPair(0, 0)->active,
+  require(data->findPortalLoop(0, 0) && data->findPortalLoop(0, 0)->active,
           "mines Portal pair inactive");
   editor::PreviewRenderScene scene(
       renderSystem, &world, kWidth, kHeight,

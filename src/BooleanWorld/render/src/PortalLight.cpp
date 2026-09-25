@@ -66,12 +66,12 @@ float attenuation(
 }
 
 PortalLightEndpointKey endpointKey(
-    bw::core::ResolvedPortalPair const& pair, uint32_t endpointId) {
-  return {pair.layerId, pair.pairId, endpointId};
+    bw::core::ResolvedPortalLoop const& pair, uint32_t endpointId) {
+  return {pair.layerId, pair.loopId, endpointId};
 }
 
 std::optional<PortalLightPathHop> buildHop(
-    bw::core::ResolvedPortalPair const& pair,
+    bw::core::ResolvedPortalLoop const& pair,
     uint32_t sourceEndpointId,
     glm::vec3 const& inputLightPosition) {
   if (!pair.active) return std::nullopt;
@@ -299,7 +299,7 @@ uint32_t PortalLightPlan::count(
 }
 
 std::optional<PortalLightAttachment> BuildPortalLightAttachment(
-    bw::core::ResolvedPortalPair const& pair,
+    bw::core::ResolvedPortalLoop const& pair,
     uint32_t sourceEndpointId,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch) {
@@ -333,7 +333,7 @@ std::optional<PortalLightAttachment> BuildPortalLightAttachment(
 }
 
 PortalLightPlan PlanPortalLights(
-    std::span<bw::core::ResolvedPortalPair const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> pairs,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch,
     PortalLightLimits limits) {
@@ -346,7 +346,7 @@ PortalLightPlan PlanPortalLights(
   if (!validOptions(playerTorch)) return plan;
 
   struct Endpoint {
-    bw::core::ResolvedPortalPair const* pair{};
+    bw::core::ResolvedPortalLoop const* loop{};
     PortalLightEndpointKey key{};
   };
   std::vector<Endpoint> endpoints;
@@ -373,20 +373,20 @@ PortalLightPlan PlanPortalLights(
       auto path = parent ? parent->path
                          : std::vector<PortalLightEndpointKey>{};
       path.push_back(endpoint.key);
-      auto const& pair = *endpoint.pair;
+      auto const& loop = *endpoint.loop;
       auto const* source =
-          bw::core::FindPortalEndpoint(pair, endpoint.key.endpointId);
+          bw::core::FindPortalEndpoint(loop, endpoint.key.endpointId);
       auto const* destination =
-          bw::core::NextPortalEndpoint(pair, endpoint.key.endpointId);
+          bw::core::NextPortalEndpoint(loop, endpoint.key.endpointId);
 
-      if (!pair.active || !source || !destination ||
+      if (!loop.active || !source || !destination ||
           !source->resolved || !destination->resolved) {
         addDiagnostic(std::move(path), PortalLightDiagnosticReason::Inactive);
         continue;
       }
       if (parent &&
           (pathContainsEndpoint(*parent, endpoint.key) ||
-           pathContainsEndpoint(*parent, endpointKey(pair, destination->endpointId)))) {
+           pathContainsEndpoint(*parent, endpointKey(loop, destination->endpointId)))) {
         addDiagnostic(
             std::move(path), PortalLightDiagnosticReason::EndpointCycle,
             parent->strength, parent->visibility);
@@ -401,7 +401,7 @@ PortalLightPlan PlanPortalLights(
       }
 
       auto inputPosition = parent ? parent->position : playerTorchPosition;
-      auto hop = buildHop(pair, endpoint.key.endpointId, inputPosition);
+      auto hop = buildHop(loop, endpoint.key.endpointId, inputPosition);
       if (!hop) {
         addDiagnostic(
             std::move(path), PortalLightDiagnosticReason::SourceBackFacing,

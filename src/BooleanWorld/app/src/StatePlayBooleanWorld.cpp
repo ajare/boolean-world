@@ -629,7 +629,7 @@ void StatePlayBooleanWorld::createWorldCollisions(
   // A crossing may move the remainder to a remote endpoint, and several
   // endpoints may chain in one update. Stage collision around every possible
   // emergence point before Willpower begins its recursive sweep.
-  for (auto const& pair : mWorldData->getPortalPairs()) {
+  for (auto const& pair : mWorldData->getPortalLoops()) {
     if (!pair.active) continue;
     for (auto const& endpoint : pair.endpoints) {
       auto emergence = endpoint.aperture.centre +
@@ -690,7 +690,7 @@ void StatePlayBooleanWorld::createWorldCollisions(
   // The removed horizontal spans remain swept special planes. They pass a
   // vertically eligible front-to-back crossing into the canonical transform,
   // and otherwise use the ordinary wall response.
-  for (auto const& pair : mWorldData->getPortalPairs()) {
+  for (auto const& pair : mWorldData->getPortalLoops()) {
     if (!pair.active) continue;
     for (auto const& endpoint : pair.endpoints) {
       auto const& aperture = endpoint.aperture;
@@ -721,7 +721,7 @@ StatePlayBooleanWorld::handlePlayerPortalLine(
   mPlayerPortalMotion.position = result->oldPosition;
   mPlayerPortalMotion.unconsumedMovement = result->movementDesired;
   auto response = bw::app::tryPlayerPortalCrossing(
-      *mWorldData, *source.pair, source.endpointId, BW_PLAYER_RADIUS,
+      *mWorldData, *source.loop, source.endpointId, BW_PLAYER_RADIUS,
       BW_PLAYER_HEIGHT, mPlayerPortalMotion, mPlayerPortalUpdateState);
   if (response == bw::app::PlayerPortalCrossingResult::Approaching) {
     return WorldCollisionSim::PortalLineResponse::Ignore;
@@ -733,7 +733,7 @@ StatePlayBooleanWorld::handlePlayerPortalLine(
   }
   if (response == bw::app::PlayerPortalCrossingResult::NotCrossing) {
     bw::app::PortalEndpointIdentity identity{
-        source.pair->layerId, source.pair->pairId, source.endpointId};
+        source.loop->layerId, source.loop->loopId, source.endpointId};
     return !source.sourceWallBlocks ||
                    (mPlayerPortalUpdateState.exitSide.active &&
                     mPlayerPortalUpdateState.exitSide.endpoint == identity)

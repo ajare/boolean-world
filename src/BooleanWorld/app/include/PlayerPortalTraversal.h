@@ -8,7 +8,7 @@
 
 namespace bw::core {
 class ArrangementWorldData;
-struct ResolvedPortalPair;
+struct ResolvedPortalLoop;
 }  // namespace bw::core
 
 namespace bw::app {
@@ -21,7 +21,7 @@ inline constexpr float PortalExitPlaneEpsilon = 0.01f;
 
 struct PortalEndpointIdentity {
   uint32_t layerId{~0u};
-  uint32_t portalId{~0u};
+  uint32_t loopId{~0u};
   uint32_t endpointId{~0u};
 
   auto operator<=>(PortalEndpointIdentity const&) const = default;
@@ -72,7 +72,7 @@ enum class PlayerPortalCrossingResult : uint8_t {
 // remaining displacement; pitch and vertical velocity are left unchanged.
 [[nodiscard]] PlayerPortalCrossingResult tryPlayerPortalCrossing(
     core::ArrangementWorldData const& world,
-    core::ResolvedPortalPair const& pair,
+    core::ResolvedPortalLoop const& pair,
     uint32_t sourceEndpointId,
     float playerRadius,
     float playerHeight,

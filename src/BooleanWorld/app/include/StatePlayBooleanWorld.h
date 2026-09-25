@@ -134,7 +134,7 @@ private:
   wp::collide::Collider* mPlayerCollider;
 
   struct PortalCollisionEndpoint {
-    bw::core::ResolvedPortalPair const* pair{};
+    bw::core::ResolvedPortalLoop const* loop{};
     uint32_t endpointId{};
     bool sourceWallBlocks{};
   };

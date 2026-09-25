@@ -798,24 +798,24 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
   bw::core::AuthoredAperture second{{20.0f, 0.0f}, 20.0f, 4.0f, 28.0f};
 
   editor::transactUndoableAction(
-      &document, editor::CommandId::CreatePortalPair,
+      &document, editor::CommandId::CreatePortalLoop,
       [=](editor::Document* doc) {
-        return editor::createPortalPair(doc, layer, first, second);
+        return editor::createPortalLoop(doc, layer, first, second);
       });
-  auto const pairId = document.getSelectedPortalPairId();
-  require(pairId != ~0u &&
+  auto const loopId = document.getSelectedPortalLoopId();
+  require(loopId != ~0u &&
               document.getSelectedPortalEndpointId() == 0,
           "creating a Portal pair did not select its first stable endpoint");
   editor::Settings settings;
   auto hover = document.getHover(first.centre, settings, nullptr);
   require(hover.type == editor::HoverableType::PortalEndpoint &&
-              hover.indices == std::vector<uint32_t>{pairId, 0},
+              hover.indices == std::vector<uint32_t>{loopId, 0},
           "the 2D editor did not expose the authored Portal endpoint handle");
   editor::transactUndoableAction(
       &document, editor::CommandId::SelectPortalEndpoint,
       [=](editor::Document* doc) {
         return editor::selectPortalEndpoint(
-            doc, layer->getId(), pairId, 1);
+            doc, layer->getId(), loopId, 1);
       });
   require(document.getSelectedPortalEndpointId() == 1,
           "transactional Portal endpoint selection did not apply");
@@ -832,23 +832,23 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
       &document, editor::CommandId::SetPortalEndpointPosition,
       [=](editor::Document* doc) {
         return editor::setPortalEndpointPosition(
-            doc, layer, pairId, 0, {-20.0f, 7.0f});
+            doc, layer, loopId, 0, {-20.0f, 7.0f});
       });
   editor::transactUndoableAction(
       &document, editor::CommandId::SetPortalEndpointWidth,
       [=](editor::Document* doc) {
-        return editor::setPortalEndpointWidth(doc, layer, pairId, 0, 30.0f);
+        return editor::setPortalEndpointWidth(doc, layer, loopId, 0, 30.0f);
       });
   editor::transactUndoableAction(
       &document, editor::CommandId::SetPortalEndpointVerticalBounds,
       [=](editor::Document* doc) {
         return editor::setPortalEndpointVerticalBounds(
-            doc, layer, pairId, 0, 3.0f, 31.0f);
+            doc, layer, loopId, 0, 3.0f, 31.0f);
       });
 
   auto aperture = document.getWorld()
                       ->getActiveLayer()
-                      ->getPortalPair(pairId)
+                      ->getPortalLoop(loopId)
                       ->findEndpoint(0)
                       ->getAperture();
   require(aperture.centre == wp::Vector2{-20.0f, 7.0f} &&
@@ -858,36 +858,72 @@ void portalAuthoringIsTransactionalAndRestoresStableSelection() {
 
   editor::undo(&document, 3);
   auto const* restored =
-      document.getWorld()->getActiveLayer()->getPortalPair(pairId);
+      document.getWorld()->getActiveLayer()->getPortalLoop(loopId);
   require(restored &&
               restored->findEndpoint(0)->getAperture().centre == first.centre &&
               restored->findEndpoint(0)->getAperture().width == first.width &&
               restored->findEndpoint(0)->getAperture().bottom == first.bottom &&
               restored->findEndpoint(0)->getAperture().top == first.top &&
-              document.getSelectedPortalPairId() == pairId &&
+              document.getSelectedPortalLoopId() == loopId &&
               document.getSelectedPortalEndpointId() == 0,
           "undo did not restore Portal endpoint state and selection");
   editor::redo(&document, 3);
   require(document.getWorld()
                   ->getActiveLayer()
-                  ->getPortalPair(pairId)
+                  ->getPortalLoop(loopId)
                   ->findEndpoint(0)
                   ->getAperture()
                   .width == 30.0f,
           "redo did not restore Portal endpoint edits");
 
   layer = document.getWorld()->getActiveLayer();
+  auto third = second;
+  third.centre = {0.0f, 20.0f};
   editor::transactUndoableAction(
-      &document, editor::CommandId::DeletePortalPair,
+      &document, editor::CommandId::AddPortalEndpoint,
       [=](editor::Document* doc) {
-        return editor::deletePortalPair(doc, layer, pairId);
+        return editor::addPortalEndpoint(doc, layer, loopId, 1, third);
       });
-  require(!layer->getPortalPair(pairId) &&
+  require(document.getSelectedPortalEndpointId() == 2 &&
+              layer->getPortalLoop(loopId)->getEndpoints().size() == 3,
+          "adding a Portal endpoint did not preserve stable selection");
+  editor::transactUndoableAction(
+      &document, editor::CommandId::MovePortalEndpointEarlier,
+      [=](editor::Document* doc) {
+        return editor::movePortalEndpointEarlier(doc, layer, loopId, 2);
+      });
+  require(layer->getPortalLoop(loopId)->getTraversalOrder()[1] == 2,
+          "moving a Portal endpoint did not rewire traversal order");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPortalLoop(loopId)->getTraversalOrder()[2] == 2 &&
+              document.getSelectedPortalEndpointId() == 2,
+          "undo did not restore Portal endpoint traversal order and selection");
+  editor::transactUndoableAction(
+      &document, editor::CommandId::DeletePortalEndpoint,
+      [=](editor::Document* doc) {
+        return editor::deletePortalEndpoint(doc, layer, loopId, 2);
+      });
+  require(layer->getPortalLoop(loopId)->getEndpoints().size() == 2 &&
+              document.getSelectedPortalEndpointId() == 0,
+          "deleting a Portal endpoint did not reconnect and select its destination");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPortalLoop(loopId)->findEndpoint(2) &&
+              document.getSelectedPortalEndpointId() == 2,
+          "undo did not restore a deleted stable Portal endpoint");
+
+  editor::transactUndoableAction(
+      &document, editor::CommandId::DeletePortalLoop,
+      [=](editor::Document* doc) {
+        return editor::deletePortalLoop(doc, layer, loopId);
+      });
+  require(!layer->getPortalLoop(loopId) &&
               !document.hasSelectedPortalEndpoint(),
           "deleting a Portal pair retained it or its endpoint selection");
   editor::undo(&document);
-  require(document.getWorld()->getActiveLayer()->getPortalPair(pairId) &&
-              document.getSelectedPortalPairId() == pairId,
+  require(document.getWorld()->getActiveLayer()->getPortalLoop(loopId) &&
+              document.getSelectedPortalLoopId() == loopId,
           "undo did not restore a deleted Portal pair and stable selection");
 }
 

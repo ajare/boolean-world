@@ -56,12 +56,12 @@ vector<Primitive*> selectAndOrderPrimitives(
   return primitives;
 }
 
-vector<PortalPairSnapshot> snapshotPortalPairs(
+vector<PortalLoopSnapshot> snapshotPortalLoops(
     World const& world, LayerSelection const& selection) {
-  vector<PortalPairSnapshot> result;
+  vector<PortalLoopSnapshot> result;
   for (auto const* layer : world.getLayers()) {
     if (!IsLayerSelected(selection, layer->getId())) continue;
-    for (auto const& pair : layer->getPortalPairs()) {
+    for (auto const& pair : layer->getPortalLoops()) {
       result.push_back({layer->getId(), pair});
     }
   }

@@ -86,7 +86,7 @@ class BW_API ArrangementWorldData {
   std::vector<FailedAudioEmitter> mFailedAudioEmitters;
   // Resolution is derived from this snapshot's rendered ArrangementWalls.
   // It never mutates either authored Portal data or the wall collection.
-  std::vector<ResolvedPortalPair> mPortalPairs;
+  std::vector<ResolvedPortalLoop> mPortalLoops;
   // Kept separate from ordinary shared-edge Hydraulic links and collision.
   // Conflicting offset cycles omit the offending pair from adjacency and
   // retain a stable diagnostic here instead.
@@ -101,7 +101,7 @@ public:
       ArrangementStats* stats = nullptr,
       WedgeGenerationParameters const& wedgeGenerationParameters = {},
       bool createWayfinderMesh = false,
-      std::vector<PortalPairSnapshot> const& portalPairs = {});
+      std::vector<PortalLoopSnapshot> const& portalLoops = {});
 
   // Present when navigation generation was requested and the arrangement has
   // at least one solid polygon.
@@ -126,12 +126,12 @@ public:
   [[nodiscard]] std::vector<FailedAudioEmitter> const&
   getFailedAudioEmitters() const;
 
-  [[nodiscard]] std::vector<ResolvedPortalPair> const&
-  getPortalPairs() const;
-  [[nodiscard]] ResolvedPortalPair const* findPortalPair(
-      uint32_t layerId, uint32_t pairId) const;
+  [[nodiscard]] std::vector<ResolvedPortalLoop> const&
+  getPortalLoops() const;
+  [[nodiscard]] ResolvedPortalLoop const* findPortalLoop(
+      uint32_t layerId, uint32_t loopId) const;
   [[nodiscard]] ResolvedPortalEndpoint const* findPortalEndpoint(
-      uint32_t layerId, uint32_t pairId, uint32_t endpointId) const;
+      uint32_t layerId, uint32_t loopId, uint32_t endpointId) const;
 
   [[nodiscard]] std::vector<PortalLiquidAdjacency> const&
   getPortalLiquidAdjacency() const;

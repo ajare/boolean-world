@@ -17,13 +17,13 @@ bool near(float left, float right, float tolerance = 1e-4f) {
   return std::abs(left - right) <= tolerance;
 }
 
-bw::core::ResolvedPortalPair pair(
-    uint32_t layerId, uint32_t pairId,
+bw::core::ResolvedPortalLoop pair(
+    uint32_t layerId, uint32_t loopId,
     wp::Vector2 sourceCentre, wp::Vector2 sourceFront,
     float width = 2.0f, float bottom = -1.0f, float top = 1.0f) {
-  bw::core::ResolvedPortalPair result;
+  bw::core::ResolvedPortalLoop result;
   result.layerId = layerId;
-  result.pairId = pairId;
+  result.loopId = loopId;
   result.active = true;
   result.endpoints[0].endpointId = 0;
   result.endpoints[0].resolved = true;
@@ -36,10 +36,10 @@ bw::core::ResolvedPortalPair pair(
   return result;
 }
 
-bw::core::ResolvedPortalPair translatedLoopPair(
-    uint32_t layerId, uint32_t pairId, float centreX = 0.0f) {
+bw::core::ResolvedPortalLoop translatedLoopPair(
+    uint32_t layerId, uint32_t loopId, float centreX = 0.0f) {
   auto result = pair(
-      layerId, pairId, {centreX, 4.0f}, {0.0f, -1.0f}, 1.5f);
+      layerId, loopId, {centreX, 4.0f}, {0.0f, -1.0f}, 1.5f);
   // Separate planes: the source remains visible beyond the destination clip
   // plane. Coincident endpoints merely test whether the exit surface leaks
   // through clipping, not a physically visible recursive Portal loop.
@@ -62,14 +62,14 @@ void selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering() {
   std::vector candidates{backFacing, outside, small, large};
   auto selected = SelectPortalView(
       candidates, projection * view, {0.0f, 0.0f, 0.0f});
-  require(selected && selected->key.pairId == 4,
+  require(selected && selected->key.loopId == 4,
           "Portal selection did not reject invisible endpoints or rank projected coverage");
 
   auto nearPair = pair(2, 9, {0.0f, 5.0f}, {0.0f, -1.0f});
   auto farPair = pair(1, 8, {1.0f, 5.0f}, {0.0f, -1.0f});
   candidates = {farPair, nearPair};
   selected = SelectPortalView(candidates, projection * view, {0.0f, 0.0f, 0.0f});
-  require(selected && selected->key.pairId == 9,
+  require(selected && selected->key.loopId == 9,
           "Portal distance did not break equal-shape selection deterministically");
 
   auto highIdentity = pair(2, 4, {0.0f, 5.0f}, {0.0f, -1.0f});
@@ -143,7 +143,7 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
           "Portal loop did not report its recursion-depth cutoff");
   auto revisits = std::ranges::count_if(
       first.diagnostics, [](auto const& diagnostic) {
-        return diagnostic.selected && diagnostic.endpoint.pairId == 20;
+        return diagnostic.selected && diagnostic.endpoint.loopId == 20;
       });
   require(revisits == 3,
           "revisiting a Portal endpoint incorrectly terminated visual recursion");
@@ -220,7 +220,7 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
       pairs, view, projection, 0.1f, 100.0f, 320, 240,
       [](PortalEndpointKey const& key,
          bw::core::ResolvedAperture const&, glm::mat4 const&) {
-        return key.pairId == 30;
+        return key.loopId == 30;
       });
 
   require(plan.renderedPassCount == 0 && plan.rootChildren.empty(),
@@ -235,13 +235,46 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
           "Portal visibility and projected-area cutoff diagnostics were incomplete");
 }
 
+void threeEndpointViewsUseDirectedDestinations() {
+  auto loop = pair(7, 11, {0.0f, 4.0f}, {0.0f, -1.0f});
+  loop.endpoints.push_back({});
+  loop.endpoints[2].endpointId = 2;
+  loop.endpoints[2].resolved = true;
+  loop.endpoints[2].aperture = {
+      {-8.0f, 2.0f}, {0.0f, 1.0f}, {1.0f, 0.0f},
+      2.0f, 5.0f, 7.0f, {2}};
+  loop.traversalOrder = {0, 1, 2};
+  auto view = glm::lookAt(
+      glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{0.0f, 0.0f, -1.0f},
+      glm::vec3{0.0f, 1.0f, 0.0f});
+  auto projection = glm::perspective(
+      glm::radians(60.0f), 4.0f / 3.0f, 0.1f, 100.0f);
+
+  for (uint32_t sourceId = 0; sourceId < 3; ++sourceId) {
+    SelectedPortalView selected{
+        {loop.layerId, loop.loopId, sourceId}, &loop, 1.0f, 1.0f};
+    auto built = BuildPortalView(
+        selected, view, projection, 0.1f, 100.0f, 320, 240);
+    auto canonical = bw::core::BuildPortalRigidTransform(loop, sourceId);
+    auto source = bw::core::FindPortalEndpoint(loop, sourceId)->aperture.centre;
+    auto expected = canonical.transformPoint(source);
+    auto transformed = built.sourceToDestination *
+                       glm::vec4{source.x, 0.0f, -source.y, 1.0f};
+    require(
+        near(transformed.x, expected.x) && near(-transformed.z, expected.y) &&
+            bw::core::NextPortalEndpoint(loop, sourceId)->endpointId ==
+                (sourceId + 1) % 3,
+        "public Portal view construction did not distinguish A -> B -> C -> A");
+  }
+}
+
 void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
-  auto portalPair = pair(3, 5, {0.0f, 4.0f}, {0.0f, -1.0f});
-  portalPair.endpoints[0].endpointId = 17;
-  portalPair.endpoints[1].endpointId = 93;
-  portalPair.traversalOrder = {93, 17};
-  std::swap(portalPair.endpoints[0], portalPair.endpoints[1]);
-  SelectedPortalView selected{{3, 5, 17}, &portalPair, 1.0f, 4.0f};
+  auto portalLoop = pair(3, 5, {0.0f, 4.0f}, {0.0f, -1.0f});
+  portalLoop.endpoints[0].endpointId = 17;
+  portalLoop.endpoints[1].endpointId = 93;
+  portalLoop.traversalOrder = {93, 17};
+  std::swap(portalLoop.endpoints[0], portalLoop.endpoints[1]);
+  SelectedPortalView selected{{3, 5, 17}, &portalLoop, 1.0f, 4.0f};
   auto eye = glm::vec3{0.75f, 0.25f, 0.0f};
   auto view = glm::lookAt(
       eye, eye + glm::normalize(glm::vec3{0.2f, 0.1f, -1.0f}),
@@ -251,7 +284,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
   auto built = BuildPortalView(
       selected, view, projection, 0.2f, 300.0f, 130, 70);
 
-  auto canonical = bw::core::BuildPortalRigidTransform(portalPair, 17);
+  auto canonical = bw::core::BuildPortalRigidTransform(portalLoop, 17);
   auto expectedPlane = canonical.transformPoint({eye.x, -eye.z});
   auto transformedEye = built.sourceToDestination * glm::vec4(eye, 1.0f);
   require(
@@ -270,7 +303,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
               near(direct.y / direct.w, projective.y / projective.w),
           "Portal aperture sampling is not projectively aligned with the observing camera");
 
-  auto destination = bw::core::NextPortalEndpoint(portalPair, 17)->aperture;
+  auto destination = bw::core::NextPortalEndpoint(portalLoop, 17)->aperture;
   auto destinationCentre = glm::vec3{
       destination.centre.x, destination.bottom, -destination.centre.y};
   auto destinationFront = glm::vec3{
@@ -304,6 +337,7 @@ int main() {
     plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork();
     loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots();
     invisibleAndSubThresholdBranchesConsumeNoSlots();
+    threeEndpointViewsUseDirectedDestinations();
     observingCameraUsesTheCanonicalRigidTransformAndExactProjection();
     std::cout << "Bounded Portal view planning and transforms passed\n";
     return 0;

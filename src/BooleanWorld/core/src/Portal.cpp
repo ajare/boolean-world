@@ -5,6 +5,7 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <set>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -284,38 +285,25 @@ uint32_t NextPortalEndpointId(
 }
 
 ResolvedPortalEndpoint const* FindPortalEndpoint(
-    ResolvedPortalPair const& pair, uint32_t endpointId) {
+    ResolvedPortalLoop const& pair, uint32_t endpointId) {
   auto found = std::ranges::find(
       pair.endpoints, endpointId, &ResolvedPortalEndpoint::endpointId);
   return found == pair.endpoints.end() ? nullptr : &*found;
 }
 
 ResolvedPortalEndpoint const* NextPortalEndpoint(
-    ResolvedPortalPair const& pair, uint32_t sourceEndpointId) {
+    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId) {
   if (!FindPortalEndpoint(pair, sourceEndpointId)) return nullptr;
   return FindPortalEndpoint(
       pair, NextPortalEndpointId(pair.traversalOrder, sourceEndpointId));
 }
 
-uint32_t NextPortalEndpointIndex(
-    ResolvedPortalPair const& pair, uint32_t sourceIndex) {
-  if (sourceIndex >= pair.endpoints.size()) {
-    throw CoreException("Invalid Portal source endpoint index");
-  }
-  auto const* destination =
-      NextPortalEndpoint(pair, pair.endpoints[sourceIndex].endpointId);
-  if (!destination) {
-    throw CoreException("Portal destination endpoint ID is not in the loop");
-  }
-  return static_cast<uint32_t>(destination - pair.endpoints.data());
-}
-
 PortalRigidTransform BuildPortalRigidTransform(
-    ResolvedPortalPair const& pair, uint32_t sourceEndpointId) {
+    ResolvedPortalLoop const& pair, uint32_t sourceEndpointId) {
   auto const* source = FindPortalEndpoint(pair, sourceEndpointId);
   auto const* destination = NextPortalEndpoint(pair, sourceEndpointId);
   if (!pair.active || !source || !destination) {
-    throw CoreException("A Portal rigid transform requires an active pair and a valid source endpoint ID");
+    throw CoreException("A Portal rigid transform requires an active loop and a valid source endpoint ID");
   }
   return {source->aperture, destination->aperture};
 }
@@ -341,54 +329,113 @@ void PortalEndpoint::setAperture(AuthoredAperture const& aperture) {
   mAperture = aperture;
 }
 
-PortalPair::PortalPair(
+PortalLoop::PortalLoop(
     uint32_t id, AuthoredAperture first, AuthoredAperture second)
-    : PortalPair(
-          id,
+    : PortalLoop(
+          id, 2,
           {PortalEndpoint{0, first}, PortalEndpoint{1, second}},
           {0, 1}) {}
 
-PortalPair::PortalPair(
-    uint32_t id, std::array<PortalEndpoint, 2> endpoints,
-    std::array<uint32_t, 2> traversalOrder)
+PortalLoop::PortalLoop(
+    uint32_t id, uint32_t nextEndpointId,
+    std::vector<PortalEndpoint> endpoints,
+    std::vector<uint32_t> traversalOrder)
     : mId(id),
+      mNextEndpointId(nextEndpointId),
       mEndpoints(std::move(endpoints)),
-      mTraversalOrder(traversalOrder) {
-  if (mEndpoints[0].getId() == mEndpoints[1].getId()) {
-    throw CoreException("A Portal pair requires distinct endpoint IDs");
+      mTraversalOrder(std::move(traversalOrder)) {
+  if (mEndpoints.size() < 2 || mTraversalOrder.size() != mEndpoints.size()) {
+    throw CoreException("A Portal loop requires at least two endpoints and one traversal entry per endpoint");
   }
-  for (auto endpointId : mTraversalOrder) {
-    if (!static_cast<PortalPair const&>(*this).findEndpoint(endpointId)) {
-      throw CoreException("Portal traversal order references a missing endpoint ID");
+  std::set<uint32_t> endpointIds;
+  for (auto const& endpoint : mEndpoints) {
+    if (!endpointIds.insert(endpoint.getId()).second ||
+        endpoint.getId() >= mNextEndpointId) {
+      throw CoreException("A Portal loop contains duplicate endpoint IDs or an identity-reusing allocator state");
     }
   }
-  if (mTraversalOrder[0] == mTraversalOrder[1]) {
-    throw CoreException("Portal traversal order contains a duplicate endpoint ID");
+  std::set<uint32_t> orderedIds;
+  for (auto endpointId : mTraversalOrder) {
+    if (!endpointIds.contains(endpointId) || !orderedIds.insert(endpointId).second) {
+      throw CoreException("Portal traversal order is invalid");
+    }
   }
 }
 
-uint32_t PortalPair::getId() const { return mId; }
+uint32_t PortalLoop::getId() const { return mId; }
 
-std::array<PortalEndpoint, 2> const& PortalPair::getEndpoints() const {
+uint32_t PortalLoop::getNextEndpointAllocator() const {
+  return mNextEndpointId;
+}
+
+std::vector<PortalEndpoint> const& PortalLoop::getEndpoints() const {
   return mEndpoints;
 }
 
-PortalEndpoint const* PortalPair::findEndpoint(uint32_t endpointId) const {
+PortalEndpoint const* PortalLoop::findEndpoint(uint32_t endpointId) const {
   auto found = std::ranges::find(mEndpoints, endpointId, &PortalEndpoint::getId);
   return found == mEndpoints.end() ? nullptr : &*found;
 }
 
-PortalEndpoint* PortalPair::findEndpointMutable(uint32_t endpointId) {
+PortalEndpoint* PortalLoop::findEndpointMutable(uint32_t endpointId) {
   auto found = std::ranges::find(mEndpoints, endpointId, &PortalEndpoint::getId);
   return found == mEndpoints.end() ? nullptr : &*found;
 }
 
-std::span<uint32_t const> PortalPair::getTraversalOrder() const {
+std::span<uint32_t const> PortalLoop::getTraversalOrder() const {
   return mTraversalOrder;
 }
 
-uint32_t PortalPair::getNextEndpointId(uint32_t endpointId) const {
+uint32_t PortalLoop::getNextEndpointId(uint32_t endpointId) const {
   return NextPortalEndpointId(mTraversalOrder, endpointId);
+}
+
+uint32_t PortalLoop::addEndpointAfter(
+    uint32_t afterEndpointId, AuthoredAperture const& aperture) {
+  auto after = std::ranges::find(mTraversalOrder, afterEndpointId);
+  if (after == mTraversalOrder.end()) {
+    throw CoreException("Portal insertion endpoint ID is not in the loop");
+  }
+  if (mNextEndpointId == std::numeric_limits<uint32_t>::max()) {
+    throw CoreException("Portal endpoint ID space exhausted");
+  }
+  auto const id = mNextEndpointId++;
+  mEndpoints.emplace_back(id, aperture);
+  mTraversalOrder.insert(std::next(after), id);
+  return id;
+}
+
+void PortalLoop::removeEndpoint(uint32_t endpointId) {
+  if (mEndpoints.size() <= 2) {
+    throw CoreException("A Portal loop cannot contain fewer than two endpoints");
+  }
+  auto endpoint = std::ranges::find(mEndpoints, endpointId, &PortalEndpoint::getId);
+  auto order = std::ranges::find(mTraversalOrder, endpointId);
+  if (endpoint == mEndpoints.end() || order == mTraversalOrder.end()) {
+    throw CoreException("Portal endpoint ID is not in the loop");
+  }
+  mEndpoints.erase(endpoint);
+  mTraversalOrder.erase(order);
+}
+
+bool PortalLoop::moveEndpointEarlier(uint32_t endpointId) {
+  auto found = std::ranges::find(mTraversalOrder, endpointId);
+  if (found == mTraversalOrder.end()) {
+    throw CoreException("Portal endpoint ID is not in the loop");
+  }
+  if (found == mTraversalOrder.begin()) return false;
+  std::iter_swap(found, std::prev(found));
+  return true;
+}
+
+bool PortalLoop::moveEndpointLater(uint32_t endpointId) {
+  auto found = std::ranges::find(mTraversalOrder, endpointId);
+  if (found == mTraversalOrder.end()) {
+    throw CoreException("Portal endpoint ID is not in the loop");
+  }
+  if (std::next(found) == mTraversalOrder.end()) return false;
+  std::iter_swap(found, std::next(found));
+  return true;
 }
 
 std::string_view PortalResolutionDiagnosticText(
@@ -559,20 +606,21 @@ std::optional<wp::Vector2> FindNearestLegalPortalCentre(
   return resolved.resolved ? nearest : std::nullopt;
 }
 
-std::vector<ResolvedPortalPair> ResolvePortalPairs(
+std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
-    std::vector<PortalPairSnapshot> const& pairs) {
-  std::vector<ResolvedPortalPair> result;
+    std::vector<PortalLoopSnapshot> const& pairs) {
+  std::vector<ResolvedPortalLoop> result;
   result.reserve(pairs.size());
   for (auto const& snapshot : pairs) {
-    ResolvedPortalPair resolved;
+    ResolvedPortalLoop resolved;
     resolved.layerId = snapshot.layerId;
-    resolved.pairId = snapshot.pair.getId();
-    std::ranges::copy(
-        snapshot.pair.getTraversalOrder(), resolved.traversalOrder.begin());
+    resolved.loopId = snapshot.loop.getId();
+    auto const authoredOrder = snapshot.loop.getTraversalOrder();
+    resolved.traversalOrder.assign(
+        authoredOrder.begin(), authoredOrder.end());
 
-    auto const& authoredEndpoints = snapshot.pair.getEndpoints();
+    auto const& authoredEndpoints = snapshot.loop.getEndpoints();
     auto const firstHeight = authoredEndpoints.front().getAperture().top -
                              authoredEndpoints.front().getAperture().bottom;
     auto width = std::numeric_limits<float>::infinity();
@@ -584,15 +632,17 @@ std::vector<ResolvedPortalPair> ResolvePortalPairs(
                           (aperture.top - aperture.bottom) - firstHeight) <=
                       ElevationTolerance;
     }
+    resolved.endpoints.clear();
+    resolved.endpoints.reserve(authoredEndpoints.size());
     std::ranges::transform(
-        authoredEndpoints, resolved.endpoints.begin(),
+        authoredEndpoints, std::back_inserter(resolved.endpoints),
         [&](auto const& endpoint) {
           return resolveEndpoint(arrangement, walls, endpoint, width);
         });
 
     // Pair-wide validation does not discard successful geometric resolution:
     // the editor still needs the generated tangent and narrowed bounds to
-    // distinguish resolved geometry from the reason the pair is inactive.
+    // distinguish resolved geometry from the reason the loop is inactive.
     auto pairFailure = PortalResolutionDiagnostic::None;
     if (!equalHeights) {
       pairFailure = PortalResolutionDiagnostic::UnequalEndpointHeights;
@@ -634,7 +684,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
     std::vector<arr::HydraulicCell> const& cells,
-    std::vector<ResolvedPortalPair> const& pairs) {
+    std::vector<ResolvedPortalLoop> const& pairs) {
   PortalLiquidAdjacencyResult result;
   auto ordinaryLinks = arr::BuildHydraulicLinks(arrangement, cells);
   ElevationOffsetGraph offsets(cells.size());
@@ -668,15 +718,15 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     return found;
   };
 
-  std::vector<ResolvedPortalPair const*> orderedPairs;
+  std::vector<ResolvedPortalLoop const*> orderedPairs;
   orderedPairs.reserve(pairs.size());
   for (auto const& pair : pairs) {
     if (pair.active) orderedPairs.push_back(&pair);
   }
   std::sort(
       orderedPairs.begin(), orderedPairs.end(), [](auto* left, auto* right) {
-        return std::tie(left->layerId, left->pairId) <
-               std::tie(right->layerId, right->pairId);
+        return std::tie(left->layerId, left->loopId) <
+               std::tie(right->layerId, right->loopId);
       });
 
   for (auto const* pair : orderedPairs) {
@@ -689,7 +739,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
         FindPortalEndpoint(*pair, destinationEndpointId);
     if (!sourceEndpoint || !destinationEndpoint) {
       result.diagnostics.push_back(
-          {pair->layerId, pair->pairId,
+          {pair->layerId, pair->loopId,
            PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint});
       continue;
     }
@@ -697,7 +747,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     auto secondCells = incidentCells(*destinationEndpoint);
     if (firstCells.empty() || secondCells.empty()) {
       result.diagnostics.push_back(
-          {pair->layerId, pair->pairId,
+          {pair->layerId, pair->loopId,
            PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint});
       continue;
     }
@@ -714,7 +764,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     }
     if (!consistent) {
       result.diagnostics.push_back(
-          {pair->layerId, pair->pairId,
+          {pair->layerId, pair->loopId,
            PortalLiquidDiagnostic::ContradictoryElevationCycle});
       continue;
     }
@@ -724,7 +774,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
       for (auto cell1 : secondCells) {
         result.adjacency.push_back(
             {pair->layerId,
-             pair->pairId,
+             pair->loopId,
              sourceEndpointId,
              destinationEndpointId,
              cell0,

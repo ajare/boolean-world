@@ -88,7 +88,7 @@ private:
     std::vector<GenerationPrimitiveMetadata> sourcePrimitives;
     std::vector<GenerationPrimitiveMetadata> updatedPrimitives;
     LayerSelection layerSelection;
-    std::vector<PortalPairSnapshot> portalPairs;
+    std::vector<PortalLoopSnapshot> portalLoops;
     PrimitiveProcessingStats primStats;
     wp::BoundingBox worldExtents;
     float gridCellSize;

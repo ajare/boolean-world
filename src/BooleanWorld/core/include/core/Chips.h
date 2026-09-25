@@ -157,5 +157,5 @@ void ApplyPortalApertures(
     DetailGeometry& detail,
     ArrangementResult const& arrangement,
     std::vector<ArrangementWall> const& walls,
-    std::vector<ResolvedPortalPair> const& portalPairs);
+    std::vector<ResolvedPortalLoop> const& portalLoops);
 }  // namespace bw::core::arr

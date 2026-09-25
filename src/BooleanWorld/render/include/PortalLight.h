@@ -33,7 +33,7 @@ inline constexpr float PortalLightTransformTolerance = 1e-5f;
 
 struct PortalLightEndpointKey {
   uint32_t layerId{};
-  uint32_t pairId{};
+  uint32_t loopId{};
   uint32_t endpointId{};
 
   auto operator<=>(PortalLightEndpointKey const&) const = default;
@@ -131,7 +131,7 @@ struct PortalLightPlan {
 // aperture visibility, then stable authored endpoint identity. Equivalent
 // folded paths are removed before the independent light and shadow budgets.
 [[nodiscard]] PortalLightPlan PlanPortalLights(
-    std::span<bw::core::ResolvedPortalPair const> pairs,
+    std::span<bw::core::ResolvedPortalLoop const> pairs,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch,
     PortalLightLimits limits = {});
@@ -141,7 +141,7 @@ struct PortalLightPlan {
 // the same path representation and canonical transform as recursive planning.
 // sourceEndpointId is stable authored identity, never an endpoint storage slot.
 [[nodiscard]] std::optional<PortalLightAttachment> BuildPortalLightAttachment(
-    bw::core::ResolvedPortalPair const& pair,
+    bw::core::ResolvedPortalLoop const& pair,
     uint32_t sourceEndpointId,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch);

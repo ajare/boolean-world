@@ -2486,7 +2486,7 @@ void ApplyPortalApertures(
     DetailGeometry& detail,
     ArrangementResult const& arrangement,
     std::vector<ArrangementWall> const& walls,
-    std::vector<ResolvedPortalPair> const& portalPairs) {
+    std::vector<ResolvedPortalLoop> const& portalLoops) {
   std::map<uint32_t, std::vector<PortalCutRectangle>> cutsByWall;
   struct Fallback {
     uint32_t wallIndex;
@@ -2494,7 +2494,7 @@ void ApplyPortalApertures(
   };
   std::vector<Fallback> fallbacks;
 
-  for (auto const& pair : portalPairs) {
+  for (auto const& pair : portalLoops) {
     if (!pair.active) continue;
     for (auto const& endpoint : pair.endpoints) {
       auto const& aperture = endpoint.aperture;
@@ -2550,7 +2550,7 @@ void ApplyPortalApertures(
   // opening. Other floor/ceiling detail remains untouched.
   detail.removeTrianglesIf([&](DetailTriangle const& triangle) {
     if (triangle.kind != DetailTriangleKind::WedgeFacet) return false;
-    for (auto const& pair : portalPairs) {
+    for (auto const& pair : portalLoops) {
       if (!pair.active) continue;
       for (auto const& endpoint : pair.endpoints) {
         auto const& aperture = endpoint.aperture;

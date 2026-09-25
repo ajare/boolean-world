@@ -295,26 +295,38 @@ bool deleteTriggerLine(Document* doc, uint32_t triggerLineIndex);
 
 bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, bw::core::WorldTriggerLineSide side);
 
-bool createPortalPair(
+bool createPortalLoop(
     Document* doc, bw::core::Layer* layer,
     bw::core::AuthoredAperture const& first,
     bw::core::AuthoredAperture const& second);
-bool deletePortalPair(
-    Document* doc, bw::core::Layer* layer, uint32_t pairId);
+bool deletePortalLoop(
+    Document* doc, bw::core::Layer* layer, uint32_t loopId);
+bool addPortalEndpoint(
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
+    uint32_t afterEndpointId, bw::core::AuthoredAperture const& aperture);
+bool deletePortalEndpoint(
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
+    uint32_t endpointId);
+bool movePortalEndpointEarlier(
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
+    uint32_t endpointId);
+bool movePortalEndpointLater(
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
+    uint32_t endpointId);
 bool selectPortalEndpoint(
-    Document* doc, uint32_t layerId, uint32_t pairId,
+    Document* doc, uint32_t layerId, uint32_t loopId,
     uint32_t endpointId);
 bool setPortalEndpointPosition(
-    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
     uint32_t endpointId, wp::Vector2 const& position);
 bool movePortalEndpoint(
-    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
     uint32_t endpointId, wp::Vector2 const& delta);
 bool setPortalEndpointWidth(
-    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
     uint32_t endpointId, float width);
 bool setPortalEndpointVerticalBounds(
-    Document* doc, bw::core::Layer* layer, uint32_t pairId,
+    Document* doc, bw::core::Layer* layer, uint32_t loopId,
     uint32_t endpointId, float bottom, float top);
 
 bool selectPrimitive(Document* doc, uint32_t primitiveIndex);

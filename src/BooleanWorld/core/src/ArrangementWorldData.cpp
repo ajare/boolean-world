@@ -125,7 +125,7 @@ ArrangementWorldData::ArrangementWorldData(
     ArrangementStats* stats,
     WedgeGenerationParameters const& wedgeGenerationParameters,
     bool createWayfinderMesh,
-    std::vector<PortalPairSnapshot> const& portalPairs)
+    std::vector<PortalLoopSnapshot> const& portalLoops)
     : mArrangement(std::move(arrangement)),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
   wp::Timer timer;
@@ -137,7 +137,7 @@ ArrangementWorldData::ArrangementWorldData(
   timer.restart();
 
   mWalls = arr::BuildArrangementWalls(*mArrangement);
-  mPortalPairs = ResolvePortalPairs(*mArrangement, mWalls, portalPairs);
+  mPortalLoops = ResolvePortalLoops(*mArrangement, mWalls, portalLoops);
   if (stats != nullptr) {
     stats->wallCount = uint32_t(mWalls.size());
     stats->wallGenerationTimeNs = timer.elapsedNanoseconds();
@@ -150,7 +150,7 @@ ArrangementWorldData::ArrangementWorldData(
   mDetail = arr::BuildChipDetail(
       *mArrangement, mWalls, wedgeGenerationParameters);
   arr::ApplyPortalApertures(
-      mDetail, *mArrangement, mWalls, mPortalPairs);
+      mDetail, *mArrangement, mWalls, mPortalLoops);
   if (stats != nullptr) {
     stats->chipCount = mDetail.getChipCount();
     stats->wedgeCount = mDetail.getWedgeCount();
@@ -159,11 +159,11 @@ ArrangementWorldData::ArrangementWorldData(
   timer.restart();
 
   auto hasActivePortal = std::ranges::any_of(
-      mPortalPairs, [](auto const& pair) { return pair.active; });
+      mPortalLoops, [](auto const& pair) { return pair.active; });
   if (hasActivePortal) {
     auto portalLiquid = BuildPortalLiquidAdjacency(
         *mArrangement, mWalls,
-        arr::BuildHydraulicCells(*mArrangement, mTriangles), mPortalPairs);
+        arr::BuildHydraulicCells(*mArrangement, mTriangles), mPortalLoops);
     mPortalLiquidAdjacency = std::move(portalLiquid.adjacency);
     mPortalLiquidDiagnostics = std::move(portalLiquid.diagnostics);
   }
@@ -358,24 +358,24 @@ ArrangementWorldData::getFailedAudioEmitters() const {
   return mFailedAudioEmitters;
 }
 
-std::vector<ResolvedPortalPair> const&
-ArrangementWorldData::getPortalPairs() const {
-  return mPortalPairs;
+std::vector<ResolvedPortalLoop> const&
+ArrangementWorldData::getPortalLoops() const {
+  return mPortalLoops;
 }
 
-ResolvedPortalPair const* ArrangementWorldData::findPortalPair(
-    uint32_t layerId, uint32_t pairId) const {
+ResolvedPortalLoop const* ArrangementWorldData::findPortalLoop(
+    uint32_t layerId, uint32_t loopId) const {
   auto found = std::find_if(
-      mPortalPairs.begin(), mPortalPairs.end(),
+      mPortalLoops.begin(), mPortalLoops.end(),
       [=](auto const& pair) {
-        return pair.layerId == layerId && pair.pairId == pairId;
+        return pair.layerId == layerId && pair.loopId == loopId;
       });
-  return found == mPortalPairs.end() ? nullptr : &*found;
+  return found == mPortalLoops.end() ? nullptr : &*found;
 }
 
 ResolvedPortalEndpoint const* ArrangementWorldData::findPortalEndpoint(
-    uint32_t layerId, uint32_t pairId, uint32_t endpointId) const {
-  auto const* pair = findPortalPair(layerId, pairId);
+    uint32_t layerId, uint32_t loopId, uint32_t endpointId) const {
+  auto const* pair = findPortalLoop(layerId, loopId);
   return pair ? FindPortalEndpoint(*pair, endpointId) : nullptr;
 }
 
@@ -668,7 +668,7 @@ ArrangementWorldData::getWallCollisionSegments(uint32_t wallIndex) const {
     float end;
   };
   std::vector<Interval> openings;
-  for (auto const& pair : mPortalPairs) {
+  for (auto const& pair : mPortalLoops) {
     if (!pair.active) continue;
     for (auto const& endpoint : pair.endpoints) {
       auto const& aperture = endpoint.aperture;

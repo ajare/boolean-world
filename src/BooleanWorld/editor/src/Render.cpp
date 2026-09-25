@@ -307,12 +307,35 @@ void renderPortalOverlays(
   constexpr ImU32 resolvedColour = IM_COL32(70, 225, 245, 255);
   constexpr ImU32 inactiveColour = IM_COL32(255, 70, 65, 255);
 
-  for (auto const& pair : layer->getPortalPairs()) {
+  for (auto const& pair : layer->getPortalLoops()) {
     auto const* generated =
-        worldData.findPortalPair(layer->getId(), pair.getId());
+        worldData.findPortalLoop(layer->getId(), pair.getId());
     for (auto endpointId : pair.getTraversalOrder()) {
       auto const& authored =
           pair.findEndpoint(endpointId)->getAperture();
+      auto const* destination =
+          pair.findEndpoint(pair.getNextEndpointId(endpointId));
+      auto sourceScreen = worldToScreen(authored.centre);
+      auto destinationScreen =
+          worldToScreen(destination->getAperture().centre);
+      auto dx = destinationScreen.x - sourceScreen.x;
+      auto dy = destinationScreen.y - sourceScreen.y;
+      auto length = std::sqrt(dx * dx + dy * dy);
+      if (length > 1.0f) {
+        dx /= length;
+        dy /= length;
+        auto tip = ImVec2{
+            destinationScreen.x - dx * 7.0f,
+            destinationScreen.y - dy * 7.0f};
+        drawList->AddLine(sourceScreen, tip, authoredColour, 1.0f);
+        drawList->AddTriangleFilled(
+            tip,
+            {tip.x - dx * 8.0f - dy * 4.0f,
+             tip.y - dy * 8.0f + dx * 4.0f},
+            {tip.x - dx * 8.0f + dy * 4.0f,
+             tip.y - dy * 8.0f - dx * 4.0f},
+            authoredColour);
+      }
       auto const* endpoint = generated
                                  ? worldData.findPortalEndpoint(
                                        layer->getId(), pair.getId(), endpointId)
@@ -322,7 +345,7 @@ void renderPortalOverlays(
                          : wp::Vector2{1.0f, 0.0f};
       auto const selected =
           doc->getSelectedPortalLayerId() == layer->getId() &&
-          doc->getSelectedPortalPairId() == pair.getId() &&
+          doc->getSelectedPortalLoopId() == pair.getId() &&
           doc->getSelectedPortalEndpointId() == endpointId;
       auto const authoredHalf = tangent * (authored.width * 0.5f);
       drawList->AddLine(

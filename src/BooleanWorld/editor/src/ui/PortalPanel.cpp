@@ -9,21 +9,21 @@ void renderPortalsView(ViewContext& context) {
   auto* doc = context.doc;
   auto* layer = doc->getWorld()->getActiveLayer();
 
-  if (ImGui::Button("Create Portal pair")) {
+  if (ImGui::Button("Create Portal loop")) {
     auto centre = doc->getGhost()->getPosition();
     bw::core::AuthoredAperture first{centre, 16.0f, 0.0f, 24.0f};
     bw::core::AuthoredAperture second{
         centre + wp::Vector2{32.0f, 0.0f}, 16.0f, 0.0f, 24.0f};
     transactUndoableActionAtomically(
-        doc, CommandId::CreatePortalPair,
+        doc, CommandId::CreatePortalLoop,
         [=](Document* document) {
-          return createPortalPair(document, layer, first, second);
+          return createPortalLoop(document, layer, first, second);
         });
   }
 
-  for (auto const& pair : layer->getPortalPairs()) {
+  for (auto const& pair : layer->getPortalLoops()) {
     ImGui::PushID(static_cast<int>(pair.getId()));
-    ImGui::Text("Pair %u", pair.getId());
+    ImGui::Text("Loop %u", pair.getId());
     ImGui::SameLine();
     auto firstEndpoint = true;
     for (auto endpointId : pair.getTraversalOrder()) {
@@ -31,7 +31,7 @@ void renderPortalsView(ViewContext& context) {
       firstEndpoint = false;
       auto const selected =
           doc->getSelectedPortalLayerId() == layer->getId() &&
-          doc->getSelectedPortalPairId() == pair.getId() &&
+          doc->getSelectedPortalLoopId() == pair.getId() &&
           doc->getSelectedPortalEndpointId() == endpointId;
       if (selected) ImGui::PushStyleColor(
           ImGuiCol_Button, ImVec4{0.85f, 0.55f, 0.12f, 1.0f});
@@ -39,10 +39,10 @@ void renderPortalsView(ViewContext& context) {
       if (ImGui::Button(label.c_str())) {
         transactUndoableAction(
             doc, CommandId::SelectPortalEndpoint,
-            [layerId = layer->getId(), pairId = pair.getId(), endpointId](
+            [layerId = layer->getId(), loopId = pair.getId(), endpointId](
                 Document* transactionDocument) {
               return selectPortalEndpoint(
-                  transactionDocument, layerId, pairId, endpointId);
+                  transactionDocument, layerId, loopId, endpointId);
             });
       }
       if (selected) ImGui::PopStyleColor();
@@ -51,14 +51,16 @@ void renderPortalsView(ViewContext& context) {
   }
 
   if (doc->getSelectedPortalLayerId() != layer->getId()) return;
-  auto const pairId = doc->getSelectedPortalPairId();
+  auto const loopId = doc->getSelectedPortalLoopId();
   auto const endpointId = doc->getSelectedPortalEndpointId();
-  auto const* pair = layer->getPortalPair(pairId);
+  auto const* pair = layer->getPortalLoop(loopId);
   auto const* selectedEndpoint =
       pair ? pair->findEndpoint(endpointId) : nullptr;
   if (!selectedEndpoint) return;
 
   ImGui::SeparatorText("Selected Portal endpoint");
+  ImGui::Text(
+      "Destination: endpoint %u", pair->getNextEndpointId(endpointId));
   auto const aperture = selectedEndpoint->getAperture();
   float centre[2]{aperture.centre.x, aperture.centre.y};
   if (ImGui::InputFloat2("Centre", centre)) {
@@ -67,7 +69,7 @@ void renderPortalsView(ViewContext& context) {
         doc, CommandId::SetPortalEndpointPosition,
         [=](Document* document) {
           return setPortalEndpointPosition(
-              document, layer, pairId, endpointId, position);
+              document, layer, loopId, endpointId, position);
         });
   }
   auto width = aperture.width;
@@ -76,7 +78,7 @@ void renderPortalsView(ViewContext& context) {
         doc, CommandId::SetPortalEndpointWidth,
         [=](Document* document) {
           return setPortalEndpointWidth(
-              document, layer, pairId, endpointId, width);
+              document, layer, loopId, endpointId, width);
         });
   }
   float vertical[2]{aperture.bottom, aperture.top};
@@ -86,20 +88,57 @@ void renderPortalsView(ViewContext& context) {
         doc, CommandId::SetPortalEndpointVerticalBounds,
         [=](Document* document) {
           return setPortalEndpointVerticalBounds(
-              document, layer, pairId, endpointId, vertical[0],
+              document, layer, loopId, endpointId, vertical[0],
               vertical[1]);
         });
   }
 
+  auto addedAperture = aperture;
+  addedAperture.centre += wp::Vector2{32.0f, 0.0f};
+  if (ImGui::Button("Add after")) {
+    transactUndoableActionAtomically(
+        doc, CommandId::AddPortalEndpoint,
+        [=](Document* document) {
+          return addPortalEndpoint(
+              document, layer, loopId, endpointId, addedAperture);
+        });
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Move earlier")) {
+    transactUndoableActionAtomically(
+        doc, CommandId::MovePortalEndpointEarlier,
+        [=](Document* document) {
+          return movePortalEndpointEarlier(
+              document, layer, loopId, endpointId);
+        });
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Move later")) {
+    transactUndoableActionAtomically(
+        doc, CommandId::MovePortalEndpointLater,
+        [=](Document* document) {
+          return movePortalEndpointLater(
+              document, layer, loopId, endpointId);
+        });
+  }
+  if (pair->getEndpoints().size() > 2 && ImGui::Button("Delete endpoint")) {
+    transactUndoableActionAtomically(
+        doc, CommandId::DeletePortalEndpoint,
+        [=](Document* document) {
+          return deletePortalEndpoint(
+              document, layer, loopId, endpointId);
+        });
+  }
+
   auto const* resolved = context.worldData
-                             ? context.worldData->findPortalPair(
-                                   layer->getId(), pairId)
+                             ? context.worldData->findPortalLoop(
+                                   layer->getId(), loopId)
                              : nullptr;
   if (!resolved) {
     ImGui::TextDisabled("Waiting for this Layer's generation.");
   } else {
     auto const* endpoint = context.worldData->findPortalEndpoint(
-        layer->getId(), pairId, endpointId);
+        layer->getId(), loopId, endpointId);
     if (!endpoint) {
       ImGui::TextDisabled("Waiting for endpoint generation.");
       return;
@@ -118,11 +157,11 @@ void renderPortalsView(ViewContext& context) {
     }
   }
 
-  if (ImGui::Button("Delete pair")) {
+  if (ImGui::Button("Delete loop")) {
     transactUndoableActionAtomically(
-        doc, CommandId::DeletePortalPair,
+        doc, CommandId::DeletePortalLoop,
         [=](Document* document) {
-          return deletePortalPair(document, layer, pairId);
+          return deletePortalLoop(document, layer, loopId);
         });
   }
 }
