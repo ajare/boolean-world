@@ -150,9 +150,7 @@ std::vector<CandidateEvaluation> evaluateCandidates(
   auto cameraWorldPlane = wp::Vector2{position.x, -position.z};
 
   for (auto const& pair : pairs) {
-    for (uint32_t endpointIndex = 0;
-         endpointIndex < pair.endpoints.size(); ++endpointIndex) {
-      auto const& endpoint = pair.endpoints[endpointIndex];
+    for (auto const& endpoint : pair.endpoints) {
       PortalEndpointKey key{pair.layerId, pair.pairId, endpoint.endpointId};
       PortalViewDiagnostic diagnostic;
       diagnostic.endpoint = key;
@@ -217,7 +215,7 @@ std::vector<CandidateEvaluation> evaluateCandidates(
       }
       diagnostic.cameraDistance = distance;
       result.push_back({SelectedPortalView{
-                            key, &pair, endpointIndex, projected.area, distance},
+                            key, &pair, projected.area, distance},
                         diagnostic});
     }
   }
@@ -302,7 +300,7 @@ BuiltPortalView BuildPortalView(
 
   auto rigid = bw::core::BuildPortalRigidTransform(
       *selected.pair,
-      selected.pair->endpoints[selected.sourceEndpoint].endpointId);
+      selected.key.endpointId);
   auto sourceToDestination = sourceToDestinationMatrix(rigid);
   auto destinationView = observingView * glm::inverse(sourceToDestination);
   auto const& destination = rigid.destination;

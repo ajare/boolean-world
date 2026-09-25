@@ -69,6 +69,54 @@ void canonicalTransformPreservesThePlayerTorch() {
           "a Player Torch behind the source endpoint created a spill path");
 }
 
+void stableIdentityPreservesLightOutput() {
+  std::vector pairs{
+      translationPair(10, 0.0f, 10.0f),
+      translationPair(11, 8.0f, 18.0f)};
+  glm::vec3 torch{0.0f, 2.0f, -2.0f};
+  bw::app::PlayerTorchOptions options;
+  auto baseline = PlanPortalLights(pairs, torch, options);
+  for (auto& pair : pairs) {
+    pair.endpoints[0].endpointId = 17;
+    pair.endpoints[1].endpointId = 93;
+    pair.traversalOrder = {93, 17};
+    std::swap(pair.endpoints[0], pair.endpoints[1]);
+  }
+  auto actual = PlanPortalLights(pairs, torch, options);
+  require(!baseline.lights.empty() && actual.lights.size() == baseline.lights.size() &&
+              actual.shadowPassCount == baseline.shadowPassCount &&
+              actual.diagnostics.size() == baseline.diagnostics.size(),
+          "endpoint identity changed light or shadow budgets");
+  for (size_t index = 0; index < actual.lights.size(); ++index) {
+    auto const& light = actual.lights[index];
+    auto const& expected = baseline.lights[index];
+    require(light.position == expected.position &&
+                light.radiance == expected.radiance &&
+                light.strength == expected.strength &&
+                light.visibility == expected.visibility &&
+                light.hops.size() == expected.hops.size(),
+            "endpoint storage order changed virtual Torch output");
+    for (size_t hop = 0; hop < light.hops.size(); ++hop) {
+      require(light.path[hop].endpointId == 17 &&
+                  light.hops[hop].sourceEndpoint.endpointId == 17 &&
+                  light.hops[hop].destinationEndpoint.endpointId == 93 &&
+                  light.hops[hop].destinationToSource ==
+                      expected.hops[hop].destinationToSource,
+              "light paths or shadow transforms used endpoint slots");
+    }
+    for (glm::vec3 receiver : {glm::vec3{0, 2, -16}, glm::vec3{4, 2, -16}}) {
+      require(PortalLightAdmitsReceiver(light, receiver) ==
+                  PortalLightAdmitsReceiver(expected, receiver),
+              "stable endpoint routing changed aperture gating");
+    }
+  }
+  auto attachment = BuildPortalLightAttachment(pairs[0], 17, torch, options);
+  require(attachment && attachment->path.front().endpointId == 17,
+          "single-hop light API did not accept stable endpoint identity");
+  require(!BuildPortalLightAttachment(pairs[0], 0, torch, options),
+          "single-hop light API interpreted a missing ID as a slot");
+}
+
 void multiHopCompositionGatesEveryAperture() {
   std::vector pairs{
       translationPair(10, 0.0f, 10.0f),
@@ -224,6 +272,7 @@ void attachmentsFailAtomicallyWithoutCompleteShadows() {
 int main() {
   try {
     canonicalTransformPreservesThePlayerTorch();
+    stableIdentityPreservesLightOutput();
     multiHopCompositionGatesEveryAperture();
     endpointCyclesAndEquivalentLightsAreRejected();
     mutuallyVisibleLoopIsStableAndBounded();

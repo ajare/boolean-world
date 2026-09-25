@@ -66,22 +66,22 @@ float attenuation(
 }
 
 PortalLightEndpointKey endpointKey(
-    bw::core::ResolvedPortalPair const& pair, uint32_t endpoint) {
-  return {pair.layerId, pair.pairId,
-          pair.endpoints[endpoint].endpointId};
+    bw::core::ResolvedPortalPair const& pair, uint32_t endpointId) {
+  return {pair.layerId, pair.pairId, endpointId};
 }
 
 std::optional<PortalLightPathHop> buildHop(
     bw::core::ResolvedPortalPair const& pair,
-    uint32_t sourceEndpoint,
+    uint32_t sourceEndpointId,
     glm::vec3 const& inputLightPosition) {
-  if (!pair.active || sourceEndpoint >= pair.endpoints.size()) {
-    return std::nullopt;
-  }
-  auto const destinationEndpoint =
-      bw::core::NextPortalEndpointIndex(pair, sourceEndpoint);
-  auto const& source = pair.endpoints[sourceEndpoint];
-  auto const& destination = pair.endpoints[destinationEndpoint];
+  if (!pair.active) return std::nullopt;
+  auto const* sourceEndpoint =
+      bw::core::FindPortalEndpoint(pair, sourceEndpointId);
+  auto const* destinationEndpoint =
+      bw::core::NextPortalEndpoint(pair, sourceEndpointId);
+  if (!sourceEndpoint || !destinationEndpoint) return std::nullopt;
+  auto const& source = *sourceEndpoint;
+  auto const& destination = *destinationEndpoint;
   if (!source.resolved || !destination.resolved) return std::nullopt;
 
   auto const lightPlane = worldPlanePosition(inputLightPosition);
@@ -95,8 +95,8 @@ std::optional<PortalLightPathHop> buildHop(
   auto const virtualPlane = transform.transformPoint(lightPlane);
 
   PortalLightPathHop hop;
-  hop.sourceEndpoint = endpointKey(pair, sourceEndpoint);
-  hop.destinationEndpoint = endpointKey(pair, destinationEndpoint);
+  hop.sourceEndpoint = endpointKey(pair, source.endpointId);
+  hop.destinationEndpoint = endpointKey(pair, destination.endpointId);
   hop.virtualLightPosition = rendererPosition(
       virtualPlane, transform.transformElevation(inputLightPosition.y));
   hop.sourceApertureCentre =
@@ -300,11 +300,11 @@ uint32_t PortalLightPlan::count(
 
 std::optional<PortalLightAttachment> BuildPortalLightAttachment(
     bw::core::ResolvedPortalPair const& pair,
-    uint32_t sourceEndpoint,
+    uint32_t sourceEndpointId,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch) {
   if (!validOptions(playerTorch)) return std::nullopt;
-  auto hop = buildHop(pair, sourceEndpoint, playerTorchPosition);
+  auto hop = buildHop(pair, sourceEndpointId, playerTorchPosition);
   if (!hop) return std::nullopt;
 
   auto sourceCentre = glm::vec3{
@@ -347,14 +347,12 @@ PortalLightPlan PlanPortalLights(
 
   struct Endpoint {
     bw::core::ResolvedPortalPair const* pair{};
-    uint32_t source{};
     PortalLightEndpointKey key{};
   };
   std::vector<Endpoint> endpoints;
-  endpoints.reserve(pairs.size() * 2);
   for (auto const& pair : pairs) {
-    for (uint32_t source = 0; source < pair.endpoints.size(); ++source) {
-      endpoints.push_back({&pair, source, endpointKey(pair, source)});
+    for (auto const& source : pair.endpoints) {
+      endpoints.push_back({&pair, endpointKey(pair, source.endpointId)});
     }
   }
   std::ranges::sort(endpoints, {}, &Endpoint::key);
@@ -376,18 +374,19 @@ PortalLightPlan PlanPortalLights(
                          : std::vector<PortalLightEndpointKey>{};
       path.push_back(endpoint.key);
       auto const& pair = *endpoint.pair;
-      auto const destinationIndex =
-          bw::core::NextPortalEndpointIndex(pair, endpoint.source);
-      auto const destination = endpointKey(pair, destinationIndex);
+      auto const* source =
+          bw::core::FindPortalEndpoint(pair, endpoint.key.endpointId);
+      auto const* destination =
+          bw::core::NextPortalEndpoint(pair, endpoint.key.endpointId);
 
-      if (!pair.active || !pair.endpoints[endpoint.source].resolved ||
-          !pair.endpoints[destinationIndex].resolved) {
+      if (!pair.active || !source || !destination ||
+          !source->resolved || !destination->resolved) {
         addDiagnostic(std::move(path), PortalLightDiagnosticReason::Inactive);
         continue;
       }
       if (parent &&
           (pathContainsEndpoint(*parent, endpoint.key) ||
-           pathContainsEndpoint(*parent, destination))) {
+           pathContainsEndpoint(*parent, endpointKey(pair, destination->endpointId)))) {
         addDiagnostic(
             std::move(path), PortalLightDiagnosticReason::EndpointCycle,
             parent->strength, parent->visibility);
@@ -402,7 +401,7 @@ PortalLightPlan PlanPortalLights(
       }
 
       auto inputPosition = parent ? parent->position : playerTorchPosition;
-      auto hop = buildHop(pair, endpoint.source, inputPosition);
+      auto hop = buildHop(pair, endpoint.key.endpointId, inputPosition);
       if (!hop) {
         addDiagnostic(
             std::move(path), PortalLightDiagnosticReason::SourceBackFacing,
@@ -411,7 +410,7 @@ PortalLightPlan PlanPortalLights(
         continue;
       }
       if (parent && !apertureVisibleThroughPath(
-                        *parent, pair.endpoints[endpoint.source].aperture)) {
+                        *parent, source->aperture)) {
         addDiagnostic(
             std::move(path), PortalLightDiagnosticReason::ApertureInvisible,
             parent->strength, parent->visibility);

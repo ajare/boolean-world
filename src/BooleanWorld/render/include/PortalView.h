@@ -27,7 +27,6 @@ struct PortalEndpointKey {
 struct SelectedPortalView {
   PortalEndpointKey key{};
   bw::core::ResolvedPortalPair const* pair{};
-  uint32_t sourceEndpoint{};
   float projectedCoverage{};
   float cameraDistance{};
 };

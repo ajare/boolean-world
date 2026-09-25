@@ -73,6 +73,7 @@ struct RenderFixture {
   bool continuityJunction{};
   bool portal{};
   bool manyPortalEndpoints{};
+  bool stablePortalIdentity{};
   bool portalBackSurface{};
   bool portalBackDecorated{};
   // 0 uses the built-in material; 1 and 2 use identical RGB with alpha 0/1.
@@ -370,7 +371,17 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       auto pairId = layer->addPortalPair(
           {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
           {{centreX, -16.0f}, 12.0f, 4.0f, 36.0f});
-      portalPairs.push_back({layer->getId(), *layer->getPortalPair(pairId)});
+      auto* pair = layer->getPortalPair(pairId);
+      if (fixture.stablePortalIdentity) {
+        auto first = pair->getEndpoints()[0].getAperture();
+        auto second = pair->getEndpoints()[1].getAperture();
+        *pair = bw::core::PortalPair{
+            pairId,
+            {bw::core::PortalEndpoint{93, second},
+             bw::core::PortalEndpoint{17, first}},
+            {17, 93}};
+      }
+      portalPairs.push_back({layer->getId(), *pair});
     }
   }
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
@@ -858,9 +869,11 @@ void portalRendersThroughPublicSceneAndNamedFinalOutput(
 
   uint32_t secondPasses{};
   uint32_t secondSelected{};
-  (void)render(
-      renderSystem, {.portal = true}, nullptr, &secondPasses,
-      &secondSelected);
+  auto reordered = render(
+      renderSystem, {.portal = true, .stablePortalIdentity = true}, nullptr,
+      &secondPasses, &secondSelected);
+  require(regionDifference(image, reordered) < 0.0005,
+          "stable endpoint IDs or reordered storage changed the final Portal image");
   require(secondPasses == firstPasses && secondSelected == firstSelected,
           "the GPU Portal loop changed its deterministic selected endpoint or pass count");
 }

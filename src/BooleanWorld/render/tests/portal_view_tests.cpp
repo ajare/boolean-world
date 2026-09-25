@@ -87,7 +87,7 @@ void crossingPlaneRetainsThePortalWithoutAdmittingItsBackSide() {
     glm::vec3 eye{0.0f, 0.0f, distance};
     auto view = glm::lookAt(eye, eye + glm::vec3{0, 0, -1}, glm::vec3{0, 1, 0});
     auto selected = SelectPortalView(pairs, projection * view, eye);
-    require(selected && selected->sourceEndpoint == 0 && selected->projectedCoverage > 3.9f,
+    require(selected && selected->key.endpointId == 0 && selected->projectedCoverage > 3.9f,
             "near-plane clipping removed the crossing aperture");
   }
   for (glm::vec3 eye : {glm::vec3{0, 0, -0.01f}, glm::vec3{2, 0, 0}}) {
@@ -152,6 +152,23 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
       glm::vec3{0.001f, 0.0f, 0.0f},
       glm::vec3{0.001f, 0.0f, -1.0f},
       glm::vec3{0.0f, 1.0f, 0.0f});
+  pairs[0].endpoints[0].endpointId = 17;
+  pairs[0].endpoints[1].endpointId = 93;
+  pairs[0].traversalOrder = {93, 17};
+  std::swap(pairs[0].endpoints[0], pairs[0].endpoints[1]);
+  auto stable = planner.build(
+      pairs, view, projection, 0.1f, 100.0f, 320, 240);
+  require(stable.renderedPassCount == first.renderedPassCount,
+          "stable endpoint identities changed recursive output");
+  for (size_t index = 0; index < first.nodes.size(); ++index) {
+    require(stable.nodes[index].auxiliary.view ==
+                first.nodes[index].auxiliary.view,
+            "endpoint storage order changed recursive cameras");
+  }
+  require(stable.rootChildren.front().endpoint.endpointId == 17,
+          "recursive view keys used endpoint slots instead of identity");
+  first = stable;
+  std::swap(pairs[0].endpoints[0], pairs[0].endpoints[1]);
   auto second = planner.build(
       pairs, movedView, projection, 0.1f, 100.0f, 320, 240);
   require(second.renderedPassCount == first.renderedPassCount &&
@@ -220,7 +237,11 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
 
 void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
   auto portalPair = pair(3, 5, {0.0f, 4.0f}, {0.0f, -1.0f});
-  SelectedPortalView selected{{3, 5, 0}, &portalPair, 0, 1.0f, 4.0f};
+  portalPair.endpoints[0].endpointId = 17;
+  portalPair.endpoints[1].endpointId = 93;
+  portalPair.traversalOrder = {93, 17};
+  std::swap(portalPair.endpoints[0], portalPair.endpoints[1]);
+  SelectedPortalView selected{{3, 5, 17}, &portalPair, 1.0f, 4.0f};
   auto eye = glm::vec3{0.75f, 0.25f, 0.0f};
   auto view = glm::lookAt(
       eye, eye + glm::normalize(glm::vec3{0.2f, 0.1f, -1.0f}),
@@ -230,7 +251,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
   auto built = BuildPortalView(
       selected, view, projection, 0.2f, 300.0f, 130, 70);
 
-  auto canonical = bw::core::BuildPortalRigidTransform(portalPair, 0);
+  auto canonical = bw::core::BuildPortalRigidTransform(portalPair, 17);
   auto expectedPlane = canonical.transformPoint({eye.x, -eye.z});
   auto transformedEye = built.sourceToDestination * glm::vec4(eye, 1.0f);
   require(
@@ -249,7 +270,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
               near(direct.y / direct.w, projective.y / projective.w),
           "Portal aperture sampling is not projectively aligned with the observing camera");
 
-  auto destination = portalPair.endpoints[1].aperture;
+  auto destination = bw::core::NextPortalEndpoint(portalPair, 17)->aperture;
   auto destinationCentre = glm::vec3{
       destination.centre.x, destination.bottom, -destination.centre.y};
   auto destinationFront = glm::vec3{

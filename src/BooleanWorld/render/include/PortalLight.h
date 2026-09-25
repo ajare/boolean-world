@@ -139,9 +139,10 @@ struct PortalLightPlan {
 // Builds the destination-side virtual Player Torch for one hop only when the
 // real Torch is in front of the source endpoint. This compatibility seam uses
 // the same path representation and canonical transform as recursive planning.
+// sourceEndpointId is stable authored identity, never an endpoint storage slot.
 [[nodiscard]] std::optional<PortalLightAttachment> BuildPortalLightAttachment(
     bw::core::ResolvedPortalPair const& pair,
-    uint32_t sourceEndpoint,
+    uint32_t sourceEndpointId,
     glm::vec3 const& playerTorchPosition,
     bw::app::PlayerTorchOptions const& playerTorch);
 
