@@ -191,7 +191,7 @@ if /i "%MULTI_CONFIG%"=="false" (
     rem Building Willpower first runs its ExternalProject configure step, which
     rem creates MassivePolyPusher's independent CMake build directory.
     echo Building Willpower %BUILD_TYPE%...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config "%BUILD_TYPE%" --parallel --target Willpower.Libraries
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config "%BUILD_TYPE%" --parallel --target Willpower.Common Willpower.Geometry Willpower.Wayfinder Willpower.Collide Willpower.Application WillPower.Viz
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower build failed"
         goto fatal
@@ -204,21 +204,21 @@ if /i "%MULTI_CONFIG%"=="false" (
     rem MemCheck reuses Debug, while Shipping has dedicated dependency binaries.
     rem Willpower must build first to configure MassivePolyPusher's build tree.
     echo Building Willpower Debug...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config Debug --parallel --target Willpower.Libraries
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config Debug --parallel --target Willpower.Common Willpower.Geometry Willpower.Wayfinder Willpower.Collide Willpower.Application WillPower.Viz
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower Debug build failed"
         goto fatal
     )
 
     echo Building Willpower Release...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config Release --parallel --target Willpower.Libraries
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config Release --parallel --target Willpower.Common Willpower.Geometry Willpower.Wayfinder Willpower.Collide Willpower.Application WillPower.Viz
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower Release build failed"
         goto fatal
     )
 
     echo Building Willpower Shipping...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config Shipping --parallel --target Willpower.Libraries
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config Shipping --parallel --target Willpower.Common Willpower.Geometry Willpower.Wayfinder Willpower.Collide Willpower.Application WillPower.Viz
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower Shipping build failed"
         goto fatal

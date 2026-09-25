@@ -225,7 +225,8 @@ function(bw_ensure_willpower)
         execute_process(
             COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
                     --config "${cfg}" --parallel
-                    --target Willpower.Libraries
+                    --target Willpower.Common Willpower.Geometry Willpower.Wayfinder
+                             Willpower.Collide Willpower.Application WillPower.Viz
             RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE out)
         if(NOT rc EQUAL 0)
             message(FATAL_ERROR "Failed to build Willpower (${cfg}):\n${out}")

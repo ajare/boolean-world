@@ -143,7 +143,8 @@ cmake -S "$WILLPOWER_DIR" -B "$WILLPOWER_BUILD_DIR" \
     -DWILLPOWER_FMOD_CORE_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmod.so" \
     -DWILLPOWER_FMOD_STUDIO_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmodstudio.so"
 cmake --build "$WILLPOWER_BUILD_DIR" --config "$BUILD_TYPE" \
-    --parallel --target Willpower.Libraries
+    --parallel --target Willpower.Common Willpower.Geometry Willpower.Wayfinder \
+        Willpower.Collide Willpower.Application WillPower.Viz
 
 printf 'Removing previous BooleanWorld build output...\n'
 rm -rf -- "$BUILD_DIR"

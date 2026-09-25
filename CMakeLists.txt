@@ -125,8 +125,8 @@ include(Submodules)
 bw_ensure_willpower()
 
 # Keep an explicit build-time target for updating every buildable dependency in
-# dependency order for the active configuration. MppLibraries recursively
-# builds MPP's own SDL/GLEW/yaml-cpp dependencies; the Willpower modules are
+# dependency order for the active configuration. MppAppSupport brings in all
+# consumed MPP libraries and their SDL/GLEW/yaml-cpp dependencies; Willpower modules are
 # then built in one native dependency graph. MemCheck consumes Debug dependency
 # binaries; Shipping consumes the dedicated Shipping builds.
 set(BW_DEPENDENCY_CONFIG
@@ -134,10 +134,11 @@ set(BW_DEPENDENCY_CONFIG
 add_custom_target(BuildAllDependencies
     COMMAND "${CMAKE_COMMAND}" --build "${BW_MPP_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target MppLibraries
+            --target MppAppSupport
     COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target Willpower.Libraries
+            --target Willpower.Common Willpower.Geometry Willpower.Wayfinder
+                     Willpower.Collide Willpower.Application WillPower.Viz
     COMMENT "Build all dependencies in correct recursive order"
     USES_TERMINAL
     VERBATIM)
