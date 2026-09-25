@@ -11,4 +11,10 @@ public:
   void setYaw(float yaw);
 
   void setPitch(float pitch);
+
+  void setMirrored(bool mirrored);
+  glm::mat4 getViewTransform() override;
+
+private:
+  bool mMirrored{false};
 };

@@ -41,7 +41,9 @@ to add a Portal with a default name such as `Portal 1`. A new Portal targets
 itself, so it works as a Mirror Portal as soon as its authored aperture resolves
 against a visible wall. Mirror Portal views and player movement are true planar
 reflections: left and right reverse while elevation and World-up remain
-unchanged. Mirrors do not transport Liquid.
+unchanged. Crossing retains the reflected view rather than snapping back to an
+ordinary camera. Horizontal mouse and strafe controls follow that view; crossing
+another mirror restores ordinary handedness. Mirrors do not transport Liquid.
 
 Names are trimmed, must be non-empty, and are unique within a Layer without
 regard to case. A name is only a label: renaming a Portal does not change its

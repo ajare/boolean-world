@@ -97,6 +97,37 @@ void playMapsUseDynamicWorldDataGenerators() {
           "Loaded play map enabled Wayfinder mesh generation by default");
 }
 
+void zonesPortalsResolveAndAllowTraversal() {
+  wp::Logger logger;
+  Map map("map", "", "", {}, nullptr, &logger);
+  map.loadWorldFromYaml(makeWorldResource(readFixture("world-zones-1.world.yaml")));
+  auto const data = map.getWorld()->getWorldData();
+  auto const* layer = map.getWorld()->getActiveLayer();
+  require(!layer->getPortals().empty(), "zones World lost its authored Portals");
+  for (auto const& portal : layer->getPortals()) {
+    auto const* loop = data->findPortalLoop(layer->getId(), portal.getId());
+    auto const* endpoint = data->findPortalEndpoint(layer->getId(), portal.getId());
+    require(loop && loop->active && endpoint,
+            portal.getName() + " inactive: " +
+                (endpoint ? std::string(bw::core::PortalResolutionDiagnosticText(
+                                endpoint->diagnostic))
+                          : "missing generated Portal"));
+    auto const& aperture = endpoint->aperture;
+    bw::app::PlayerPortalMotion motion;
+    motion.position = aperture.centre + aperture.front * 10.0f;
+    motion.feetElevation = aperture.bottom;
+    motion.unconsumedMovement = -aperture.front * 20.0f;
+    bw::app::PlayerPortalUpdateState state;
+    require(bw::app::tryPlayerPortalCrossing(
+                *data, *loop, portal.getId(), BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT,
+                motion, state) == bw::app::PlayerPortalCrossingResult::Traversed,
+            portal.getName() + " blocks a front-side crossing in the zones World");
+    auto const* destination = bw::core::NextPortalEndpoint(*loop, portal.getId());
+    require(destination && destination->endpointId == portal.getTargetId(),
+            portal.getName() + " does not route to its authored target");
+  }
+}
+
 void establishedWorldEnablesAndRoundTripsWedges() {
   wp::Logger logger;
   Map map("map", "", "", {}, nullptr, &logger);
@@ -768,6 +799,7 @@ int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
 
+    zonesPortalsResolveAndAllowTraversal();
     playMapsUseDynamicWorldDataGenerators();
     establishedWorldEnablesAndRoundTripsWedges();
     failedLoadRetainsThePreviousWorld();

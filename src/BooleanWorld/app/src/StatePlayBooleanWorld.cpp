@@ -1357,7 +1357,8 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
       portalStats.pitch,
       horizontalVelocity,
       mPlayerVerticalVelocity,
-      newPosition - curPosition};
+      newPosition - curPosition,
+      portalStats.mirrored};
 
   // Supply the physics step with walls around the predicted destination. Player
   // location is evaluated only after that step has resolved movement.
@@ -1401,6 +1402,7 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
 
   if (mPlayerPortalUpdateState.crossings > 0) {
     physicalStats.angle = mPlayerPortalMotion.yaw;
+    physicalStats.mirrored = mPlayerPortalMotion.mirrored;
     // The collider is already authoritative after the recursive transformed
     // sweep; publish its destination before any location-dependent query.
     physicalStats.position = mPlayerCollider->getCentre();
@@ -1537,6 +1539,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
       physicalStats.feetElevation + BW_PLAYER_EYE_HEIGHT;
 
   static_cast<ReactiveCamera*>(mCamera3d.get())->setPosition(bw::app::worldToRendererAudioPosition(physicalStats.position, playerViewHeight));
+  static_cast<ReactiveCamera*>(mCamera3d.get())->setMirrored(physicalStats.mirrored);
   // Renderer and authored yaw now increase in the same direction.
   static_cast<ReactiveCamera*>(mCamera3d.get())->yaw(physicalStats.angle - mPlayerPrevAngle);
   static_cast<ReactiveCamera*>(mCamera3d.get())->pitch(physicalStats.pitch - mPlayerPrevPitch);

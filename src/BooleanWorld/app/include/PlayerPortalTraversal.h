@@ -41,6 +41,7 @@ struct PlayerPortalMotion {
   wp::Vector2 horizontalVelocity{};
   float verticalVelocity{};
   wp::Vector2 unconsumedMovement{};
+  bool mirrored{false};
 };
 
 struct PortalRepeatedState {

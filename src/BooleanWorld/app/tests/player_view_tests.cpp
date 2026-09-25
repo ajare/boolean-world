@@ -31,6 +31,29 @@ public:
 
 int main() {
   {
+    // The view through an x-plane mirror is V * reflection. After traversing,
+    // reflected position/yaw plus retained handedness must give that same V.
+    ReactiveCamera before({2.0f, 3.0f, 4.0f}, 37.0f, 19.0f, 70.0f, 1.6f);
+    ReactiveCamera after({-2.0f, 3.0f, 4.0f}, -37.0f, 19.0f, 70.0f, 1.6f);
+    glm::mat4 reflection(1.0f);
+    reflection[0][0] = -1.0f;
+    auto const expected = before.getViewTransform() * reflection;
+    after.setMirrored(true);
+    auto const actual = after.getViewTransform();
+    for (int c = 0; c < 4; ++c)
+      for (int r = 0; r < 4; ++r)
+        if (!near(actual[c][r], expected[c][r]))
+          return fail("mirror traversal camera is discontinuous with the mirror view");
+    after.setMirrored(false);
+    if (glm::determinant(glm::mat3(after.getViewTransform())) < 0.0f)
+      return fail("second mirror crossing did not restore camera handedness");
+    if (!near(bw::app::applyMouseYaw(30.0f, 10.0f, 1.0f, true), 20.0f))
+      return fail("mirrored mouse yaw does not follow screen-right");
+    auto const right = bw::app::playerMovement({1.0f, 0.0f}, 0.0f, true);
+    if (!near(right.x, -1.0f) || !near(right.y, 0.0f))
+      return fail("mirrored strafe does not follow camera-right");
+  }
+  {
     auto movement = bw::app::playerMovement({0.0f, 1.0f}, 0.0f);
     if (!near(movement.x, 0.0f) || !near(movement.y, 1.0f)) {
       return fail("zero-yaw forward input does not point along world +Y");

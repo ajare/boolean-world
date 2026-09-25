@@ -171,7 +171,8 @@ void EntityHandlerBooleanWorld::peekInput(applib::Entity const& entity, wp::Vect
   // Get desired direction. Mouse sensitivity scales view control here, where
   // the player is being turned in the 3d world, and nowhere else.
   *curAngle = physicalStats.angle;
-  *newAngle = bw::app::applyMouseYaw(physicalStats.angle, mMouseDeltaX, mInputOptions.mouseSensitivity);
+  *newAngle = bw::app::applyMouseYaw(physicalStats.angle, mMouseDeltaX, mInputOptions.mouseSensitivity,
+                                      physicalStats.mirrored);
 
   *curPitch = physicalStats.pitch;
   *newPitch = bw::app::applyMousePitch(physicalStats.pitch, mMouseDeltaY, mInputOptions.mouseSensitivity);
@@ -200,7 +201,7 @@ void EntityHandlerBooleanWorld::peekInput(applib::Entity const& entity, wp::Vect
     *verticalEffort = -vel.y * std::sin(pitchRadians);
   }
 
-  vel = bw::app::playerMovement(vel, *newAngle);
+  vel = bw::app::playerMovement(vel, *newAngle, physicalStats.mirrored);
   vel *= playerSpeed;
 
   *curPosition = physicalStats.position;

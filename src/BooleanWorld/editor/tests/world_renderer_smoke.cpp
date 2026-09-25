@@ -74,6 +74,7 @@ struct RenderFixture {
   bool continuityJunction{};
   bool portal{};
   bool mirror{};
+  bool mirroredCamera{};
   bool manyPortalEndpoints{};
   bool threeEndpointPortal{};
   bool stablePortalIdentity{};
@@ -563,6 +564,7 @@ std::vector<float> render(
                      fixture.phantomReverse ? glm::vec3{0, 16, 80} : glm::vec3{0, 16, 0});
   }
   if (fixture.mirror) camera->setLookAt({2, 19, 1}, {-4, 17, -16});
+  camera->setMirrored(fixture.mirroredCamera);
   if (fixture.portalBackSurface) camera->setPitch(-12.0f);
   if (fixture.horizontalBack) {
     camera->setPosition({0, fixture.horizontalBack == 2 ? 52.0f :
@@ -639,7 +641,7 @@ std::vector<float> render(
       for (size_t i = 0; i < plan.nodes.size(); ++i) {
         auto const& node = plan.nodes[i];
         auto const& initial = initialPortalPlan.nodes[i];
-        if (fixture.mirror && node.auxiliary.reverseWinding != (node.recursionDepth % 2 == 1))
+        if (fixture.mirror && node.auxiliary.reverseWinding != ((node.recursionDepth % 2 == 1) != fixture.mirroredCamera))
           throw std::runtime_error("Mirror scene lost accumulated reflected winding");
         if (node.slot != initial.slot || node.cameraPosition != initial.cameraPosition ||
             node.recursionDepth != initial.recursionDepth ||
@@ -925,6 +927,15 @@ void mirrorsRenderThroughTheRealPipeline(editor::EditorRenderSystem& renderSyste
   auto [minimum, maximum] = std::minmax_element(image.begin(), image.end());
   require(*maximum - *minimum > 0.1f,
           "Mirror pipeline returned an empty or uniform final image");
+  auto mirrored = render(renderSystem,
+                         {.portal = true, .mirror = true, .mirroredCamera = true});
+  for (int y = 0; y < kHeight; ++y)
+    for (int x = 0; x < kWidth / 2; ++x)
+      for (int channel = 0; channel < 4; ++channel)
+        std::swap(mirrored[(y * kWidth + x) * 4 + channel],
+                  mirrored[(y * kWidth + kWidth - 1 - x) * 4 + channel]);
+  require(regionDifference(image, mirrored) < 0.005,
+          "reflected primary camera lost surfaces or recursive mirror parity");
   auto ordinary = render(renderSystem, {.portal = true});
   require(regionDifference(image, ordinary) > 0.001,
           "Mirror pipeline did not change the rendered scene");

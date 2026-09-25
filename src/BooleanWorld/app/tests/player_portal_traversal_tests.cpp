@@ -156,6 +156,7 @@ void torchReachRespectsPortalFramesAndWalls() {
 void highSpeedCrossingTransformsCompleteMotionState() {
   Fixture fixture;
   auto motion = crossingMotion();
+  motion.mirrored = true;
   auto pitch = motion.pitch;
   auto verticalVelocity = motion.verticalVelocity;
   auto speed = motion.horizontalVelocity.length();
@@ -165,6 +166,8 @@ void highSpeedCrossingTransformsCompleteMotionState() {
       BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT, motion, state);
   require(result == bw::app::PlayerPortalCrossingResult::Traversed,
           "high-speed swept Portal crossing was missed");
+  require(motion.mirrored,
+          "ordinary Portal crossing discarded accumulated mirror handedness");
   auto const& destination = fixture.portalLoop->endpoints[1].aperture;
   require((motion.position - destination.centre).dot(destination.front) > 0.0f,
           "player did not emerge in front of the destination plane");
@@ -194,6 +197,18 @@ void mirrorTraversalReflectsAsymmetricSweptMotion() {
               BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT, motion, state) ==
               bw::app::PlayerPortalCrossingResult::Traversed,
           "resolved Mirror Portal did not accept a front-side crossing");
+
+  require(motion.mirrored, "Mirror crossing did not retain reflected handedness");
+  auto secondCrossing = bw::app::PlayerPortalMotion{
+      {-40.0f, 9.0f}, 1.5f, initialYaw, -17.0f,
+      {-8.0f, 3.0f}, -23.0f, {-30.0f, 6.0f}, true};
+  bw::app::PlayerPortalUpdateState secondState;
+  require(bw::app::tryPlayerPortalCrossing(
+              *fixture.data, *fixture.portalLoop, fixture.portalId,
+              BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT, secondCrossing, secondState) ==
+              bw::app::PlayerPortalCrossingResult::Traversed &&
+              !secondCrossing.mirrored,
+          "second Mirror crossing did not restore ordinary handedness");
 
   auto const& aperture = fixture.portalLoop->endpoints.front().aperture;
   require(std::abs(motion.position.x - (-50.0f + bw::app::PortalExitPlaneEpsilon)) <

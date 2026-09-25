@@ -19,6 +19,22 @@ void ReactiveCamera::setYaw(float yaw) {
   mDirty = true;
 }
 
+void ReactiveCamera::setMirrored(bool mirrored) {
+  if (mMirrored == mirrored) return;
+  mMirrored = mirrored;
+  markCut();
+}
+
+glm::mat4 ReactiveCamera::getViewTransform() {
+  auto view = mpp::helper::FpsCamera::getViewTransform();
+  // Reflect camera-right, not world-up or the forward direction. Yaw alone
+  // cannot represent the negative determinant of a mirror mapping.
+  if (mMirrored) {
+    for (int column = 0; column < 4; ++column) view[column][0] *= -1.0f;
+  }
+  return view;
+}
+
 void ReactiveCamera::setPitch(float pitch) {
   mPitch = pitch;
   mDirty = true;

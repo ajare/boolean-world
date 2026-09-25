@@ -15,17 +15,20 @@ namespace bw::app {
 // Pitch is held short of straight up and down so the view never flips over.
 constexpr float PitchLimit = 85.0f;
 
-inline float applyMouseYaw(float yaw, float mouseDeltaX, float sensitivity) {
+inline float applyMouseYaw(float yaw, float mouseDeltaX, float sensitivity,
+                          bool mirrored = false) {
   // Authored yaw is clockwise in the world plane, matching rightward mouse
   // motion now that world +Y maps to renderer -Z.
-  return core::clamp_angle(yaw + mouseDeltaX * sensitivity);
+  return core::clamp_angle(yaw + mouseDeltaX * sensitivity * (mirrored ? -1.0f : 1.0f));
 }
 
 inline float applyMousePitch(float pitch, float mouseDeltaY, float sensitivity) {
   return std::clamp(pitch + mouseDeltaY * sensitivity, -PitchLimit, PitchLimit);
 }
 
-inline wp::Vector2 playerMovement(wp::Vector2 input, float yaw) {
+inline wp::Vector2 playerMovement(wp::Vector2 input, float yaw,
+                                 bool mirrored = false) {
+  if (mirrored) input.x = -input.x;
   input.rotateClockwise(yaw);
   return input;
 }
