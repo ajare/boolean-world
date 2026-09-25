@@ -28,9 +28,9 @@ _Avoid_: half-turn Portal, decorative mirror
 A directed cycle inferred from same-Layer Portal targets, never authored independently. Every member must have exactly one incoming reference, and the complete cycle participates only when all its apertures resolve. A self-targeting Portal forms a Mirror Portal; two mutually targeting Portals form a two-way route.
 _Avoid_: authored loop, Portal pair, loop-local identity
 
-**Target**:
-The same-Layer Portal an authored Portal explicitly names as its destination. Changing a target preserves the source's identity, name, and aperture; an incomplete or branching target graph remains editable but inactive.
-_Avoid_: complementary endpoint, next slot
+**Portal target**:
+The same-Layer Portal an authored Portal explicitly names by stable Portal ID as its destination. A self target makes a Mirror Portal. Changing a target preserves the source's identity, name, and aperture; an incomplete or branching target graph remains editable but inactive.
+_Avoid_: target name, complementary endpoint, next slot
 
 **Authored aperture**:
 A Portal's persistent requested rectangle: a World-plane centre and width plus bottom and top elevations. Every Portal in one inferred Portal loop must have the same height; generation may narrow resolved apertures to the loop's smallest authored width without changing authored dimensions.
@@ -213,7 +213,7 @@ The Zone in which the World is physically absent and visible only through Phanto
 _Avoid_: ghost mode, noclip, portal dimension
 
 **Phantom aperture**:
-The unchipped outline of a hidden, non-colliding Border linking Phantom and Euclidean, visible only from its non-solid side as a window into Euclidean space. It is not a Portal endpoint and has no relocation transform.
+The unchipped outline of a hidden, non-colliding Border linking Phantom and Euclidean, visible only from its non-solid side as a window into Euclidean space. It is not a Portal and has no relocation transform.
 _Avoid_: Phantom Portal, visible hidden wall
 
 **Zone-bearing Border wall**:
@@ -321,7 +321,7 @@ The relation between two solid Arrangement faces across whose shared edge Hydrau
 _Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when no traversable opening exists), Portal liquid-adjacency
 
 **Portal liquid-adjacency**:
-The generated directed relation from each resolved Portal endpoint's Hydraulic cell to the next endpoint's cell in an active Portal loop. Liquid settles at generation time to a deterministic fixed point, spilling only in traversal order after reaching each source Sill and mapping its surface by the same height above the source and destination lower edges. Loops are accepted atomically in stable Layer-id/smallest-member-Portal-id order; a contradictory accumulated elevation offset omits that loop from Liquid without deactivating its other Portal behaviour.
+The generated directed relation from each resolved Portal's Hydraulic cell to its Portal target's cell in an active Portal loop. Liquid settles at generation time to a deterministic fixed point, spilling only in traversal order after reaching each source Sill and mapping its surface by the same height above the source and destination lower edges. Loops are accepted atomically in stable Layer-id/smallest-member-Portal-id order; a contradictory accumulated elevation offset omits that loop from Liquid without deactivating its other Portal behaviour.
 _Avoid_: Liquid-adjacency (the ordinary shared-edge relation), Hydraulic link (which crosses a shared edge), bidirectional Portal adjacency, Portal flow rate (equilibrium is instantaneous)
 
 **Hydraulic cell**:

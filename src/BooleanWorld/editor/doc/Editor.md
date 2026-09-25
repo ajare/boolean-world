@@ -35,6 +35,37 @@ overlap, or enabled types rebuilds or refits the primitive preview without
 rerunning layout generation. Closing the dialog or replacing the world discards all preview
 geometry, which is never saved or included in world generation.
 
+## Portals and mirrors
+Portals belong permanently to the active Layer. Choose **Create Mirror Portal**
+to add a Portal with a default name such as `Portal 1`. A new Portal targets
+itself, so it works as a Mirror Portal as soon as its authored aperture resolves
+against a visible wall. Mirror Portal views and player movement are true planar
+reflections: left and right reverse while elevation and World-up remain
+unchanged. Mirrors do not transport Liquid.
+
+Names are trimmed, must be non-empty, and are unique within a Layer without
+regard to case. A name is only a label: renaming a Portal does not change its
+identity or any targets that refer to it. The target list contains only Portals
+on the same Layer. Selecting the Portal itself keeps it as a mirror; selecting
+another Portal creates a directed target relationship.
+
+For a multi-Portal route, set the targets to one closed cycle. For example,
+choose `B` as `A`'s target, `C` as `B`'s target, and `A` as `C`'s target to make
+`A → B → C → A`. There is no authored ordering control—the cycle is inferred
+from those targets. While editing, chains and branches are allowed and saved,
+but their whole connected component is inactive. Every member must have exactly
+one incoming target before views, traversal, lighting, shadows, or Liquid can
+use that component. An invalid component does not deactivate an unrelated valid
+cycle on the Layer.
+
+The selected Portal reports target-graph and aperture diagnostics separately.
+After the target graph forms a cycle, every authored aperture in it must resolve
+against visible wall coverage, have enough player clearance, and have the same
+height. The generated resolved apertures use the cycle's smallest authored
+width; the Width control is not changed. Deleting a targeted Portal resets its
+surviving incoming references to self-targeting mirrors. Portal creation,
+renaming, retargeting, aperture edits, and deletion are undoable.
+
 ## Keyboard shortcuts
 | Modifier | Key/Mouse     | Action                               |
 | -------- | ------------- | ------------------------------------ |

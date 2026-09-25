@@ -13,6 +13,11 @@ void renderPortalsView(ViewContext& context) {
     transactUndoableActionAtomically(doc, CommandId::CreatePortal,
         [=](Document* document) { return createPortal(document, layer); });
   }
+  ImGui::SameLine();
+  widgets::HelpMarker(
+      "Creates a named Portal on this Layer. New Portals target themselves and "
+      "therefore begin as mirrors; choose another same-Layer Portal as the "
+      "target to build a directed cycle.");
   for (auto const& portal : layer->getPortals()) {
     auto label = format("{}{}###portal{}", portal.getName(),
         portal.getTargetId() == portal.getId() ? " — Mirror" : "", portal.getId());
@@ -82,6 +87,12 @@ void renderPortalsView(ViewContext& context) {
       }
       ImGui::EndCombo();
     }
+    ImGui::SameLine();
+    widgets::HelpMarker(
+        "Targets are stable Portal identities on this Layer, not names. A self "
+        "target is a Mirror Portal. Multi-Portal components operate only after "
+        "every Portal has exactly one incoming target and the targets form one "
+        "closed cycle.");
   }
   auto const aperture = *authored;
   float centre[2]{aperture.centre.x, aperture.centre.y};
@@ -120,7 +131,7 @@ void renderPortalsView(ViewContext& context) {
                                    layer->getId(), portalId)
                              : nullptr;
   if (!resolved) {
-    ImGui::TextDisabled("Waiting for this Layer's generation.");
+    ImGui::TextDisabled("Inactive or awaiting generation.");
   } else {
     auto const* endpoint = context.worldData->findPortalEndpoint(
         layer->getId(), portalId);

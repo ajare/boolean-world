@@ -100,8 +100,10 @@ incoming reference and every aperture must resolve before the cycle activates.
 A self target generates a Mirror Portal; mutual targets give a two-way route
 (ADR-0052).
 
-**Target** — A Portal's explicit destination Portal on the same Layer. Incomplete
-or branching target graphs remain authored and editable but inactive.
+**Portal target** — A Portal's explicit destination Portal on the same Layer,
+stored by stable Portal ID rather than by name. A self target makes a Mirror
+Portal. Incomplete or branching target graphs remain authored and editable but
+inactive.
 
 **Authored aperture** — A Portal's persistent requested rectangle: a
 World-plane centre and width plus bottom and top elevations. Every endpoint in
@@ -166,8 +168,8 @@ explicitly open edge from a cell to the exterior drain. A link exists only over
 positive-clearance portions of the edge and becomes reachable at its Sill.
 
 **Portal liquid-adjacency** — The generated directed relation from each
-resolved Portal endpoint's Hydraulic cell to the next endpoint's cell in an
-active Portal loop, separate from ordinary shared-edge Liquid-adjacency and
+resolved Portal's Hydraulic cell to its Portal target's cell in an active Portal
+loop, separate from ordinary shared-edge Liquid-adjacency and
 wall collision. Liquid settles at generation time to a deterministic fixed
 point, spilling only in traversal order after reaching each source Sill and
 mapping its surface by the same height above the source and destination lower
@@ -270,7 +272,7 @@ elevation; valid inward aperture crossings return the player to Euclidean.
 
 **Phantom aperture** — The unchipped outline of a hidden, non-colliding Border
 linking Phantom and Euclidean, visible only from its non-solid side as a window
-into Euclidean space. It is not a Portal endpoint and does not relocate the view.
+into Euclidean space. It is not a Portal and does not relocate the view.
 
 **Zone-bearing Border wall** — A generated non-colliding Border wall whose
 solid side is always the Euclidean Zone and whose non-solid side is the other
