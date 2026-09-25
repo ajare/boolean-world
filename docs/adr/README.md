@@ -51,11 +51,12 @@ removed the dependency entirely. Geometry terms are defined in
 | [0042](0042-acoustics-are-simulated-in-real-time-never-baked.md) | Acoustics are simulated in real time, never baked | Accepted |
 | [0043](0043-steam-audio-traces-the-arrangement-directly.md) | Steam Audio traces the Arrangement directly, not a triangle mesh | Superseded by ADR-0044 |
 | [0044](0044-steam-audio-uses-a-triangle-scene.md) | Steam Audio uses a triangle scene derived from each World snapshot | Accepted |
-| [0045](0045-liquid-equilibrium-uses-affine-hydraulic-cells.md) | Liquid equilibrium uses affine Hydraulic cells | Accepted |
+| [0045](0045-liquid-equilibrium-uses-affine-hydraulic-cells.md) | Liquid equilibrium uses affine Hydraulic cells | Accepted in part; Portal Liquid amendment superseded by ADR-0050 |
 | [0046](0046-triplanar-materials-use-tagged-surface-references-and-shared-wall-projection-normals.md) | Triplanar materials use tagged surface references and shared wall projection normals | Accepted |
-| [0047](0047-portals-are-layer-owned-and-resolve-as-complete-pairs.md) | Portals are Layer-owned and resolve as complete pairs | Accepted |
+| [0047](0047-portals-are-layer-owned-and-resolve-as-complete-pairs.md) | Portals are Layer-owned and resolve as complete pairs | Superseded by ADR-0050 |
 | [0048](0048-zones-are-explicit-player-modes-entered-through-border-walls.md) | Zones are explicit player modes entered through Border walls | Partially superseded by ADR-0049 |
 | [0049](0049-phantom-views-euclidean-space-through-hidden-border-apertures.md) | Phantom views Euclidean space through hidden Border apertures | Accepted |
+| [0050](0050-portals-are-layer-owned-ordered-directed-loops.md) | Portals are Layer-owned ordered directed loops | Accepted |
 
 ## World geometry rewrite scope
 

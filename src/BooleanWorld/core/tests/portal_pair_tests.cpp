@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -6,6 +7,7 @@
 #include <string>
 
 #include <core/BinarySerializer.h>
+#include <core/CoreException.h>
 #include <core/DefaultWorldDataGenerator.h>
 #include <core/LayerBuildStep.h>
 #include <core/Portal.h>
@@ -337,6 +339,37 @@ void portalCentresSnapOnlyToNearestLegalWallCoverage() {
           "Portal centre snapped to a wall without complete vertical coverage");
 }
 
+void canonicalNextEndpointRoutesByStableIdentity() {
+  // These IDs deliberately differ from their positions in traversal order.
+  std::array<uint32_t, 3> order{17, 42, 5};
+  require(bw::core::NextPortalEndpointId(order, 17) == 42 &&
+              bw::core::NextPortalEndpointId(order, 42) == 5 &&
+              bw::core::NextPortalEndpointId(order, 5) == 17,
+          "directed Portal loop routing confused identity with position");
+  std::array<uint32_t, 2> pairOrder{17, 42};
+  require(bw::core::NextPortalEndpointId(pairOrder, 17) == 42 &&
+              bw::core::NextPortalEndpointId(pairOrder, 42) == 17,
+          "two-endpoint routing must work in both directions");
+  try {
+    [[maybe_unused]] auto next = bw::core::NextPortalEndpointId(order, 99);
+    require(false, "unknown endpoint ID was accepted");
+  } catch (bw::core::CoreException const&) {
+    // A stale ID must not silently select a different endpoint.
+  }
+  std::array<uint32_t, 1> singleton{17};
+  try {
+    [[maybe_unused]] auto next = bw::core::NextPortalEndpointId(singleton, 17);
+    require(false, "singleton Portal loop was accepted");
+  } catch (bw::core::CoreException const&) {
+  }
+  std::array<uint32_t, 3> duplicate{17, 42, 17};
+  try {
+    [[maybe_unused]] auto next = bw::core::NextPortalEndpointId(duplicate, 17);
+    require(false, "duplicate Portal endpoint identity was accepted");
+  } catch (bw::core::CoreException const&) {
+  }
+}
+
 void canonicalRigidTransformPreservesScaleAndWorldUp() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
@@ -347,6 +380,15 @@ void canonicalRigidTransformPreservesScaleAndWorldUp() {
   auto snapshot = world.getWorldData();
   auto const* pair = snapshot->findPortalPair(layer->getId(), pairId);
   require(pair && pair->active, "rigid Portal transform fixture did not resolve");
+  require(layer->getPortalPair(pairId)->getNextEndpointId(0) == 1 &&
+              layer->getPortalPair(pairId)->getNextEndpointId(1) == 0 &&
+              bw::core::NextPortalEndpointIndex(*pair, 0) == 1 &&
+              bw::core::NextPortalEndpointIndex(*pair, 1) == 0,
+          "authored and resolved two-endpoint routes disagree");
+  auto reverse = bw::core::BuildPortalRigidTransform(*pair, 1);
+  require(reverse.source.centre == pair->endpoints[1].aperture.centre &&
+              reverse.destination.centre == pair->endpoints[0].aperture.centre,
+          "reverse route did not exit through the first endpoint");
   auto transform = bw::core::BuildPortalRigidTransform(*pair, 0);
   auto vector = transform.transformVector({3.0f, 4.0f});
   require(std::abs(vector.length() - 5.0f) < 0.001f &&
@@ -380,6 +422,7 @@ int main() {
     identityAndEndpointStateRoundTripCopyAndAssignment();
     activeAperturesCutWallRenderingCollisionAndExposeFallback();
     portalCentresSnapOnlyToNearestLegalWallCoverage();
+    canonicalNextEndpointRoutesByStableIdentity();
     canonicalRigidTransformPreservesScaleAndWorldUp();
     noPortalWorldKeepsItsKeyedSerializationShapeAndGeometry();
     std::cout << "Portal pair authoring and resolution passed\n";

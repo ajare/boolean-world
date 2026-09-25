@@ -1,6 +1,6 @@
 # ADR-0045: Liquid equilibrium uses affine Hydraulic cells
 
-**Status:** Accepted
+**Status:** Accepted in part; bidirectional Portal Liquid amendment superseded by ADR-0050
 **Date:** 2026-09-08
 **Supersedes in part:** ADR-0032 (face-level capacity, Sill, and depth details)
 **Relates to:** ADR-0002 (the Arrangement remains planar), ADR-0005 (`WorldData` is an immutable snapshot)

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -267,6 +268,35 @@ float PortalRigidTransform::transformYaw(float yawDegrees) const {
   return transformVector(forward).clockwiseAngle();
 }
 
+uint32_t NextPortalEndpointId(
+    std::span<uint32_t const> order, uint32_t sourceId) {
+  if (order.size() < 2) {
+    throw CoreException("A Portal loop requires at least two endpoints");
+  }
+  auto found = std::find(order.begin(), order.end(), sourceId);
+  if (found == order.end()) {
+    throw CoreException("Portal source endpoint ID is not in the loop");
+  }
+  if (std::find(std::next(found), order.end(), sourceId) != order.end()) {
+    throw CoreException("Duplicate Portal source endpoint ID in traversal order");
+  }
+  return order[(static_cast<size_t>(found - order.begin()) + 1) % order.size()];
+}
+
+uint32_t NextPortalEndpointIndex(
+    ResolvedPortalPair const& pair, uint32_t sourceIndex) {
+  if (sourceIndex >= pair.endpoints.size()) {
+    throw CoreException("Invalid Portal source endpoint index");
+  }
+  std::array<uint32_t, 2> order{
+      pair.endpoints[0].endpointId, pair.endpoints[1].endpointId};
+  auto nextId = NextPortalEndpointId(order, order[sourceIndex]);
+  auto found = std::find_if(
+      pair.endpoints.begin(), pair.endpoints.end(),
+      [nextId](auto const& endpoint) { return endpoint.endpointId == nextId; });
+  return static_cast<uint32_t>(found - pair.endpoints.begin());
+}
+
 PortalRigidTransform BuildPortalRigidTransform(
     ResolvedPortalPair const& pair, uint32_t sourceEndpoint) {
   if (!pair.active || sourceEndpoint >= pair.endpoints.size()) {
@@ -274,7 +304,7 @@ PortalRigidTransform BuildPortalRigidTransform(
   }
   return {
       pair.endpoints[sourceEndpoint].aperture,
-      pair.endpoints[1u - sourceEndpoint].aperture};
+      pair.endpoints[NextPortalEndpointIndex(pair, sourceEndpoint)].aperture};
 }
 
 PortalEndpoint::PortalEndpoint(uint8_t id, AuthoredAperture aperture)
@@ -305,6 +335,11 @@ PortalPair::PortalPair(
 }
 
 uint32_t PortalPair::getId() const { return mId; }
+
+uint32_t PortalPair::getNextEndpointId(uint32_t endpointId) const {
+  std::array<uint32_t, 2> order{mEndpoints[0].getId(), mEndpoints[1].getId()};
+  return NextPortalEndpointId(order, endpointId);
+}
 
 PortalEndpoint const& PortalPair::getEndpoint(uint32_t index) const {
   if (index >= mEndpoints.size()) {
@@ -597,8 +632,9 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
       });
 
   for (auto const* pair : orderedPairs) {
+    auto const nextIndex = NextPortalEndpointIndex(*pair, 0);
     auto firstCells = incidentCells(pair->endpoints[0]);
-    auto secondCells = incidentCells(pair->endpoints[1]);
+    auto secondCells = incidentCells(pair->endpoints[nextIndex]);
     if (firstCells.empty() || secondCells.empty()) {
       result.diagnostics.push_back(
           {pair->layerId, pair->pairId,
@@ -607,7 +643,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     }
 
     auto const& first = pair->endpoints[0].aperture;
-    auto const& second = pair->endpoints[1].aperture;
+    auto const& second = pair->endpoints[nextIndex].aperture;
     auto const delta = double(second.bottom) - double(first.bottom);
     auto trial = offsets;
     auto consistent = true;

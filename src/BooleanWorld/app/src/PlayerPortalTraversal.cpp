@@ -39,7 +39,9 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
     return PlayerPortalCrossingResult::NotCrossing;
   }
   auto const& source = pair.endpoints[sourceEndpoint].aperture;
-  auto const& destination = pair.endpoints[1u - sourceEndpoint].aperture;
+  auto const destinationEndpoint =
+      core::NextPortalEndpointIndex(pair, sourceEndpoint);
+  auto const& destination = pair.endpoints[destinationEndpoint].aperture;
   auto startDistance = (motion.position - source.centre).dot(source.front);
   auto endPosition = motion.position + motion.unconsumedMovement;
   auto endDistance = (endPosition - source.centre).dot(source.front);
@@ -130,7 +132,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
   updateState.visited.push_back(repeated);
   ++updateState.crossings;
   updateState.exitSide = {
-      Identity(pair, 1u - sourceEndpoint), true};
+      Identity(pair, destinationEndpoint), true};
   updateState.cameraCut = true;
   return PlayerPortalCrossingResult::Traversed;
 }

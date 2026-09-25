@@ -1,6 +1,6 @@
 # ADR-0047: Portals are Layer-owned and resolve as complete pairs
 
-**Status:** Accepted
+**Status:** Superseded by ADR-0050 (ordered directed Portal loops)
 **Date:** 2026-11-21
 **Relates to:** ADR-0005, ADR-0009, ADR-0013, ADR-0019
 

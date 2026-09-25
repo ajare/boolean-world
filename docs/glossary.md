@@ -92,13 +92,13 @@ references, including disabled LayerBuildSteps and Prefab definitions.
 Layer and containing at least two stable Portal endpoints. Entering endpoint
 `i` exits endpoint `(i + 1) mod N`; the complete loop participates only when
 its owning Layer is selected and every endpoint resolves. A two-endpoint Portal
-loop preserves the former Portal pair's traversal mapping.
+loop preserves the former Portal pair's traversal mapping (ADR-0050).
 
 **Portal endpoint** — One stable member of a Portal loop, holding one authored
 aperture and occupying one mutable position in the loop's traversal order. Its
 id is stable and never reused within the loop, independently of insertion,
 removal, or reordering. It accepts traversal only from its resolved front side
-and sends it to the next endpoint. It is not a WorldTriggerLine or an
+and sends it to the next endpoint by stable ID, not by traversal index. It is not a WorldTriggerLine or an
 ArrangementWall property, and it never stores generated wall or edge identity.
 
 **Authored aperture** — A Portal endpoint's persistent requested rectangle: a

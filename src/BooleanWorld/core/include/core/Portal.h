@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -58,6 +59,8 @@ public:
 
   [[nodiscard]] uint32_t getId() const;
   [[nodiscard]] PortalEndpoint const& getEndpoint(uint32_t index) const;
+  // Stable identity, independent of the endpoint's position in traversal order.
+  [[nodiscard]] uint32_t getNextEndpointId(uint32_t endpointId) const;
 
 private:
   friend class Layer;
@@ -120,6 +123,15 @@ struct ResolvedPortalPair {
   std::array<ResolvedPortalEndpoint, 2> endpoints{};
 };
 
+// Canonical directed routing seam. Order contains stable endpoint IDs, not
+// vector indices; missing sources and cycles shorter than two are invalid.
+[[nodiscard]] BW_API uint32_t NextPortalEndpointId(
+    std::span<uint32_t const> order, uint32_t sourceId);
+// Pair-facing adapter for existing consumers. The next position is obtained
+// via stable IDs rather than by assuming the other slot is 1 - index.
+[[nodiscard]] BW_API uint32_t NextPortalEndpointIndex(
+    ResolvedPortalPair const& pair, uint32_t sourceIndex);
+
 // A generated, bidirectional connection between Hydraulic cells touching the
 // two resolved apertures. This is intentionally distinct from ordinary
 // shared-edge Hydraulic links and from wall collision. At equilibrium the
@@ -150,7 +162,7 @@ struct PortalLiquidAdjacencyResult {
   std::vector<PortalLiquidAdjacencyDiagnostic> diagnostics;
 };
 
-// The canonical rigid mapping between the two vertical endpoint frames. The
+// The canonical rigid mapping from a source to its next endpoint frame. The
 // local tangent and front axes are both reversed (a 180-degree turn around
 // world-up); elevation is translated by the difference between aperture
 // bottoms. Scale, handedness, and world-up are therefore preserved.

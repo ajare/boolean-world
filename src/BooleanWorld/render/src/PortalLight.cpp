@@ -78,7 +78,8 @@ std::optional<PortalLightPathHop> buildHop(
   if (!pair.active || sourceEndpoint >= pair.endpoints.size()) {
     return std::nullopt;
   }
-  auto const destinationEndpoint = 1u - sourceEndpoint;
+  auto const destinationEndpoint =
+      bw::core::NextPortalEndpointIndex(pair, sourceEndpoint);
   auto const& source = pair.endpoints[sourceEndpoint];
   auto const& destination = pair.endpoints[destinationEndpoint];
   if (!source.resolved || !destination.resolved) return std::nullopt;
@@ -375,10 +376,12 @@ PortalLightPlan PlanPortalLights(
                          : std::vector<PortalLightEndpointKey>{};
       path.push_back(endpoint.key);
       auto const& pair = *endpoint.pair;
-      auto const destination = endpointKey(pair, 1u - endpoint.source);
+      auto const destinationIndex =
+          bw::core::NextPortalEndpointIndex(pair, endpoint.source);
+      auto const destination = endpointKey(pair, destinationIndex);
 
       if (!pair.active || !pair.endpoints[endpoint.source].resolved ||
-          !pair.endpoints[1u - endpoint.source].resolved) {
+          !pair.endpoints[destinationIndex].resolved) {
         addDiagnostic(std::move(path), PortalLightDiagnosticReason::Inactive);
         continue;
       }
