@@ -35,6 +35,63 @@ bw::core::ResolvedPortalLoop translationLoop(
   return portalLoop;
 }
 
+void mirrorLightReflectsAndRemainsGated() {
+  auto mirror = translationLoop(bw::core::IndependentPortalLoopId, 0, 10);
+  mirror.endpoints.resize(1);
+  mirror.endpoints[0].endpointId = 17;
+  mirror.traversalOrder = {17};
+  glm::vec3 torch{0.6f, 1.5f, -2};
+  bw::app::PlayerTorchOptions options;
+  auto light = BuildPortalLightAttachment(mirror, 17, torch, options);
+  require(light && near(light->position.x, 0.6f) &&
+              near(light->position.y, 1.5f) && near(light->position.z, 2),
+          "Mirror virtual light rotated instead of reflecting");
+  auto const& hop = light->hops.front();
+  auto unfolded = glm::vec3(hop.destinationToSource * glm::vec4(light->position, 1));
+  require(glm::length(unfolded - torch) < 1e-4f &&
+              glm::determinant(glm::mat3(hop.destinationToSource)) < 0 &&
+              hop.sourceEndpoint == hop.destinationEndpoint &&
+              light->radiance == glm::vec3(PlayerTorchRadiance),
+          "Mirror shadow folding lost reflection parity, identity, or radiance");
+  require(PortalLightAdmitsReceiver(*light, {0.2f, 2, -2}) &&
+              !PortalLightAdmitsReceiver(*light, {4, 2, -2}) &&
+              !PortalLightAdmitsReceiver(*light, {0.2f, 9, -2}) &&
+              !PortalLightAdmitsReceiver(*light, {0.2f, 2, 1}),
+          "Mirror light leaked around its aperture or back side");
+  require(!BuildPortalLightAttachment(mirror, 17, {0.6f, 1.5f, 2}, options),
+          "back-facing Mirror produced a light");
+  auto plan = PlanPortalLights(std::span{&mirror, 1}, torch, options);
+  auto again = PlanPortalLights(std::span{&mirror, 1}, torch, options);
+  require(plan.lights.size() == 1 && plan.shadowPassCount == 2 &&
+              plan.count(PortalLightDiagnosticReason::EndpointCycle) == 1 &&
+              again.lights.front().path == plan.lights.front().path &&
+              again.diagnostics.size() == plan.diagnostics.size(),
+          "Mirror revisit was not deterministically cycle-bounded");
+  auto duplicate = mirror;
+  duplicate.endpoints[0].endpointId = 23;
+  duplicate.traversalOrder = {23};
+  std::vector mirrors{duplicate, mirror};
+  auto deduplicated = PlanPortalLights(mirrors, torch, options);
+  std::reverse(mirrors.begin(), mirrors.end());
+  auto reordered = PlanPortalLights(mirrors, torch, options);
+  require(deduplicated.lights.size() == 1 &&
+              deduplicated.count(PortalLightDiagnosticReason::EquivalentLight) == 1 &&
+              deduplicated.lights.front().path.front().endpointId == 17 &&
+              reordered.diagnostics.size() == deduplicated.diagnostics.size(),
+          "equivalent Mirrors were not ranked and deduplicated by stable identity");
+  for (size_t i = 0; i < reordered.diagnostics.size(); ++i) {
+    require(reordered.diagnostics[i].path == deduplicated.diagnostics[i].path &&
+                reordered.diagnostics[i].reason == deduplicated.diagnostics[i].reason &&
+                reordered.diagnostics[i].equivalentPath == deduplicated.diagnostics[i].equivalentPath,
+            "Mirror storage order changed diagnostics");
+  }
+  for (auto limits : {PortalLightLimits{0, 2, 8}, PortalLightLimits{3, 0, 8},
+                      PortalLightLimits{3, 2, 1}}) {
+    require(PlanPortalLights(std::span{&mirror, 1}, torch, options, limits).lights.empty(),
+            "Mirror bypassed a light or shadow budget");
+  }
+}
+
 void canonicalTransformPreservesThePlayerTorch() {
   auto portalLoop = translationLoop(7, 0.0f, 10.0f);
   bw::app::PlayerTorchOptions options;
@@ -273,6 +330,7 @@ void attachmentsFailAtomicallyWithoutCompleteShadows() {
 
 int main() {
   try {
+    mirrorLightReflectsAndRemainsGated();
     canonicalTransformPreservesThePlayerTorch();
     stableIdentityPreservesLightOutput();
     multiHopCompositionGatesEveryAperture();

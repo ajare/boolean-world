@@ -614,6 +614,14 @@ std::vector<float> render(
       trace->shadowDiagnostics[frame] = renderSystem.renderSystem()->getShadowDomainDiagnostics(
           std::string(bw::app::playerTorchShadowDomain));
     }
+    if (fixture.mirror) {
+      for (auto domain : {"BooleanWorld.PortalTorch.Path0.Leg0",
+                          "BooleanWorld.PortalTorch.Path0.Leg1"}) {
+        if (!renderSystem.renderSystem()->getShadowDomainDiagnostics(domain).cacheComplete)
+          throw std::runtime_error(
+              "Mirror light did not render complete folded point-shadow segments");
+      }
+    }
     if (fixture.portal) {
       auto const& plan = scene.portalViewDiagnostics();
       if (frame == 0) initialPortalPlan = plan;
@@ -1164,6 +1172,7 @@ void portalLightIsClippedToTheRenderedApertureProjection(
   // The focused two-sample draw below then isolates the aperture predicate
   // from procedural material variation and recursive Portal imagery.
   (void)render(renderSystem, {.portal = true});
+  (void)render(renderSystem, {.portal = true, .mirror = true});
 
   constexpr char const* vertexSource = R"(
 #version 130

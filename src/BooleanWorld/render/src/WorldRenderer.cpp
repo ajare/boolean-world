@@ -1247,6 +1247,10 @@ void WorldRenderer::renderWorldScene(
         std::vector<mpp::ResourcePtr> maps;
         maps.reserve(light.hops.size() + 1);
         for (size_t leg = 0; leg <= light.hops.size(); ++leg) {
+          // Each cubemap renders untransformed world geometry with the ordinary
+          // cube-face basis, even for an orientation-reversing Mirror hop.
+          // Do not reverse caster winding here: only receiver rays are folded
+          // by the canonical destinationToSource matrix in the lighting shader.
           auto options = *ordinaryOptions;
           if (leg == 0) {
             auto const& first = light.hops.front();

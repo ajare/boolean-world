@@ -75,6 +75,36 @@ bw::app::PlayerPortalMotion crossingMotion() {
       {-40.0f, 0.0f}, 0.0f, 270.0f, -17.0f, {-100.0f, 0.0f}, -23.0f, {-30.0f, 0.0f}};
 }
 
+void torchReflectsThroughMirror() {
+  MirrorFixture fixture;
+  auto place = [&](wp::Vector2 start, wp::Vector2 direction, float reach,
+                   float elevation = 12.0f) {
+    return bw::app::placePlayerTorch(*fixture.data, start, elevation, direction, reach);
+  };
+  // Ten units to the plane, then twenty reflected units; tangent is not flipped.
+  auto torch = place({-40, 3}, {-1, 0.2f}, std::sqrt(1.04f) * 30);
+  require(std::abs(torch.position.x + 30) < 0.01f &&
+              std::abs(torch.position.y - 9) < 0.01f && torch.elevation == 12,
+          "Mirror Torch rotated its tangent or lost remaining reach");
+  for (auto torch : {place({-40, 18}, {-1, 0}, 30),
+                     place({-40, 7}, {-1, 0}, 30, 24)}) {
+    require(std::abs(torch.position.x - (-50 + BW_PLAYER_TORCH_WALL_CLEARANCE)) < 0.01f,
+            "Mirror Torch leaked through its frame");
+  }
+  require(std::abs(place({-70, 7}, {1, 0}, 30).position.x -
+                   (-50 - BW_PLAYER_TORCH_WALL_CLEARANCE)) < 0.01f,
+          "Mirror Torch crossed its back side");
+  require(std::abs(place({-40, 7}, {-1, 0}, 200).position.x -
+                   (50 - BW_PLAYER_TORCH_WALL_CLEARANCE)) < 0.01f,
+          "reflected Torch ignored the next wall");
+  fixture.world.getActiveLayer()->addPortal({{50, 7}, 20, 0, 24});
+  fixture.data = fixture.world.getWorldData();
+  auto capped = place({-40, 7}, {-1, 0}, 1.0e8f);
+  require(std::isfinite(capped.position.x) && std::abs(capped.position.x) < 50 &&
+              std::abs(capped.position.y - 7) < 0.01f,
+          "facing Mirrors bypassed the Torch traversal budget");
+}
+
 void extendedTorchTraversesPortal() {
   Fixture fixture;
   auto torch = bw::app::placePlayerTorch(
@@ -580,6 +610,7 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
 
 int main() {
   try {
+    torchReflectsThroughMirror();
     extendedTorchTraversesPortal();
     torchReachRespectsPortalFramesAndWalls();
     bw::core::LayerBuildStep::registerCoreTypes();

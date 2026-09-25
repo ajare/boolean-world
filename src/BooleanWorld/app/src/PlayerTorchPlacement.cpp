@@ -28,7 +28,7 @@ PlayerTorchPlacement placePlayerTorch(
     core::ResolvedPortalEndpoint const* nearestEndpoint = nullptr;
     float nearestDistance = std::numeric_limits<float>::infinity();
     for (auto const& portalLoop : world.getPortalLoops()) {
-      if (!portalLoop.active || portalLoop.endpoints.size() == 1) continue;
+      if (!portalLoop.active) continue;
       for (auto const& endpoint : portalLoop.endpoints) {
         auto const& aperture = endpoint.aperture;
         auto side = (position - aperture.centre).dot(aperture.front);
