@@ -100,6 +100,7 @@ private:
   PortalLightLimits mPortalLightLimits;
   PortalLightPlan mLastPortalLightPlan;
   std::map<PortalEndpointKey, uint32_t> mPortalEndpointBuckets;
+  bool mCyberspace{false};
   std::optional<PortalEndpointKey> mSelectedPortal;
   // The real Player Torch is persistent frame state. Transmitted copies are
   // derived from it only into individual auxiliary-pass overrides.
@@ -261,6 +262,7 @@ public:
   [[nodiscard]] PortalViewPlan const& getPortalViewDiagnostics() const;
   [[nodiscard]] PortalLightPlan const& getPortalLightDiagnostics() const;
   void setPortalLightLimits(PortalLightLimits limits);
+  void setCyberspace(bool enabled) { mCyberspace = enabled; }
 
   void update(
       bw::core::World* world,

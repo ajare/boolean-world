@@ -101,6 +101,7 @@ public:
   void reloadSubMaterialResolver(
       wp::application::resourcesystem::ResourceManager* resourceMgr);
   void worldGeometryChanged();
+  void setCyberspace(bool enabled);
 
   [[nodiscard]] std::uint32_t worldSurfaceTriangleCount(
       WorldSurfaceSet surfaceSet) const;

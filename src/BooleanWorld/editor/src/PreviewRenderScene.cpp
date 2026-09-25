@@ -219,6 +219,10 @@ std::array<std::uint64_t, 2> PreviewRenderScene::surfaceGeometryCounters(WorldSu
   return {counters.revision, counters.uploads};
 }
 
+void PreviewRenderScene::setCyberspace(bool enabled) {
+  mRenderer->setCyberspace(enabled);
+}
+
 void PreviewRenderScene::worldGeometryChanged() {
   mRenderer->setWorldChanged();
   // WorldRenderer rebuilds model resources lazily. Mark the domain as well so

@@ -486,6 +486,13 @@ bool setPortalTarget(Document*, bw::core::Layer* layer, uint32_t portalId, uint3
   return true;
 }
 
+bool setPortalCyberspace(Document*, bw::core::Layer* layer, uint32_t portalId, bool cyberspace) {
+  auto const* portal = layer ? layer->getPortal(portalId) : nullptr;
+  if (!portal || portal->getCyberspace() == cyberspace) return false;
+  layer->setPortalCyberspace(portalId, cyberspace);
+  return true;
+}
+
 bool setPortalBlocksWater(Document*, bw::core::Layer* layer, uint32_t portalId, bool blocksWater) {
   auto const* portal = layer ? layer->getPortal(portalId) : nullptr;
   if (!portal || portal->getBlocksWater() == blocksWater) return false;

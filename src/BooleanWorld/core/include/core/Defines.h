@@ -61,7 +61,7 @@ typedef int64_t frame_number_type;
 //
 // Material definitions
 //
-#define BW_MATERIAL_COUNT 40
+#define BW_MATERIAL_COUNT 41
 #define BW_MATERIAL_PARAMS_MAX 8
 
 // Reserved MATERIAL_INDEX for a wall's back face (the side its normal points
@@ -69,19 +69,19 @@ typedef int64_t frame_number_type;
 // world_pbr.frag (still lit like any other material, just untextured),
 // never offered as an authorable material and never matched by a real
 // Primitive's wallMaterialIndex.
-#define BW_WALL_BACK_FACE_MATERIAL_INDEX 40
+#define BW_WALL_BACK_FACE_MATERIAL_INDEX 41
 
 // Reserved MATERIAL_INDEX for liquid surfaces (Pools rendered from
 // ArrangementWorldData's settled liquid depth): a flat, translucent blue
 // procedural material in world_pbr_2d.frag, never offered as an authorable
 // material and never matched by a real Primitive's floor/ceiling/wall
 // material id.
-#define BW_WATER_MATERIAL_INDEX 41
+#define BW_WATER_MATERIAL_INDEX 42
 
 // Reserved MATERIAL_INDEX identifying an image-backed Triplanar Surface
 // material bucket. Its albedo and fixed PBR response are supplied by the world
 // shader; it is never a ProcMaterial Technique index.
-#define BW_TRIPLANAR_MATERIAL_INDEX 42
+#define BW_TRIPLANAR_MATERIAL_INDEX 43
 
 // A materialIndex a Sub-material id resolves to when the id doesn't name any
 // Sub-material in a loaded ProcMaterial catalog (missing/unknown/empty). Every

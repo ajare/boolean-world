@@ -177,8 +177,8 @@ void legacyBinaryVersionsAndMixedNamesMigrate() {
   auto base = writer->getSerializedString();
   uint32_t currentVersion{};
   std::memcpy(&currentVersion, base.data() + 4, sizeof(currentVersion));
-  require(currentVersion == 6 && base.substr(base.size() - 6) == std::string(6, '\0'),
-          "v6 writer did not emit exactly the named-only empty Layer tail");
+  require(currentVersion == 7 && base.substr(base.size() - 6) == std::string(6, '\0'),
+          "v7 writer did not emit exactly the named-only empty Layer tail");
   base.resize(base.size() - 6);
   auto readBinary = [](std::string const& bytes) {
     auto reader = std::shared_ptr<bw::core::BinarySerializer>(bw::core::BinarySerializer::fromString(bytes));
@@ -275,12 +275,17 @@ void waterBlockingPersistsAndDefaultsOff() {
   auto a = layer->addPortal(aperture(50, 0));
   auto b = layer->addPortal(aperture(-50, 0));
   require(!layer->getPortal(a)->getBlocksWater(), "new Portal blocks water");
+  require(!layer->getPortal(a)->getCyberspace(), "new Portal enables Cyberspace");
+  layer->setPortalCyberspace(a, true);
   layer->setPortalBlocksWater(a, true);
   layer->setPortalTarget(a, b);
   layer->setPortalTarget(b, a);
   layer->setPortalName(a, "Blocked");
   auto verify = [&](bw::core::World const& copy) {
     auto const* copied = copy.getActiveLayer();
+    require(copied->getPortal(a)->getCyberspace() &&
+                !copied->getPortal(b)->getCyberspace(),
+            "copy/serialization lost Cyberspace flags");
     require(copied->getPortal(a)->getBlocksWater() &&
                 !copied->getPortal(b)->getBlocksWater(),
             "copy/serialization/retarget/rename lost independent water flags");
@@ -297,7 +302,17 @@ void waterBlockingPersistsAndDefaultsOff() {
     auto end = yaml.find('\n', pos);
     yaml.erase(start, end == std::string::npos ? end : end - start + 1);
   }
+  for (int i = 0; i < 2; ++i) {
+    auto pos = yaml.find("cyberspace:");
+    require(pos != std::string::npos, "missing serialized Cyberspace flag");
+    auto start = yaml.rfind('\n', pos) + 1;
+    auto end = yaml.find('\n', pos);
+    yaml.erase(start, end == std::string::npos ? end : end - start + 1);
+  }
   auto legacy = deserializeWorld(yaml);
+  require(!legacy.getActiveLayer()->getPortal(a)->getCyberspace() &&
+              !legacy.getActiveLayer()->getPortal(b)->getCyberspace(),
+          "older YAML did not default Cyberspace off");
   require(!legacy.getActiveLayer()->getPortal(a)->getBlocksWater() &&
               !legacy.getActiveLayer()->getPortal(b)->getBlocksWater(),
           "older YAML did not default water flags off");
@@ -589,11 +604,14 @@ void namedMirrorsRoundTripAndResolveIndependently() {
   bw::core::World assigned(200.0f, 10.0f);
   assigned = world;
   verify(assigned);
+  layer->setPortalCyberspace(replacement, true);
   auto data = world.getWorldData();
   auto const* mirror = data->findPortalLoop(layer->getId(), replacement);
   require(mirror && mirror->active && mirror->endpoints.size() == 1 &&
           mirror->traversalOrder == std::vector<uint32_t>{replacement},
           "self target did not generate a singleton cycle");
+  require(mirror->endpoints.front().cyberspace,
+          "authored Mirror Cyberspace flag lost during generation");
   auto mapping = bw::core::BuildPortalMapping(*mirror, replacement);
   auto reflected = mapping.transformPoint({-43, 21});
   require(mapping.reversesHandedness() && reflected == wp::Vector2{-57, 21} &&

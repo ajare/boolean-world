@@ -125,6 +125,7 @@ public:
   // Stable endpoint buckets select a completed child image per pass. Reset
   // before each pass so an endpoint can never sample the current render target.
   void setPortalFallback();
+  void setCyberspace(bool enabled);
   void setPortalView(
       uint32_t endpointBucket,
       mpp::ResourcePtr const& texture,

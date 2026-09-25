@@ -72,6 +72,7 @@ layout(location = 6) flat in float liquidSurfaceHeight;
 // not a global render option, so it arrives with the batch exactly as the
 // Technique index and its parameters do. EMBOSS_PATTERN is EmbossPattern:
 // 0 none, 1 square, 2 hexagon, 3 running bond, 4 modular opus, 5 Voronoi.
+@@Uniform(int CYBERSPACE);
 @@Uniform(int MATERIAL_INDEX);
 @@Uniform(float MATERIAL_PARAMS[8]);
 @@Uniform(vec3 MATERIAL_COLOUR);
@@ -657,6 +658,29 @@ Material graniteMaterial2d(
     return material;
 }
 
+// Shared visual recipe with the UV PBR program: a stable grid with travelling
+// bright packets on each axis. Filter the lines before fract introduces seams.
+Material cyberspaceMaterial(vec2 position, vec3 normal)
+{
+    vec2 p = position * blendedMaterialParams[0];
+    float t = @Uniform(GLOBAL_TIME) * blendedMaterialParams[2];
+    vec2 distanceToLine = abs(fract(p + 0.5) - 0.5);
+    vec2 aa = max(fwidth(p), vec2(0.0001));
+    float width = blendedMaterialParams[1];
+    vec2 lines = (vec2(1.0) - smoothstep(vec2(width) - aa,
+                                      vec2(width) + aa, distanceToLine));
+    vec2 packets = pow(0.5 + 0.5 * sin(p.yx * 2.1 + vec2(-t, t) * 3.0), vec2(8.0));
+    float grid = max(lines.x, lines.y);
+    float flow = max(lines.x * packets.x, lines.y * packets.y);
+    Material material;
+    material.albedo = vec3(0.001, 0.006, 0.002) +
+                      vec3(0.015, 0.65, 0.09) * (grid * 0.3 + flow);
+    material.metallic = 0.15;
+    material.roughness = blendedMaterialParams[4];
+    material.normal = normalize(normal);
+    return material;
+}
+
 Material plainGreyMaterial2d(vec3 normal)
 {
     Material material;
@@ -688,9 +712,11 @@ Material material2d(
     if (type == 39)
         return graniteMaterial2d(
             surfacePosition, normal, surfaceUp, axisU, axisV);
-    if (type == 41)
+    if (type == 40)
+        return cyberspaceMaterial(surfacePosition, normal);
+    if (type == 42)
         return waterMaterial2d(normal);
-    if (type == 40) {
+    if (type == 41) {
         Material matte;
         matte.albedo = vec3(1.0);
         matte.metallic = 0.0;
@@ -1772,21 +1798,31 @@ void main()
         surfacePosition / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
     int materialIndex = floorMaterialIndex(
-        surfacePosition, clamp(@Uniform(MATERIAL_INDEX), 0, 41));
-    materialIndex = clamp(materialIndex, 0, 41);
+        surfacePosition, clamp(@Uniform(MATERIAL_INDEX), 0, 42));
+    materialIndex = clamp(materialIndex, 0, 42);
     vec3 viewDir = normalize(@ViewPos - worldPos);
     vec3 shadingNormal = normalize(@In(FRAGNORMAL));
     bool backFace = dot(shadingNormal, viewDir) < 0.0;
     bool omittedBack = @Uniform(WALL_BACK_FACE_TREATMENT) == 0;
-    if (backFace && omittedBack && @Uniform(MATERIAL_INDEX) != 41) discard;
+    if (backFace && omittedBack && @Uniform(MATERIAL_INDEX) != 42) discard;
     bool matteBack = backFace && !omittedBack;
-    if (matteBack) materialIndex = 40;
+    if (matteBack) materialIndex = 41;
     if (dot(shadingNormal, viewDir) < 0.0) {
         shadingNormal = -shadingNormal;
     }
-    vec3 normal = matteBack ? shadingNormal : applyWallNormalMap(shadingNormal);
+    bool cyberspace = @Uniform(CYBERSPACE) != 0;
+    vec3 normal = (matteBack || cyberspace) ? shadingNormal : applyWallNormalMap(shadingNormal);
     blendMaterialParams();
-    bool usesTriplanar = !matteBack && @Uniform(TRIPLANAR_ENABLED) != 0;
+    if (cyberspace) {
+        materialIndex = 40;
+        blendedMaterialParams[0] = 0.5;
+        blendedMaterialParams[1] = 0.035;
+        blendedMaterialParams[2] = 0.8;
+        blendedMaterialParams[3] = 1.5;
+        blendedMaterialParams[4] = 0.35;
+        blendedMaterialColour = vec3(1.0);
+    }
+    bool usesTriplanar = !cyberspace && !matteBack && @Uniform(TRIPLANAR_ENABLED) != 0;
     Material material;
     if (usesTriplanar)
     {
@@ -1806,7 +1842,7 @@ void main()
     material.albedo *= matteBack ? vec3(1.0) : blendedMaterialColour;
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
-    if (!matteBack && @Uniform(EMBOSS_PATTERN) != 0)
+    if (!cyberspace && !matteBack && @Uniform(EMBOSS_PATTERN) != 0)
         material.normal = embossSurface(
             material.normal, surfacePosition, surfaceAxisU, surfaceAxisV,
             @Uniform(EMBOSS_RADIUS), @Uniform(EMBOSS_DEPTH),
@@ -1816,7 +1852,8 @@ void main()
     PbrLighting lighting = shadePbr(
         material, viewDir, worldPos, @Uniform(LIGHT_POSITION));
     vec3 ambientAndEmission = lighting.ambient +
-        supernaturalEmission(texturePosition, materialIndex);
+        (materialIndex == 40 ? material.albedo * blendedMaterialParams[3]
+                             : supernaturalEmission(texturePosition, materialIndex));
     // Absorption attenuates all radiance in linear space. It therefore follows
     // emission but precedes tone mapping, gamma, and the stylistic distance
     // fade applied at output. The Player Torch's direct term takes its nearly

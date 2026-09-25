@@ -54,7 +54,7 @@ struct MirrorFixture {
   bw::core::ResolvedPortalLoop const* portalLoop{};
   uint32_t portalId{};
 
-  MirrorFixture() {
+  explicit MirrorFixture(bool cyberspace = false) {
     auto* room = new bw::core::RectanglePolygon(
         bw::core::Primitive::Operation::Union,
         bw::core::Primitive::FillRule::NonZero, 1.0f);
@@ -62,6 +62,7 @@ struct MirrorFixture {
     world.addPrimitive(room);
     auto* layer = world.getActiveLayer();
     portalId = layer->addPortal({{-50.0f, 7.0f}, 20.0f, 0.0f, 24.0f});
+    layer->setPortalCyberspace(portalId, cyberspace);
     data = world.getWorldData();
     portalLoop = data->findPortalLoop(
         layer->getId(), portalId);
@@ -183,6 +184,29 @@ void highSpeedCrossingTransformsCompleteMotionState() {
   require(transformedForward.dot(motion.horizontalVelocity.normalisedCopy()) >
               0.999f,
           "Portal facing and horizontal velocity transforms disagreed");
+}
+
+void cyberspaceMirrorTogglesWithoutChangingOrdinaryPortals() {
+  for (bool enabled : {false, true}) {
+    MirrorFixture fixture(enabled);
+    auto const& loop = *fixture.portalLoop;
+    bool cyberspace = false;
+    for (int crossing = 0; crossing < 2; ++crossing) {
+      bw::app::PlayerPortalMotion motion{
+          {-40.0f, 9.0f}, 1.5f, 0.0f, 0.0f,
+          {-8.0f, 3.0f}, 0.0f, {-30.0f, 6.0f}};
+      motion.cyberspace = cyberspace;
+      bw::app::PlayerPortalUpdateState state;
+      require(bw::app::tryPlayerPortalCrossing(
+                  *fixture.data, loop, fixture.portalId,
+                  BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT, motion, state) ==
+                  bw::app::PlayerPortalCrossingResult::Traversed,
+              "Cyberspace fixture did not traverse");
+      cyberspace = motion.cyberspace;
+      require(cyberspace == (enabled && crossing == 0),
+              "Mirror failed to toggle/restore Cyberspace");
+    }
+  }
 }
 
 void mirrorTraversalReflectsAsymmetricSweptMotion() {
@@ -641,6 +665,7 @@ int main() {
     torchReachRespectsPortalFramesAndWalls();
     bw::core::LayerBuildStep::registerCoreTypes();
     highSpeedCrossingTransformsCompleteMotionState();
+    cyberspaceMirrorTogglesWithoutChangingOrdinaryPortals();
     mirrorTraversalReflectsAsymmetricSweptMotion();
     frameAndVerticalMissesRemainBlocked();
     validApproachesDoNotTeleportBeforeTheCentreReachesThePlane();

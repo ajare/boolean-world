@@ -50,6 +50,7 @@ inline constexpr std::array<std::string_view, BW_MATERIAL_COUNT> TechniqueNames{
     "Wet rock",
     "Wood2",
     "Granite",
+    "Cyberspace",
 }};
 
 }  // namespace common

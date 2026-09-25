@@ -143,6 +143,7 @@ namespace editor {
   X(DeletePortal, "Delete Portal", deletePortal) \
   X(SetPortalName, "Rename Portal", setPortalName) \
   X(SetPortalTarget, "Set Portal target", setPortalTarget) \
+  X(SetPortalCyberspace, "Set Mirror Cyberspace", setPortalCyberspace) \
   X(SetPortalBlocksWater, "Set Portal water blocking", setPortalBlocksWater) \
   X(SelectPortal, "Select Portal", selectPortal) \
   X(SetPortalPosition, "Move Portal", setPortalPosition) \

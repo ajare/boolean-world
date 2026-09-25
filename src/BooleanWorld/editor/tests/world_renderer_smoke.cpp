@@ -63,6 +63,7 @@ struct RenderFixture {
   bool wedges{};
   bool lookAtWedges{};
   bool lookAtFloor{};
+  bool floorCloseup{};
   bool lookAtCeiling{};
   bool lookAtWallBack{};
   bool wet{};
@@ -77,6 +78,9 @@ struct RenderFixture {
   bool portal{};
   bool singlePortalCycle{};
   bool mirror{};
+  bool cyberspaceMirror{};
+  bool warmCyberspaceMirror{};
+  bool toggleCyberspace{};
   bool mirroredCamera{};
   bool manyPortalEndpoints{};
   bool threeEndpointPortal{};
@@ -388,7 +392,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       if (fixture.mirror) {
         for (auto y : {16.0f, -16.0f}) {
           auto id = layer->addPortal({{centreX, y}, 12.0f, 4.0f, 36.0f});
-          (void)id;
+          layer->setPortalCyberspace(id, fixture.cyberspaceMirror);
         }
         continue;
       }
@@ -571,6 +575,10 @@ std::vector<float> render(
     reactiveCamera->setLookAt(fixture.phantomReverse ? glm::vec3{0, 16, 0} : glm::vec3{0, 16, 80},
                              fixture.phantomReverse ? glm::vec3{0, 16, 80} : glm::vec3{0, 16, 0});
   }
+  if (fixture.floorCloseup) {
+    reactiveCamera->setPosition({0, 1, 0});
+    reactiveCamera->setPitch(90.0f);
+  }
   if (fixture.mirror) reactiveCamera->setLookAt({2, 19, 1}, {-4, 17, -16});
   reactiveCamera->setMirrored(fixture.mirroredCamera);
   if (fixture.portalBackSurface) reactiveCamera->setPitch(-12.0f);
@@ -598,7 +606,17 @@ std::vector<float> render(
   uint32_t texture{};
   std::array<std::array<uint64_t, 2>, 3> surfaceCounters{};
   PortalViewPlan initialPortalPlan;
+  if (fixture.warmCyberspaceMirror) {
+    auto warmCamera = std::make_shared<ReactiveCamera>(
+        glm::vec3{0, 1, 0}, 0.0f, 90.0f, BW_PLAYER_FOV, kWidth / float(kHeight));
+    warmCamera->setClipDistances(0.1f, 1000000.0f);
+    (void)scene.render(&world, *worldData, warmCamera, warmCamera->getPosition(),
+                       0.0f);
+    if (!scene.portalViewDiagnostics().rootChildren.empty())
+      throw std::runtime_error("Cyberspace warm-up must not see a portal");
+  }
   for (int frame = 0; frame < 3; ++frame) {
+    if (fixture.toggleCyberspace) scene.setCyberspace(frame == 1);
     if (trace) pipeline->requestGraphImageCapture();
     texture = scene.render(
         &world, *worldData, camera,
@@ -1000,6 +1018,29 @@ void mirrorsRenderThroughTheRealPipeline(editor::EditorRenderSystem& renderSyste
                   mirrored[(y * kWidth + kWidth - 1 - x) * 4 + channel]);
   require(regionDifference(image, mirrored) < 0.005,
           "reflected primary camera lost surfaces or recursive mirror parity");
+  auto cyberspace = render(renderSystem,
+      {.portal = true, .mirror = true, .cyberspaceMirror = true});
+  require(regionDifference(image, cyberspace) > 0.001,
+          "Cyberspace mirror did not preview the target materials");
+  auto warmedCyberspace = render(renderSystem,
+      {.portal = true, .mirror = true, .cyberspaceMirror = true,
+       .warmCyberspaceMirror = true});
+  require(regionDifference(cyberspace, warmedCyberspace) < 0.001,
+          "Cyberspace mirror appearance depends on first rendered view");
+  for (auto horizontal : {bw::app::HorizontalMaterials::TwoDimensional,
+                          bw::app::HorizontalMaterials::ThreeDimensional}) {
+    std::vector<float> normalMiddle, cyberMiddle;
+    auto normalFinal = render(renderSystem,
+        {.horizontal = horizontal, .floorCloseup = true},
+        nullptr, nullptr, nullptr, &normalMiddle);
+    auto restored = render(renderSystem,
+        {.horizontal = horizontal, .floorCloseup = true, .toggleCyberspace = true},
+        nullptr, nullptr, nullptr, &cyberMiddle);
+    require(regionDifference(normalMiddle, cyberMiddle) > 0.01,
+            "Cyberspace traversal state did not change floor material");
+    require(regionDifference(normalFinal, restored) < 0.001,
+            "returning from Cyberspace did not restore authored materials");
+  }
   auto ordinary = render(renderSystem, {.portal = true});
   require(regionDifference(image, ordinary) > 0.001,
           "Mirror pipeline did not change the rendered scene");

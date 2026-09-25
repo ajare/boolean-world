@@ -463,6 +463,7 @@ void WorldRenderer3d::addToScene(mpp::ScenePtr scene, bw::core::World const* wor
   mMaterialIndices.resize(worldBatch->getMaterialMeshCount(), 0);
 
   auto initializeGlobalUniforms = [this](mpp::UniformCollection& uniforms) {
+    uniforms.setUniform("CYBERSPACE", int32_t{0});
     uniforms.setUniform("HIGHLIGHTED_WALL", int32_t{-1});
     uniforms.setUniform("PORTAL_VIEW_ENABLED", int32_t{0});
     uniforms.setUniform("PHANTOM_APERTURE", int32_t{mApertureOnly ? 1 : 0});
@@ -855,6 +856,13 @@ void WorldRenderer3d::setFragmentOverdraw(bool enabled) {
     params->setMeshDepthPrepass(
         meshName, enabled ? std::optional<bool>{true} : std::nullopt);
   }
+}
+
+void WorldRenderer3d::setCyberspace(bool enabled) {
+  // setUniform only inserts: existing mesh uniforms must be updated for
+  // every primary/auxiliary view, including transitions back to normal.
+  for (auto const& uniforms : mUniforms)
+    if (uniforms) uniforms->updateUniform("CYBERSPACE", int32_t(enabled));
 }
 
 void WorldRenderer3d::setPortalFallback() {

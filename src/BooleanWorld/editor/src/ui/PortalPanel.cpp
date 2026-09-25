@@ -39,6 +39,15 @@ void renderPortalsView(ViewContext& context) {
   if (!authored) return;
 
   ImGui::SeparatorText("Selected Portal");
+  if (portal->getTargetId() == portal->getId()) {
+    auto cyberspace = portal->getCyberspace();
+    if (ImGui::Checkbox("Cyberspace", &cyberspace)) {
+      transactUndoableActionAtomically(doc, CommandId::SetPortalCyberspace,
+          [=](Document* document) {
+            return setPortalCyberspace(document, layer, portalId, cyberspace);
+          });
+    }
+  }
   auto blocksWater = portal->getBlocksWater();
   if (ImGui::Checkbox("Blocks water", &blocksWater)) {
     transactUndoableActionAtomically(doc, CommandId::SetPortalBlocksWater,

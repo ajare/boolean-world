@@ -14,7 +14,7 @@ using namespace std;
 namespace {
 constexpr char kMagic[4] = {'B', 'W', 'L', 'D'};
 constexpr uint32_t kOldestSupportedFormatVersion = 1;
-constexpr uint32_t kFormatVersion = 6;
+constexpr uint32_t kFormatVersion = 7;
 }  // namespace
 
 BinarySerializer::BinarySerializer(bool serializing, string const& source, bool sourceIsFile)
@@ -90,6 +90,7 @@ void BinarySerializer::readHeader() {
 }
 
 bool BinarySerializer::hasField(string const& name) const {
+  if (name == "cyberspace") return mFormatVersion >= 7;
   if (name == "blocksWater") return mFormatVersion >= 6;
   if (name == "portals") return mFormatVersion >= 4;
   if (name == "portalLoops") return mFormatVersion == 3 || mFormatVersion == 4;

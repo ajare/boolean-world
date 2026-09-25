@@ -37,6 +37,7 @@ class BW_API Portal {
   AuthoredAperture mAperture{};
   uint32_t mTargetId{};
   bool mBlocksWater{false};
+  bool mCyberspace{false};
   friend class Layer;
 public:
   Portal(uint32_t id, std::string name, AuthoredAperture aperture,
@@ -47,6 +48,7 @@ public:
   [[nodiscard]] uint32_t getTargetId() const { return mTargetId; }
   // Restricts outgoing Liquid transport only, never incoming hops.
   [[nodiscard]] bool getBlocksWater() const { return mBlocksWater; }
+  [[nodiscard]] bool getCyberspace() const { return mCyberspace; }
 };
 
 // Target-graph validity is independent of aperture resolution. Every Portal
@@ -107,6 +109,7 @@ struct ResolvedPortalEndpoint {
   uint32_t endpointId{};
   AuthoredAperture authored{};
   bool blocksWater{false};
+  bool cyberspace{false};
   bool resolved{false};
   PortalTargetGraphDiagnostic targetGraphDiagnostic{
       PortalTargetGraphDiagnostic::None};

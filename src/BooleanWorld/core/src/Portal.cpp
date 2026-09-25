@@ -130,6 +130,7 @@ ResolvedPortalEndpoint resolveEndpoint(
   result.endpointId = endpoint.getId();
   result.authored = endpoint.getAperture();
   result.blocksWater = endpoint.getBlocksWater();
+  result.cyberspace = endpoint.getCyberspace() && endpoint.getTargetId() == endpoint.getId();
 
   struct Candidate {
     uint32_t index;

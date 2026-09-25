@@ -1358,7 +1358,7 @@ void StatePlayBooleanWorld::updatePreEntities(float frameTime) {
       horizontalVelocity,
       mPlayerVerticalVelocity,
       newPosition - curPosition,
-      portalStats.mirrored};
+      portalStats.mirrored, portalStats.cyberspace};
 
   // Supply the physics step with walls around the predicted destination. Player
   // location is evaluated only after that step has resolved movement.
@@ -1403,6 +1403,7 @@ void StatePlayBooleanWorld::updatePostEntities(float frameTime) {
   if (mPlayerPortalUpdateState.crossings > 0) {
     physicalStats.angle = mPlayerPortalMotion.yaw;
     physicalStats.mirrored = mPlayerPortalMotion.mirrored;
+    physicalStats.cyberspace = mPlayerPortalMotion.cyberspace;
     // The collider is already authoritative after the recursive transformed
     // sweep; publish its destination before any location-dependent query.
     physicalStats.position = mPlayerCollider->getCentre();
@@ -1589,6 +1590,7 @@ void StatePlayBooleanWorld::updatePreRenderers(float frameTime) {
     mwRenderSystem->configureShadowDomain(domainName, desiredOptions);
   }
   mPlayerTorchShadowRequestedEnabled = desiredOptions.enabled;
+  mwRenderer->setCyberspace(physicalStats.cyberspace);
   mwRenderer->setZone(mPlayerZone.current());
   mwRenderer->update(
       getMap()->getWorld(), *mWorldData, playerPosition, lightPosition,

@@ -163,11 +163,13 @@ void shadersShareCompositionContract() {
               shader2d.find("Material graniteMaterial2d") !=
                   std::string::npos &&
               shader2d.find("if (type == 39)") != std::string::npos &&
-              shader3d.find("case 40: // BW_WALL_BACK_FACE_MATERIAL_INDEX") !=
+              shader3d.find("case 41: // BW_WALL_BACK_FACE_MATERIAL_INDEX") !=
                   std::string::npos &&
               shader3d.find("if (liquidInterface && !surfaceBackFace)") !=
                   std::string::npos &&
-              shader2d.find("if (type == 41)") != std::string::npos,
+              shader2d.find("if (type == 42)") != std::string::npos &&
+              shader3d.find("case 40: material = cyberspaceTexture") != std::string::npos &&
+              shader2d.find("return cyberspaceMaterial(surfacePosition, normal)") != std::string::npos,
           "Granite or the following reserved materials are not dispatched by both procedural PBR programs");
 
   auto sample = shader3d.find(

@@ -859,6 +859,28 @@ techniqueSchemas:
         min: 0
         max: 1
         default: 0.28
+  - materialIndex: 40
+    parameters:
+      - name: base_scale
+        min: 0.05
+        max: 3
+        default: 0.5
+      - name: line_width
+        min: 0.01
+        max: 0.2
+        default: 0.035
+      - name: flow_speed
+        min: 0
+        max: 5
+        default: 0.8
+      - name: glow_strength
+        min: 0
+        max: 5
+        default: 1.5
+      - name: roughness
+        min: 0
+        max: 1
+        default: 0.35
   - materialIndex: 0
     parameters:
       []
@@ -1187,6 +1209,12 @@ subMaterials:
       maximumCornerDistance: 3
       cornerProbability: 0
       types: [Tapered, SteppedFracture, VShapedNotch, TrapezoidalSpall]
+  - id: builtin.cyberspace
+    acousticPreset: builtin.acoustic.metal
+    name: Cyberspace
+    materialIndex: 40
+    params: [0.5, 0.035, 0.8, 1.5, 0.35]
+    baseColour: [1, 1, 1]
   - id: builtin.granite
     acousticPreset: builtin.acoustic.rock
     name: Granite

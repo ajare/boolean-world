@@ -1314,9 +1314,29 @@ void WorldRenderer::renderWorldScene(
     }
   };
 
+  std::vector<bool> cyberspaceViews(mLastPortalViewPlan.nodes.size());
+  auto assignMaterialViews = [&](auto&& self, auto const& edges, bool state) -> void {
+    for (auto const& edge : edges) {
+      bool target = state;
+      for (auto const& loop : worldData.getPortalLoops()) {
+        if (loop.layerId != edge.endpoint.layerId) continue;
+        auto endpoint = bw::core::FindPortalEndpoint(loop, edge.endpoint.endpointId);
+        if (endpoint) { target = state != endpoint->cyberspace; break; }
+      }
+      cyberspaceViews[edge.childNode] = target;
+      self(self, mLastPortalViewPlan.nodes[edge.childNode].children, target);
+    }
+  };
+  assignMaterialViews(assignMaterialViews, mLastPortalViewPlan.rootChildren, mCyberspace);
+  auto setMaterialView = [&](bool enabled) {
+    for (auto& material : mMaterialRenderers)
+      material.renderer->setCyberspace(enabled);
+  };
+
   for (auto nodeIndex : mLastPortalViewPlan.deepestFirst) {
     auto const& node = mLastPortalViewPlan.nodes[nodeIndex];
     configurePortalSurfaces(node.children, false);
+    setMaterialView(cyberspaceViews[nodeIndex]);
     auto auxiliary = node.auxiliary;
     if (!AttachPortalLightsToPass(auxiliary, portalLights)) {
       reportShadowFailure(
@@ -1333,6 +1353,7 @@ void WorldRenderer::renderWorldScene(
         std::static_pointer_cast<mpp::Resource>(renderTexture);
   }
 
+  setMaterialView(mCyberspace);
   configurePortalSurfaces(mLastPortalViewPlan.rootChildren, true);
   mpp::ScenePassOverrides primaryPass;
   if (!AttachPortalLightsToPass(primaryPass, portalLights)) {

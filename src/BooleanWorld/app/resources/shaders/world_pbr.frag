@@ -7,6 +7,7 @@ layout(location = 8) in vec2 portalClipDepth;
 // Ordinary surfaces retain raster depth; Portal surfaces only increase it
 // from the near plane. Preserve conservative early-depth rejection.
 layout(depth_greater) out float gl_FragDepth;
+@@Uniform(int CYBERSPACE);
 @@Uniform(int HIGHLIGHTED_WALL);
 @@Uniform(int PORTAL_VIEW_ENABLED);
 @@Uniform(int PHANTOM_APERTURE);
@@ -2680,6 +2681,38 @@ Material corruptionTexture(vec3 worldPos, vec3 normal)
     return material;
 }
 
+// Shared visual recipe with the UV PBR program: a stable grid with travelling
+// bright packets on each axis. Filter the lines before fract introduces seams.
+Material cyberspaceMaterial(vec2 position, vec3 normal)
+{
+    vec2 p = position * blendedMaterialParams[0];
+    float t = @Uniform(GLOBAL_TIME) * blendedMaterialParams[2];
+    vec2 distanceToLine = abs(fract(p + 0.5) - 0.5);
+    vec2 aa = max(fwidth(p), vec2(0.0001));
+    float width = blendedMaterialParams[1];
+    vec2 lines = (vec2(1.0) - smoothstep(vec2(width) - aa,
+                                      vec2(width) + aa, distanceToLine));
+    vec2 packets = pow(0.5 + 0.5 * sin(p.yx * 2.1 + vec2(-t, t) * 3.0), vec2(8.0));
+    float grid = max(lines.x, lines.y);
+    float flow = max(lines.x * packets.x, lines.y * packets.y);
+    Material material;
+    material.albedo = vec3(0.001, 0.006, 0.002) +
+                      vec3(0.015, 0.65, 0.09) * (grid * 0.3 + flow);
+    material.metallic = 0.15;
+    material.roughness = blendedMaterialParams[4];
+    material.normal = normalize(normal);
+    return material;
+}
+
+void surfaceTangentBasis(vec3 normal, out vec3 tangent, out vec3 bitangent);
+
+Material cyberspaceTexture(vec3 position, vec3 normal)
+{
+    vec3 tangent, bitangent;
+    surfaceTangentBasis(normalize(normal), tangent, bitangent);
+    return cyberspaceMaterial(vec2(dot(position, tangent), dot(position, bitangent)), normal);
+}
+
 vec3 supernaturalEmission(vec3 worldPos, int materialIndex)
 {
     vec3 p = worldPos * 0.68;
@@ -3355,7 +3388,8 @@ Material evaluateMaterial(
         case 38: material = wood2Texture(texturePosition, normalDir); break;
         case 39: material = graniteTexture(texturePosition, normalDir); break;
         case 0: material = plainGreyMaterial(normalDir); break;
-        case 40: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
+        case 40: material = cyberspaceTexture(texturePosition, normalDir); break;
+        case 41: // BW_WALL_BACK_FACE_MATERIAL_INDEX (Defines.h): a plain
                  // white matte surface for the unmapped side of a wall.
             material.albedo = vec3(1.0, 1.0, 1.0);
             material.metallic = 0.0;
@@ -3530,7 +3564,7 @@ void main()
     // passes. The separate aperture scene contains no ordinary world meshes.
     if (@Uniform(PHANTOM_APERTURE) != 0 && @Uniform(PORTAL_VIEW_ENABLED) == 0) discard;
     // Keep reserved values distinct before dispatch. Clamping the Triplanar
-    // sentinel (42) to the Liquid index (41) routes image-backed walls through
+    // sentinel (43) to the Liquid index (42) routes image-backed walls through
     // the Liquid interface path, whose unlit reflection output is black there.
     int bucketMaterialIndex = @Uniform(MATERIAL_INDEX);
 
@@ -3560,14 +3594,14 @@ void main()
     // FRAGNORMAL is the authored geometric normal, including each detail
     // facet (not its parent wall or horizontal surface).
     bool geometricBackFace = dot(@In(FRAGNORMAL), @ViewPos - @In(FRAGPOSITION)) < 0.0;
-    bool liquidInterface = bucketMaterialIndex == 41;
+    bool liquidInterface = bucketMaterialIndex == 42;
     bool omittedBack = @Uniform(WALL_BACK_FACE_TREATMENT) == 0;
     if (geometricBackFace && omittedBack && !liquidInterface) discard;
     bool surfaceBackFace = geometricBackFace && !omittedBack;
 
     // Negative Space backs are display white, not a lit white material.
     // Zero retention also exempts them from the later AO composite.
-    if (surfaceBackFace)
+    if (surfaceBackFace && @Uniform(CYBERSPACE) == 0)
     {
         @Out(COLOUR) = vec4(1.0);
         @Out(BLOOM_MASK) = vec4(0.0);
@@ -3576,7 +3610,7 @@ void main()
         return;
     }
 
-    if (bucketMaterialIndex < 0 && !surfaceBackFace)
+    if (bucketMaterialIndex < 0 && !surfaceBackFace && @Uniform(CYBERSPACE) == 0)
     {
         @Out(COLOUR) = vec4(1.0, 0.0, 1.0, 1.0);
         @Out(BLOOM_MASK) = vec4(0.0);
@@ -3590,7 +3624,7 @@ void main()
     // depth before marching that same point-sampled buffer.
     if (liquidInterface && @Uniform(LIQUID_WATER_PASS_ENABLED) != 0 &&
         gl_FragCoord.z > liquidSceneDepth(gl_FragCoord.xy * VIEWPORT_SIZE.zw)) discard;
-    if (liquidInterface && !surfaceBackFace)
+    if (liquidInterface && !surfaceBackFace && @Uniform(CYBERSPACE) == 0)
     {
         vec2 screenUv = gl_FragCoord.xy * VIEWPORT_SIZE.zw;
         bool hasWaterPass = @Uniform(LIQUID_WATER_PASS_ENABLED) != 0;
@@ -3749,15 +3783,25 @@ void main()
         dot(wallData.x > 0.0 ? shadingNormal : normalize(@In(SURFACE_UP)), viewDir) < 0.0;
     float receiverLiquidHeight = liquidBackSide ? wallData.y : liquidSurfaceHeight;
     if (surfaceBackFace) shadingNormal = -shadingNormal;
-    vec3 normalDir = surfaceBackFace ? shadingNormal : applyWallNormalMap(shadingNormal);
+    bool cyberspace = @Uniform(CYBERSPACE) != 0;
+    vec3 normalDir = (surfaceBackFace || cyberspace) ? shadingNormal : applyWallNormalMap(shadingNormal);
     vec3 texturePosition = snapToGrid(
         @In(FRAGPOSITION) / @Uniform(MATERIAL_SCALE),
         @Uniform(PIXEL_SIZE));
     int materialIndex = floorMaterialIndex(
-        @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 40));
-    materialIndex = surfaceBackFace ? 40 : clamp(materialIndex, 0, 40);
+        @In(FRAGPOSITION), clamp(@Uniform(MATERIAL_INDEX), 0, 41));
+    materialIndex = surfaceBackFace ? 41 : clamp(materialIndex, 0, 41);
     blendMaterialParams();
-    bool usesTriplanar = !surfaceBackFace && @Uniform(TRIPLANAR_ENABLED) != 0;
+    if (cyberspace) {
+        materialIndex = 40;
+        blendedMaterialParams[0] = 0.5;
+        blendedMaterialParams[1] = 0.035;
+        blendedMaterialParams[2] = 0.8;
+        blendedMaterialParams[3] = 1.5;
+        blendedMaterialParams[4] = 0.35;
+        blendedMaterialColour = vec3(1.0);
+    }
+    bool usesTriplanar = !cyberspace && !surfaceBackFace && @Uniform(TRIPLANAR_ENABLED) != 0;
     Material material;
     if (usesTriplanar)
     {
@@ -3783,7 +3827,7 @@ void main()
 
     // Whatever this material embosses, on whatever surface it was
     // applied to - floor, ceiling or wall.
-    if (!surfaceBackFace && @Uniform(EMBOSS_PATTERN) != 0)
+    if (!cyberspace && !surfaceBackFace && @Uniform(EMBOSS_PATTERN) != 0)
     {
         material.normal = embossSurface(
             material.normal, @In(FRAGPOSITION),
@@ -3801,7 +3845,8 @@ void main()
         @Uniform(LIGHT_POSITION));
     vec3 ambientAndEmission = lighting.ambient +
         (usesTriplanar ? vec3(0.0)
-                       : supernaturalEmission(texturePosition, materialIndex));
+                       : (materialIndex == 40 ? material.albedo * blendedMaterialParams[3]
+                                              : supernaturalEmission(texturePosition, materialIndex)));
     // Absorption attenuates all radiance in linear space. It therefore follows
     // emission but precedes tone mapping, gamma, and the stylistic distance
     // fade applied at output. The Player Torch's direct term takes its nearly

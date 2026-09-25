@@ -166,6 +166,22 @@ int main() {
                         material.id.c_str(), brightness);
             result = 1;
           }
+          if (material.id == "builtin.cyberspace") {
+            auto pixels = texturePixels(
+                texture, editor::SubMaterialThumbnailRenderer::size);
+            std::size_t greenPixels{};
+            for (std::size_t i = 0; i < pixels.size(); i += 4) {
+              if (pixels[i + 1] > 0.1f &&
+                  pixels[i + 1] > pixels[i] * 1.5f &&
+                  pixels[i + 1] > pixels[i + 2] * 1.2f) {
+                ++greenPixels;
+              }
+            }
+            if (greenPixels < 20) {
+              std::printf("FAILED: Cyberspace thumbnail has no visible green grid\n");
+              result = 1;
+            }
+          }
           ++rendered;
         }
       }

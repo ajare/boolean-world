@@ -129,6 +129,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
   motion.feetElevation = destinationFeet;
   motion.yaw = transform.transformYaw(motion.yaw);
   motion.mirrored = motion.mirrored != transform.reversesHandedness();
+  motion.cyberspace = motion.cyberspace != sourceEndpoint->cyberspace;
   motion.horizontalVelocity =
       transform.transformVector(motion.horizontalVelocity);
   motion.unconsumedMovement = transform.transformVector(remaining);

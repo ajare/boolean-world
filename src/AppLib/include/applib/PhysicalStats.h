@@ -18,6 +18,7 @@ struct PhysicalStats {
   wp::BoundingBox bounds;
   // Accumulated mirror traversal parity; independent of yaw and pitch.
   bool mirrored{false};
+  bool cyberspace{false};
 };
 
 }  // namespace applib
