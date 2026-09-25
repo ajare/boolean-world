@@ -93,8 +93,8 @@ git submodule sync --recursive
 git submodule update --init --recursive
 
 WILLPOWER_DIR="$ROOT_DIR/ext/willpower"
-WILLPOWER_SCRIPT="$WILLPOWER_DIR/build_from_scratch.sh"
-[[ -f "$WILLPOWER_SCRIPT" ]] || fail "Willpower was not checked out correctly"
+[[ -f "$WILLPOWER_DIR/CMakeLists.txt" ]] || fail "Willpower was not checked out correctly"
+MPP_DIR="$WILLPOWER_DIR/ext/massive-poly-pusher"
 
 if [[ "$BUILD_DIR" != /* ]]; then
     BUILD_DIR="$ROOT_DIR/$BUILD_DIR"
@@ -110,9 +110,11 @@ esac
 
 BUILD_DIR_NAME=$(basename -- "$BUILD_DIR")
 WILLPOWER_BUILD_DIR="$WILLPOWER_DIR/$BUILD_DIR_NAME"
-willpower_args=(--config "$BUILD_TYPE" --build-dir "$BUILD_DIR_NAME")
+MPP_BUILD_DIR="$MPP_DIR/$BUILD_DIR_NAME"
 if [[ "$WITH_MPP_LFS" == true ]]; then
-    willpower_args+=(--with-mpp-lfs)
+    git lfs version >/dev/null 2>&1 || fail "--with-mpp-lfs requires Git LFS"
+    git -C "$MPP_DIR" lfs install --local
+    git -C "$MPP_DIR" lfs pull
 fi
 if [[ -n "$FMOD_SDK" || -n "$STEAM_AUDIO_SDK" ]]; then
     [[ -n "$FMOD_SDK" && -n "$STEAM_AUDIO_SDK" ]] || \
@@ -129,19 +131,19 @@ if [[ -n "$FMOD_SDK" || -n "$STEAM_AUDIO_SDK" ]]; then
     install -m 0755 "$FMOD_SDK/api/studio/lib/x86_64/libfmodstudio.so" vendor/lib/linux/x64/Release/libfmodstudio.so.14.14
 fi
 
-printf 'Building Willpower and MassivePolyPusher from scratch...\n'
-bash "$WILLPOWER_SCRIPT" "${willpower_args[@]}"
+printf 'Removing previous Willpower and MassivePolyPusher build output...\n'
+rm -rf -- "$WILLPOWER_BUILD_DIR" "$MPP_BUILD_DIR"
 
-# Reconfigure the freshly-created Willpower tree against the same staged FMOD
-# files Boolean World imports.
+# Configure FMOD before the first build, not after building a no-audio variant.
+# Willpower's external project owns the MPP/SDL build.
 cmake -S "$WILLPOWER_DIR" -B "$WILLPOWER_BUILD_DIR" \
-    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DWILLPOWER_ENABLE_FMOD=ON \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DBUILD_TESTING=OFF -DWILLPOWER_ENABLE_FMOD=ON \
     -DWILLPOWER_FMOD_CORE_INCLUDE="$ROOT_DIR/vendor/include/fmod/core" \
     -DWILLPOWER_FMOD_STUDIO_INCLUDE="$ROOT_DIR/vendor/include/fmod/studio" \
     -DWILLPOWER_FMOD_CORE_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmod.so" \
     -DWILLPOWER_FMOD_STUDIO_LIBRARY="$ROOT_DIR/vendor/lib/linux/x64/Release/libfmodstudio.so"
 cmake --build "$WILLPOWER_BUILD_DIR" --config "$BUILD_TYPE" \
-    --parallel --target Willpower.Application
+    --parallel --target Willpower.Libraries
 
 printf 'Removing previous BooleanWorld build output...\n'
 rm -rf -- "$BUILD_DIR"
@@ -156,11 +158,18 @@ printf 'Configuring BooleanWorld %s build in %s...\n' "$BUILD_TYPE" "$BUILD_DIR"
 configure_args=(
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
     -DBUILD_TESTING="$BUILD_TESTING"
-    -DBW_BUILD_WILLPOWER=OFF)
+    -DBW_BUILD_WILLPOWER=OFF
+    -DBW_UPDATE_DEPENDENCIES=OFF)
 cmake -S "$ROOT_DIR" -B "$BUILD_DIR" "${configure_args[@]}"
 
 printf 'Building BooleanWorld...\n'
-cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --parallel
+build_result=0
+cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --parallel || build_result=$?
+
+# Only skip the dependency refresh for this first build. Later incremental
+# builds must still pick up edits in the submodules, even if this build failed.
+cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -DBW_UPDATE_DEPENDENCIES=ON
+((build_result == 0)) || fail "BooleanWorld build failed (exit $build_result)"
 
 printf 'Build completed successfully.\n'
 printf 'Launcher: %s/bin/%s/Launcher/Launcher\n' "$BUILD_DIR" "$BUILD_TYPE"

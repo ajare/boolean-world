@@ -43,7 +43,15 @@ The build consumes Willpower and MassivePolyPusher from same-named standalone
 build trees. For `build-linux`, these are `ext/willpower/build-linux` and
 `ext/willpower/ext/massive-poly-pusher/build-linux`. To use already-built
 dependency artifacts without allowing BooleanWorld to update them, add
-`-DBW_BUILD_WILLPOWER=OFF` when configuring.
+`-DBW_BUILD_WILLPOWER=OFF -DBW_UPDATE_DEPENDENCIES=OFF` when configuring.
+The former skips configure-time builds; the latter skips automatic build-time
+updates (the explicit `BuildAllDependencies` target remains available).
+
+The `build_from_scratch` scripts build dependency libraries once per required
+configuration, with FMOD configured up front, and skip the redundant dependency
+update during the initial BooleanWorld build. They restore automatic updates
+for subsequent incremental builds. Windows multi-config builds still require
+separate Debug, Release, and Shipping libraries; MemCheck reuses Debug.
 
 The pinned Linux FMOD and Steam Audio headers and shared objects are staged
 under `vendor/`, parallel to the Windows SDK files, and audio is enabled by

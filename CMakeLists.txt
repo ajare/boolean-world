@@ -125,34 +125,19 @@ include(Submodules)
 bw_ensure_willpower()
 
 # Keep an explicit build-time target for updating every buildable dependency in
-# dependency order for the active configuration. MppAppSupport recursively
+# dependency order for the active configuration. MppLibraries recursively
 # builds MPP's own SDL/GLEW/yaml-cpp dependencies; the Willpower modules are
-# then built from foundational to dependent. MemCheck consumes Debug dependency
+# then built in one native dependency graph. MemCheck consumes Debug dependency
 # binaries; Shipping consumes the dedicated Shipping builds.
 set(BW_DEPENDENCY_CONFIG
     "$<IF:$<CONFIG:MemCheck>,Debug,$<CONFIG>>")
 add_custom_target(BuildAllDependencies
     COMMAND "${CMAKE_COMMAND}" --build "${BW_MPP_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target MppAppSupport
+            --target MppLibraries
     COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
             --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target Willpower.Common
-    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
-            --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target Willpower.Geometry
-    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
-            --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target Willpower.Wayfinder
-    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
-            --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target Willpower.Collide
-    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
-            --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target Willpower.Application
-    COMMAND "${CMAKE_COMMAND}" --build "${BW_WILLPOWER_BUILD_DIR}"
-            --config "${BW_DEPENDENCY_CONFIG}" --parallel
-            --target WillPower.Viz
+            --target Willpower.Libraries
     COMMENT "Build all dependencies in correct recursive order"
     USES_TERMINAL
     VERBATIM)
@@ -165,6 +150,8 @@ include(Prebuilt)
 # target wait for current external libraries instead of merely placing a
 # sibling project in ALL_BUILD, which Visual Studio could build in parallel and
 # then link against stale import libraries.
+option(BW_UPDATE_DEPENDENCIES
+    "Update external libraries before building BooleanWorld targets" ON)
 foreach(dependency_target
         ext::Utils
         ext::mpp
@@ -182,7 +169,9 @@ foreach(dependency_target
         Willpower.Collide
         Willpower.Application
         WillPower.Viz)
-    add_dependencies(${dependency_target} BuildAllDependencies)
+    if(BW_UPDATE_DEPENDENCIES)
+        add_dependencies(${dependency_target} BuildAllDependencies)
+    endif()
 endforeach()
 
 include(Helpers)

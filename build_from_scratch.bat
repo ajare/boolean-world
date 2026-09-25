@@ -172,6 +172,7 @@ set "FMOD_INCLUDE_DIR=%ROOT_DIR%\vendor\include\fmod"
 set "FMOD_LIB_DIR=%ROOT_DIR%\vendor\lib\vs2026\x64\Release"
 set "FMOD_BIN_DIR=%ROOT_DIR%\vendor\bin\vs2026\x64\Release"
 cmake -S "%WILLPOWER_DIR%" -B "%WILLPOWER_BUILD_DIR%" ^
+    -DCMAKE_BUILD_TYPE="%BUILD_TYPE%" -DBUILD_TESTING=OFF ^
     -DWILLPOWER_ENABLE_FMOD=ON ^
     -DWILLPOWER_FMOD_CORE_INCLUDE="%FMOD_INCLUDE_DIR%\core" ^
     -DWILLPOWER_FMOD_STUDIO_INCLUDE="%FMOD_INCLUDE_DIR%\studio" ^
@@ -187,28 +188,15 @@ set "MULTI_CONFIG=false"
 findstr /b /c:"CMAKE_CONFIGURATION_TYPES:" "%WILLPOWER_BUILD_DIR%\CMakeCache.txt" >nul
 if not errorlevel 1 set "MULTI_CONFIG=true"
 if /i "%MULTI_CONFIG%"=="false" (
-    echo Selecting Willpower %BUILD_TYPE% build type...
-    cmake -S "%WILLPOWER_DIR%" -B "%WILLPOWER_BUILD_DIR%" -DCMAKE_BUILD_TYPE="%BUILD_TYPE%"
-    if errorlevel 1 (
-        set "ERROR_MESSAGE=Willpower CMake configuration failed"
-        goto fatal
-    )
-)
-if /i "%MULTI_CONFIG%"=="false" (
     rem Building Willpower first runs its ExternalProject configure step, which
     rem creates MassivePolyPusher's independent CMake build directory.
     echo Building Willpower %BUILD_TYPE%...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config "%BUILD_TYPE%" --parallel
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config "%BUILD_TYPE%" --parallel --target Willpower.Libraries
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower build failed"
         goto fatal
     )
-    echo Building MassivePolyPusher support %BUILD_TYPE%...
-    cmake --build "%MPP_BUILD_DIR%" --config "%BUILD_TYPE%" --parallel --target MppAppSupport
-    if errorlevel 1 (
-        set "ERROR_MESSAGE=MassivePolyPusher support build failed"
-        goto fatal
-    )
+
 ) else (
     rem BooleanWorld's Visual Studio solution contains all configurations, so
     rem its configure step validates every underlying dependency configuration
@@ -216,41 +204,26 @@ if /i "%MULTI_CONFIG%"=="false" (
     rem MemCheck reuses Debug, while Shipping has dedicated dependency binaries.
     rem Willpower must build first to configure MassivePolyPusher's build tree.
     echo Building Willpower Debug...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config Debug --parallel
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config Debug --parallel --target Willpower.Libraries
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower Debug build failed"
         goto fatal
     )
-    echo Building MassivePolyPusher support Debug...
-    cmake --build "%MPP_BUILD_DIR%" --config Debug --parallel --target MppAppSupport
-    if errorlevel 1 (
-        set "ERROR_MESSAGE=MassivePolyPusher Debug support build failed"
-        goto fatal
-    )
+
     echo Building Willpower Release...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config Release --parallel
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config Release --parallel --target Willpower.Libraries
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower Release build failed"
         goto fatal
     )
-    echo Building MassivePolyPusher support Release...
-    cmake --build "%MPP_BUILD_DIR%" --config Release --parallel --target MppAppSupport
-    if errorlevel 1 (
-        set "ERROR_MESSAGE=MassivePolyPusher Release support build failed"
-        goto fatal
-    )
+
     echo Building Willpower Shipping...
-    cmake --build "%WILLPOWER_BUILD_DIR%" --config Shipping --parallel
+    cmake --build "%WILLPOWER_BUILD_DIR%" --config Shipping --parallel --target Willpower.Libraries
     if errorlevel 1 (
         set "ERROR_MESSAGE=Willpower Shipping build failed"
         goto fatal
     )
-    echo Building MassivePolyPusher support Shipping...
-    cmake --build "%MPP_BUILD_DIR%" --config Shipping --parallel --target MppAppSupport
-    if errorlevel 1 (
-        set "ERROR_MESSAGE=MassivePolyPusher Shipping support build failed"
-        goto fatal
-    )
+
 )
 
 echo Removing previous BooleanWorld build output...
@@ -268,9 +241,9 @@ if /i "%WITH_TESTS%"=="true" (
 
 echo Configuring BooleanWorld %BUILD_TYPE% build in %BUILD_DIR%...
 if /i "%MULTI_CONFIG%"=="true" (
-    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -DBUILD_TESTING="%BUILD_TESTING%" -DBW_BUILD_WILLPOWER=OFF
+    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -DBUILD_TESTING="%BUILD_TESTING%" -DBW_BUILD_WILLPOWER=OFF -DBW_UPDATE_DEPENDENCIES=OFF
 ) else (
-    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE="%BUILD_TYPE%" -DBUILD_TESTING="%BUILD_TESTING%" -DBW_BUILD_WILLPOWER=OFF
+    cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE="%BUILD_TYPE%" -DBUILD_TESTING="%BUILD_TESTING%" -DBW_BUILD_WILLPOWER=OFF -DBW_UPDATE_DEPENDENCIES=OFF
 )
 if errorlevel 1 (
     set "ERROR_MESSAGE=CMake configuration failed"
@@ -279,7 +252,15 @@ if errorlevel 1 (
 
 echo Building BooleanWorld...
 cmake --build "%BUILD_DIR%" --config "%BUILD_TYPE%" --parallel
+set "BUILD_RESULT=%ERRORLEVEL%"
+rem Restore dependency updates for subsequent incremental builds, including
+rem when the initial BooleanWorld build failed.
+cmake -S "%ROOT_DIR%" -B "%BUILD_DIR%" -DBW_UPDATE_DEPENDENCIES=ON
 if errorlevel 1 (
+    set "ERROR_MESSAGE=failed to restore incremental dependency updates"
+    goto fatal
+)
+if not "%BUILD_RESULT%"=="0" (
     set "ERROR_MESSAGE=build failed"
     goto fatal
 )
