@@ -88,7 +88,13 @@ authored World content and required before that World can be deserialized and
 activated. The serialized list is the exact, sorted projection of all such
 references, including disabled LayerBuildSteps and Prefab definitions.
 
-**Portal loop** — A stably identified, ordered cycle permanently owned by one
+**Portal** — An independently named, permanently Layer-owned aperture with a
+stable Layer-local identity and a target Portal ID. A self-targeting **Mirror
+Portal** displays a true planar reflection, preserves World-up, obeys normal
+aperture-resolution requirements, and contributes no Liquid transport
+(ADR-0051).
+
+**Legacy authored Portal loop** — A stably identified, ordered cycle permanently owned by one
 Layer and containing at least two stable Portal endpoints. Entering endpoint
 `i` exits endpoint `(i + 1) mod N`; the complete loop participates only when
 its owning Layer is selected and every endpoint resolves. A two-endpoint Portal
@@ -101,7 +107,7 @@ removal, or reordering. It accepts traversal only from its resolved front side
 and sends it to the next endpoint by stable ID, not by traversal index. It is not a WorldTriggerLine or an
 ArrangementWall property, and it never stores generated wall or edge identity.
 
-**Authored aperture** — A Portal endpoint's persistent requested rectangle: a
+**Authored aperture** — A Portal's or legacy endpoint's persistent requested rectangle: a
 World-plane centre and width plus bottom and top elevations. Every endpoint in
 one Portal loop must have the same height; generation narrows resolved
 apertures to the loop's smallest authored width but never mutates authored

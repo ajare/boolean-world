@@ -307,6 +307,30 @@ void renderPortalOverlays(
   constexpr ImU32 resolvedColour = IM_COL32(70, 225, 245, 255);
   constexpr ImU32 inactiveColour = IM_COL32(255, 70, 65, 255);
 
+  for (auto const& portal : layer->getPortals()) {
+    auto const& aperture = portal.getAperture();
+    auto const* generated = worldData.findPortalLoop(
+        layer->getId(), bw::core::IndependentPortalLoopId, portal.getId());
+    auto const* endpoint = generated
+        ? bw::core::FindPortalEndpoint(*generated, portal.getId()) : nullptr;
+    auto tangent = endpoint && endpoint->resolved
+        ? endpoint->aperture.tangent : wp::Vector2{1.0f, 0.0f};
+    auto selected = doc->getSelectedPortalLayerId() == layer->getId() &&
+                    doc->getSelectedPortalId() == portal.getId();
+    auto colour = selected ? selectedColour : IM_COL32(210, 130, 255, 255);
+    auto half = tangent * (aperture.width * 0.5f);
+    drawList->AddLine(worldToScreen(aperture.centre - half),
+                      worldToScreen(aperture.centre + half), colour, 4.0f);
+    auto centre = worldToScreen(aperture.centre);
+    drawList->AddCircle(centre, 6.0f, colour, 12, 2.0f);
+    auto active = generated && generated->active;
+    auto diagnostic = endpoint ? bw::core::PortalResolutionDiagnosticText(endpoint->diagnostic)
+                               : std::string_view{"Waiting for generation"};
+    auto label = std::format("{} (Mirror) — {}", portal.getName(), diagnostic);
+    drawList->AddText({centre.x + 9.0f, centre.y + 7.0f},
+                     active ? colour : inactiveColour, label.c_str());
+  }
+
   for (auto const& portalLoop : layer->getPortalLoops()) {
     auto const* generated =
         worldData.findPortalLoop(layer->getId(), portalLoop.getId());

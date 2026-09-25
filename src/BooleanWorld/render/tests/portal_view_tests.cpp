@@ -330,10 +330,94 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
   require(onPlane.z + onPlane.w < 0.0f && inside.z + inside.w > 0.0f,
           "destination aperture back face occludes the Portal's virtual view");
 }
+void mirrorsPreserveTangentAndAccumulateCameraParity() {
+  auto mirror = makeLoop(2, bw::core::IndependentPortalLoopId,
+                         {1, 4}, {0, -1}, 8, -3, 3);
+  mirror.endpoints.resize(1);
+  mirror.endpoints[0].endpointId = 7;
+  mirror.traversalOrder = {7};
+  glm::vec3 eye{2, 0.7f, 0};
+  auto view = glm::lookAt(eye, glm::vec3{1, 0, -4}, glm::vec3{0, 1, 0});
+  auto projection = glm::perspective(glm::radians(65.0f), 1.4f, 0.1f, 100.0f);
+  auto selected = SelectPortalView(std::span{&mirror, 1}, projection * view, eye);
+  require(selected.has_value(), "front-facing Mirror was not selected");
+  auto built = BuildPortalView(*selected, view, projection, 0.1f, 100, 320, 240);
+  auto reflectedEye = glm::inverse(built.auxiliary.view) * glm::vec4{0, 0, 0, 1};
+  require(near(reflectedEye.x, eye.x) && near(reflectedEye.y, eye.y) &&
+          near(reflectedEye.z, -8) && built.reversesHandedness &&
+          built.auxiliary.reverseWinding,
+          "Mirror camera is a half-turn or lost reflected winding");
+  glm::vec4 onAperture{2.3f, 1.2f, -4, 1};
+  auto primary = projection * view * onAperture;
+  auto projected = built.sourceProjectiveTransform * onAperture;
+  require(near(primary.x / primary.w, projected.x / projected.w) &&
+          near(primary.y / primary.w, projected.y / projected.w),
+          "Mirror projective sampling is not aligned with its aperture");
+  auto twice = BuildPortalView(*selected, built.auxiliary.view, projection,
+                              0.1f, 100, 320, 240);
+  require(!twice.auxiliary.reverseWinding,
+          "two Mirror mappings failed to restore camera winding");
+  auto clipped = mpp::buildObliquelyClippedVirtualCamera(
+      built.auxiliary.view, built.auxiliary.projection,
+      built.auxiliary.worldClipPlane, built.auxiliary.seamBias);
+  auto front = clipped.projection * clipped.view * glm::vec4{1, 0, -3, 1};
+  auto behind = clipped.projection * clipped.view * glm::vec4{1, 0, -5, 1};
+  require(front.z + front.w > 0 && behind.z + behind.w < 0,
+          "Mirror oblique clipping retained the wrong half-space");
+
+  auto opposite = mirror;
+  opposite.endpoints[0].endpointId = 8;
+  opposite.traversalOrder = {8};
+  opposite.endpoints[0].aperture.centre = {1, -4};
+  opposite.endpoints[0].aperture.front = {0, 1};
+  std::vector mirrors{mirror, opposite};
+  PortalViewPlanner planner;
+  auto plan = planner.build(mirrors, view, projection, 0.1f, 100, 320, 240);
+  require(plan.nodes.size() >= 2 &&
+          plan.cutoffCount(PortalViewCutoffReason::RecursionDepth) > 0,
+          "facing Mirrors did not recurse to the normal depth limit");
+  auto again = planner.build(mirrors, view, projection, 0.1f, 100, 320, 240);
+  require(again.nodes.size() == plan.nodes.size() &&
+          again.nodes.front().slot == plan.nodes.front().slot,
+          "Mirror hysteresis changed stable view slots");
+  for (auto const& node : plan.nodes)
+    require(node.auxiliary.reverseWinding == (node.recursionDepth % 2 == 1),
+            "recursive Mirror winding does not match accumulated parity");
+  for (auto reason : {PortalViewCutoffReason::TargetBudget,
+                      PortalViewCutoffReason::FrameBudget,
+                      PortalViewCutoffReason::ProjectedArea}) {
+    PortalViewLimits limits;
+    if (reason == PortalViewCutoffReason::TargetBudget) limits.maxTargets = 0;
+    if (reason == PortalViewCutoffReason::FrameBudget) limits.maxRenderedPasses = 0;
+    if (reason == PortalViewCutoffReason::ProjectedArea) limits.minimumProjectedCoverage = 5;
+    auto limited = PortalViewPlanner(limits).build(
+        mirrors, view, projection, 0.1f, 100, 320, 240);
+    require(limited.nodes.empty() && limited.cutoffCount(reason) > 0,
+            "Mirror bypassed a normal view budget or diagnostic");
+  }
+  for (auto distance : {0.1f, 0.001f, 0.0f}) {
+    glm::vec3 position{1, 0, -4 + distance};
+    auto nearView = glm::lookAt(position, position + glm::vec3{0, 0, -1},
+                               glm::vec3{0, 1, 0});
+    auto atPlane = planner.build(mirrors, nearView, projection, 0.1f, 100, 320, 240);
+    require(!atPlane.rootChildren.empty(), "Mirror disappeared at its aperture plane");
+    for (auto const& node : atPlane.nodes)
+      for (int column = 0; column < 4; ++column)
+        for (int row = 0; row < 4; ++row)
+          require(std::isfinite(node.visibilityViewProjection[column][row]),
+                  "Mirror produced a singular camera at its aperture plane");
+  }
+  auto occluded = planner.build(mirrors, view, projection, 0.1f, 100, 320, 240,
+      [](auto const&, auto const&, auto const&) { return true; });
+  require(occluded.nodes.empty() &&
+          occluded.cutoffCount(PortalViewCutoffReason::VisibilityOccluded) > 0,
+          "Mirror bypassed the occlusion limit");
+}
 }  // namespace
 
 int main() {
   try {
+    mirrorsPreserveTangentAndAccumulateCameraParity();
     selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering();
     crossingPlaneRetainsThePortalWithoutAdmittingItsBackSide();
     plannerSelectsSeveralEndpointsAndSharesOnlyEquivalentWork();

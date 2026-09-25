@@ -61,7 +61,7 @@ std::optional<PortalLightPathHop> buildHop(
     bw::core::ResolvedPortalLoop const& portalLoop,
     uint32_t sourceEndpointId,
     glm::vec3 const& inputLightPosition) {
-  if (!portalLoop.active) return std::nullopt;
+  if (!portalLoop.active || portalLoop.endpoints.size() == 1) return std::nullopt;
   auto const* sourceEndpoint =
       bw::core::FindPortalEndpoint(portalLoop, sourceEndpointId);
   auto const* destinationEndpoint =
@@ -367,7 +367,7 @@ PortalLightPlan PlanPortalLights(
       auto const* destination =
           bw::core::NextPortalEndpoint(loop, endpoint.key.endpointId);
 
-      if (!loop.active || !source || !destination ||
+      if (!loop.active || loop.endpoints.size() == 1 || !source || !destination ||
           !source->resolved || !destination->resolved) {
         addDiagnostic(std::move(path), PortalLightDiagnosticReason::Inactive);
         continue;

@@ -72,6 +72,7 @@ struct RenderFixture {
   bool angled{};
   bool continuityJunction{};
   bool portal{};
+  bool mirror{};
   bool manyPortalEndpoints{};
   bool threeEndpointPortal{};
   bool stablePortalIdentity{};
@@ -372,6 +373,13 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
                                    ? std::vector<float>{-8.0f}
                                    : std::vector<float>{-8.0f, 8.0f};
     for (auto centreX : portalCentres) {
+      if (fixture.mirror) {
+        for (auto y : {16.0f, -16.0f}) {
+          auto id = layer->addPortal({{centreX, y}, 12.0f, 4.0f, 36.0f});
+          portalLoops.push_back({layer->getId(), {}, *layer->getPortal(id)});
+        }
+        continue;
+      }
       auto loopId = layer->addPortalLoop(
           {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
           {{centreX, -16.0f}, 12.0f, 4.0f, 36.0f});
@@ -556,6 +564,7 @@ std::vector<float> render(
     camera->setLookAt(fixture.phantomReverse ? glm::vec3{0, 16, 0} : glm::vec3{0, 16, 80},
                      fixture.phantomReverse ? glm::vec3{0, 16, 80} : glm::vec3{0, 16, 0});
   }
+  if (fixture.mirror) camera->setLookAt({2, 19, 1}, {-4, 17, -16});
   if (fixture.portalBackSurface) camera->setPitch(-12.0f);
   if (fixture.horizontalBack) {
     camera->setPosition({0, fixture.horizontalBack == 2 ? 52.0f :
@@ -624,6 +633,8 @@ std::vector<float> render(
       for (size_t i = 0; i < plan.nodes.size(); ++i) {
         auto const& node = plan.nodes[i];
         auto const& initial = initialPortalPlan.nodes[i];
+        if (fixture.mirror && node.auxiliary.reverseWinding != (node.recursionDepth % 2 == 1))
+          throw std::runtime_error("Mirror scene lost accumulated reflected winding");
         if (node.slot != initial.slot || node.cameraPosition != initial.cameraPosition ||
             node.recursionDepth != initial.recursionDepth ||
             !sameEdges(node.children, initial.children))
@@ -897,6 +908,20 @@ void portalRendersThroughPublicSceneAndNamedFinalOutput(
           "public render-scene did not render bounded A -> B -> C -> A views");
   require(regionDifference(image, directed) > 0.0005,
           "three directed Portal destinations were not visibly distinguished");
+}
+
+void mirrorsRenderThroughTheRealPipeline(editor::EditorRenderSystem& renderSystem) {
+  uint32_t passes{}, selected{};
+  auto image = render(renderSystem, {.portal = true, .mirror = true}, nullptr,
+                      &passes, &selected);
+  require(passes > selected && passes <= PortalViewSlotCount && selected > 0,
+          "Mirror scene failed to render bounded recursive views");
+  auto [minimum, maximum] = std::minmax_element(image.begin(), image.end());
+  require(*maximum - *minimum > 0.1f,
+          "Mirror pipeline returned an empty or uniform final image");
+  auto ordinary = render(renderSystem, {.portal = true});
+  require(regionDifference(image, ordinary) > 0.001,
+          "Mirror pipeline did not change the rendered scene");
 }
 
 void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
@@ -1438,6 +1463,7 @@ int main(int argc, char** argv) {
         triplanarWallContinuityRendersThroughTheRealWorldProgram(renderSystem);
       } else if (scenario == "portal") {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
+        mirrorsRenderThroughTheRealPipeline(renderSystem);
       } else if (scenario == "mines-portal") {
         minesPortalRenders(renderSystem);
       } else if (scenario == "reflection-shadow-zones") {

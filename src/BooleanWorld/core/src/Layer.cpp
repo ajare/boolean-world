@@ -128,6 +128,8 @@ void Layer::swapState(Layer& other) noexcept {
   swap(mPrimitiveSteps, other.mPrimitiveSteps);
   swap(mTriggerLines, other.mTriggerLines);
   swap(mPortalLoops, other.mPortalLoops);
+  swap(mPortals, other.mPortals);
+  swap(mNextPortalId, other.mNextPortalId);
   swap(mPrimitiveLookupGrid, other.mPrimitiveLookupGrid);
   swap(mTriggerLookupGrid, other.mTriggerLookupGrid);
   swap(mFrameNumber, other.mFrameNumber);
@@ -163,6 +165,8 @@ void Layer::copyFrom(Layer const& other) {
   mBuildVariables = other.mBuildVariables;
   mExtents = other.mExtents;
   mPortalLoops = other.mPortalLoops;
+  mPortals = other.mPortals;
+  mNextPortalId = other.mNextPortalId;
 
   if (other.mPrimitiveLookupGrid) {
     mPrimitiveLookupGrid = new PrimitiveAccelerationGrid(
@@ -329,6 +333,23 @@ void Layer::serializeImpl(shared_ptr<Serializer> serializer, SerializationWorkDa
       serializer->endArray();
     }
 
+    if (serializer->isPositional() || mNextPortalId != 0) {
+      serializer->writeUint32("nextPortalId", mNextPortalId);
+      serializer->beginArray("portals");
+      for (auto const& portal : mPortals) {
+        serializer->beginMap("portal");
+        serializer->writeUint32("id", portal.getId());
+        serializer->writeString("name", portal.getName());
+        auto const& aperture = portal.getAperture();
+        serializer->writeVector2("centre", aperture.centre);
+        serializer->writeFloat("width", aperture.width);
+        serializer->writeFloat("bottom", aperture.bottom);
+        serializer->writeFloat("top", aperture.top);
+        serializer->writeUint32("targetId", portal.getTargetId());
+        serializer->endMap();
+      }
+      serializer->endArray();
+    }
     serializer->endMap();  // layer
   }
 }
@@ -346,6 +367,8 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   vector<unique_ptr<LayerBuildStep>> steps;
   vector<unique_ptr<WorldTriggerLine>> triggerLines;
   vector<PortalLoop> portalLoops;
+  uint32_t nextPortalId{0};
+  vector<Portal> portals;
 
   try {
     serializer->beginMap("layer");
@@ -479,6 +502,34 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
         serializer->endArray();
       }
 
+      if (serializer->hasField("portals")) {
+        nextPortalId = serializer->readUint32("nextPortalId");
+        set<uint32_t> ids;
+        set<string> names;
+        serializer->beginArray("portals");
+        while (serializer->nextArrayItem()) {
+          serializer->beginMap("portal");
+          auto portalId = serializer->readUint32("id");
+          auto portalName = serializer->readString("name");
+          auto foldedName = portalName;
+          for (auto& c : foldedName) {
+            if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+          }
+          if (portalId >= nextPortalId || !ids.insert(portalId).second ||
+              !names.insert(foldedName).second) {
+            throw CoreException("Invalid or duplicate Portal identity in Layer");
+          }
+          AuthoredAperture aperture;
+          aperture.centre = serializer->readVector2("centre");
+          aperture.width = serializer->readFloat("width");
+          aperture.bottom = serializer->readFloat("bottom");
+          aperture.top = serializer->readFloat("top");
+          auto targetId = serializer->readUint32("targetId");
+          portals.emplace_back(portalId, move(portalName), aperture, targetId);
+          serializer->endMap();
+        }
+        serializer->endArray();
+      }
       serializer->endMap();  // layer
     }
     // Validate parent chains before linking the temporary primitives.
@@ -559,6 +610,10 @@ bool Layer::deserializeImpl(shared_ptr<Serializer> serializer, SerializationWork
   mPrimitives.clear();
   mPrimitiveSteps.clear();
   mPortalLoops = move(portalLoops);
+  // Authored array order is not cycle identity or a generation tie-break.
+  ranges::sort(portals, {}, &Portal::getId);
+  mPortals = move(portals);
+  mNextPortalId = nextPortalId;
   rebuildAccelerationGrids(workData.accelGridSize);
 
   // Add TriggerLines before the steps run, as the Primitives they produce may
@@ -684,6 +739,7 @@ void Layer::teardown() {
 
   mTriggerLines.clear();
   mPortalLoops.clear();
+  mPortals.clear();
 }
 
 uint32_t Layer::getId() const {
@@ -1589,6 +1645,50 @@ void Layer::removeTriggerLineFromLookupGrid(WorldTriggerLine const* triggerLine)
   mTriggerLookupGrid->removeItem(triggerLine->getId());
 }
 
+uint32_t Layer::addPortal(AuthoredAperture const& aperture) {
+  if (mNextPortalId == numeric_limits<uint32_t>::max()) {
+    throw CoreException("No Portal IDs remain in this Layer");
+  }
+  string name;
+  for (uint64_t number = 1; ; ++number) {
+    name = format("Portal {}", number);
+    auto used = ranges::any_of(mPortals, [&](auto const& portal) {
+      auto existing = portal.getName();
+      auto candidate = name;
+      for (auto* text : {&existing, &candidate}) {
+        for (auto& c : *text) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+      }
+      return existing == candidate;
+    });
+    if (!used) break;
+  }
+  auto id = mNextPortalId;
+  mPortals.emplace_back(id, move(name), aperture, id);
+  ++mNextPortalId;
+  modify();
+  return id;
+}
+
+Portal const* Layer::getPortal(uint32_t portalId) const {
+  auto found = ranges::find(mPortals, portalId, &Portal::getId);
+  return found == mPortals.end() ? nullptr : &*found;
+}
+
+void Layer::removePortal(uint32_t portalId) {
+  auto found = ranges::find(mPortals, portalId, &Portal::getId);
+  if (found == mPortals.end()) throw CoreException("Portal not found in Layer");
+  mPortals.erase(found);
+  modify();
+}
+
+void Layer::setPortalAperture(uint32_t portalId, AuthoredAperture const& aperture) {
+  auto found = ranges::find(mPortals, portalId, &Portal::getId);
+  if (found == mPortals.end()) throw CoreException("Portal not found in Layer");
+  if (!AuthoredApertureIsValid(aperture)) throw CoreException("Invalid Portal aperture");
+  found->mAperture = aperture;
+  modify();
+}
+
 uint32_t Layer::addPortalLoop(
     AuthoredAperture const& first, AuthoredAperture const& second) {
   if (mNextPortalLoopId == numeric_limits<uint32_t>::max()) {
@@ -1654,9 +1754,24 @@ bool Layer::movePortalEndpointLater(
   return true;
 }
 
+AuthoredAperture const* Layer::findAuthoredPortalAperture(
+    uint32_t loopId, uint32_t endpointId) const {
+  if (loopId == IndependentPortalLoopId) {
+    auto const* portal = getPortal(endpointId);
+    return portal ? &portal->getAperture() : nullptr;
+  }
+  auto const* loop = getPortalLoop(loopId);
+  auto const* endpoint = loop ? loop->findEndpoint(endpointId) : nullptr;
+  return endpoint ? &endpoint->getAperture() : nullptr;
+}
+
 void Layer::setPortalEndpointAperture(
     uint32_t loopId, uint32_t endpointId,
     AuthoredAperture const& aperture) {
+  if (loopId == IndependentPortalLoopId) {
+    setPortalAperture(endpointId, aperture);
+    return;
+  }
   auto* loop = getPortalLoop(loopId);
   if (!loop) {
     throw CoreException(format("Portal loop {} not found in Layer", loopId));

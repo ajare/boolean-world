@@ -681,11 +681,11 @@ void EditorInteraction::updateDrag(
   auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
   auto selectedPortalLoopId = doc->getSelectedPortalLoopId();
   if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u &&
-      selectedPortalLoopId == ~0u) {
+      !doc->hasSelectedPortalEndpoint()) {
     return;
   }
 
-  if (selectedPortalLoopId != ~0u) {
+  if (doc->hasSelectedPortalEndpoint()) {
     if (input.leftReleased) {
       if (mMovingSelectedPortalEndpoint && undoableActionInProgress()) {
         commitUndoableAction(doc);
@@ -699,13 +699,14 @@ void EditorInteraction::updateDrag(
           portalLayer ? portalLayer->getPortalLoop(selectedPortalLoopId)
                       : nullptr;
       auto const endpointId = doc->getSelectedPortalEndpointId();
-      auto const* portalEndpoint =
-          portalLoop ? portalLoop->findEndpoint(endpointId) : nullptr;
-      if (portalEndpoint) {
+      auto const* authored = portalLayer
+          ? portalLayer->findAuthoredPortalAperture(selectedPortalLoopId, endpointId)
+          : nullptr;
+      if (authored) {
         if (!mMovingSelectedPortalEndpoint) {
           mMovingSelectedPortalEndpoint = true;
           mPortalDragStartPosition =
-              portalEndpoint->getAperture().centre;
+              authored->centre;
           mPortalDragCumulativeDelta = {};
           if (!undoableActionInProgress()) {
             beginTransaction(
@@ -722,11 +723,12 @@ void EditorInteraction::updateDrag(
         // once the pointer moves more than the three-unit capture distance.
         std::optional<wp::Vector2> wallSnap;
         if (worldData) {
-          auto const& aperture = portalEndpoint->getAperture();
-          auto resolvedWidth = std::numeric_limits<float>::infinity();
-          for (auto const& endpoint : portalLoop->getEndpoints()) {
-            resolvedWidth = std::min(
-                resolvedWidth, endpoint.getAperture().width);
+          auto const& aperture = *authored;
+          auto resolvedWidth = aperture.width;
+          if (portalLoop) {
+            for (auto const& endpoint : portalLoop->getEndpoints()) {
+              resolvedWidth = std::min(resolvedWidth, endpoint.getAperture().width);
+            }
           }
           wallSnap = bw::core::FindNearestLegalPortalCentre(
               worldData->getArrangement(), worldData->getWalls(), aperture,

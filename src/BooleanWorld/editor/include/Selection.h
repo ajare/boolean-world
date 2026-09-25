@@ -36,6 +36,12 @@ public:
 
   void setSelectedWorldVertexIndex(uint32_t index);
   void setSelectedTriggerLineIndex(uint32_t index);
+  void setSelectedPortal(uint32_t layerId, uint32_t portalId) {
+    setSelectedPortalEndpoint(layerId, ~0u, portalId);
+  }
+  [[nodiscard]] uint32_t getSelectedPortalId() const {
+    return mSelectedPortalLoopId == ~0u ? mSelectedPortalEndpointId : ~0u;
+  }
   void setSelectedPortalEndpoint(
       uint32_t layerId, uint32_t loopId, uint32_t endpointId);
   void setSelectedPrimitiveIndices(std::set<uint32_t> const& indices);

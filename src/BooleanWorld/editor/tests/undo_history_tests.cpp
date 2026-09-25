@@ -790,6 +790,53 @@ void audioEmitterEditsAreUndoableAndPreserveIdentity() {
           "redo did not delete the AudioEmitter again");
 }
 
+void mirrorAuthoringRestoresStableSelection() {
+  editor::Document document;
+  document.newDoc();
+  document.getGhost()->setPosition({13, 19});
+  editor::transactUndoableActionAtomically(&document, editor::CommandId::CreatePortal,
+      [](editor::Document* doc) {
+        return editor::createPortal(doc, doc->getWorld()->getActiveLayer());
+      });
+  auto id = document.getSelectedPortalId();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto layerId = layer->getId();
+  require(id != ~0u && document.hasSelection() &&
+          layer->getPortal(id)->getName() == "Portal 1" &&
+          layer->getPortal(id)->getTargetId() == id &&
+          layer->getPortal(id)->getAperture().centre == wp::Vector2{13, 19},
+          "Mirror creation did not use ghost position and stable selection");
+  editor::Settings settings;
+  auto hover = document.getHover({13, 19}, settings, nullptr);
+  require(hover.type == editor::HoverableType::PortalEndpoint &&
+          hover.indices == std::vector<uint32_t>{bw::core::IndependentPortalLoopId, id},
+          "Mirror hover did not use its authored identity");
+  editor::transactUndoableActionAtomically(&document, editor::CommandId::SetPortalEndpointPosition,
+      [=](editor::Document* doc) {
+        return editor::setPortalEndpointPosition(doc, doc->getWorld()->getActiveLayer(),
+            bw::core::IndependentPortalLoopId, id, {21, 7});
+      });
+  editor::undo(&document);
+  require(document.getSelectedPortalId() == id &&
+          document.getSelectedPortalLayerId() == layerId &&
+          document.getWorld()->getActiveLayer()->getPortal(id)->getAperture().centre == wp::Vector2{13, 19},
+          "Mirror aperture undo lost selection or authored state");
+  editor::redo(&document);
+  require(document.getWorld()->getActiveLayer()->getPortal(id)->getAperture().centre == wp::Vector2{21, 7},
+          "Mirror aperture redo failed");
+  editor::transactUndoableActionAtomically(&document, editor::CommandId::DeletePortal,
+      [=](editor::Document* doc) {
+        return editor::deletePortal(doc, doc->getWorld()->getActiveLayer(), id);
+      });
+  require(!document.hasSelectedPortalEndpoint() &&
+          !document.getWorld()->getActiveLayer()->getPortal(id),
+          "deleting a Mirror retained selection or authored state");
+  editor::undo(&document);
+  require(document.getSelectedPortalId() == id &&
+          document.getWorld()->getActiveLayer()->getPortal(id)->getTargetId() == id,
+          "Mirror deletion undo lost identity, target, or selection");
+}
+
 void portalAuthoringIsTransactionalAndRestoresStableSelection() {
   editor::Document document;
   document.newDoc();
@@ -979,6 +1026,7 @@ int main() {
     namedCommandsDriveHistoryMetadata();
     newDocClearsUndoHistory();
     audioEmitterEditsAreUndoableAndPreserveIdentity();
+    mirrorAuthoringRestoresStableSelection();
     portalAuthoringIsTransactionalAndRestoresStableSelection();
     aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry();
     std::cout << "Undo history regressions passed\n";

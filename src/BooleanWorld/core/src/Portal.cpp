@@ -298,8 +298,8 @@ PortalMapping BuildPortalReflection(ResolvedAperture const& aperture) {
 
 uint32_t NextPortalEndpointId(
     std::span<uint32_t const> order, uint32_t sourceId) {
-  if (order.size() < 2) {
-    throw CoreException("A Portal loop requires at least two endpoints");
+  if (order.empty()) {
+    throw CoreException("A generated Portal cycle cannot be empty");
   }
   auto found = std::find(order.begin(), order.end(), sourceId);
   if (found == order.end()) {
@@ -332,7 +332,18 @@ PortalMapping BuildPortalMapping(
   if (!portalLoop.active || !source || !destination) {
     throw CoreException("A Portal mapping requires an active loop and a valid source endpoint ID");
   }
+  if (portalLoop.endpoints.size() == 1) return BuildPortalReflection(source->aperture);
   return {source->aperture, destination->aperture};
+}
+
+Portal::Portal(uint32_t id, std::string name, AuthoredAperture aperture,
+               uint32_t targetId)
+    : mId(id), mName(std::move(name)), mAperture(aperture), mTargetId(targetId) {
+  if (id == ~0u || targetId != id || !AuthoredApertureIsValid(aperture) ||
+      mName.empty() || mName.find_first_not_of(" \t\r\n") != 0 ||
+      mName.find_last_not_of(" \t\r\n") != mName.size() - 1) {
+    throw CoreException("Invalid Mirror Portal ID, name, aperture, or self target");
+  }
 }
 
 PortalEndpoint::PortalEndpoint(uint32_t id, AuthoredAperture aperture)
@@ -642,12 +653,15 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
   for (auto const& snapshot : loops) {
     ResolvedPortalLoop resolved;
     resolved.layerId = snapshot.layerId;
-    resolved.loopId = snapshot.loop.getId();
+    resolved.loopId = snapshot.portal ? IndependentPortalLoopId : snapshot.loop.getId();
     auto const authoredOrder = snapshot.loop.getTraversalOrder();
-    resolved.traversalOrder.assign(
-        authoredOrder.begin(), authoredOrder.end());
-
-    auto const& authoredEndpoints = snapshot.loop.getEndpoints();
+    resolved.traversalOrder.assign(authoredOrder.begin(), authoredOrder.end());
+    auto authoredEndpoints = snapshot.loop.getEndpoints();
+    if (snapshot.portal) {
+      auto const& portal = *snapshot.portal;
+      resolved.traversalOrder = {portal.getId()};
+      authoredEndpoints = {PortalEndpoint{portal.getId(), portal.getAperture()}};
+    }
     auto const firstHeight = authoredEndpoints.front().getAperture().top -
                              authoredEndpoints.front().getAperture().bottom;
     auto width = std::numeric_limits<float>::infinity();
@@ -748,7 +762,8 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
   std::vector<ResolvedPortalLoop const*> orderedLoops;
   orderedLoops.reserve(loops.size());
   for (auto const& portalLoop : loops) {
-    if (portalLoop.active) orderedLoops.push_back(&portalLoop);
+    if (portalLoop.active && portalLoop.endpoints.size() > 1)
+      orderedLoops.push_back(&portalLoop);
   }
   std::sort(
       orderedLoops.begin(), orderedLoops.end(), [](auto* left, auto* right) {

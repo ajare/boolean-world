@@ -174,7 +174,7 @@ void restoreUndoData(Document* doc, UndoData const& data) {
     doc->setSelectedTriggerLineIndex(data.selectedTriggerLine);
   } else if (data.selectedWorldVertex != ~0u) {
     doc->setSelectedWorldVertexIndex(data.selectedWorldVertex);
-  } else if (data.selectedPortalLoop != ~0u) {
+  } else if (data.selectedPortalEndpoint != ~0u) {
     doc->setSelectedPortalEndpoint(
         data.selectedPortalLayer, data.selectedPortalLoop,
         data.selectedPortalEndpoint);

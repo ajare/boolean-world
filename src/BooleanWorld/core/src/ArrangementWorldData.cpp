@@ -364,18 +364,20 @@ ArrangementWorldData::getPortalLoops() const {
 }
 
 ResolvedPortalLoop const* ArrangementWorldData::findPortalLoop(
-    uint32_t layerId, uint32_t loopId) const {
+    uint32_t layerId, uint32_t loopId, uint32_t portalId) const {
   auto found = std::find_if(
       mPortalLoops.begin(), mPortalLoops.end(),
       [=](auto const& portalLoop) {
-        return portalLoop.layerId == layerId && portalLoop.loopId == loopId;
+        return portalLoop.layerId == layerId && portalLoop.loopId == loopId &&
+               (loopId != IndependentPortalLoopId ||
+                FindPortalEndpoint(portalLoop, portalId) != nullptr);
       });
   return found == mPortalLoops.end() ? nullptr : &*found;
 }
 
 ResolvedPortalEndpoint const* ArrangementWorldData::findPortalEndpoint(
     uint32_t layerId, uint32_t loopId, uint32_t endpointId) const {
-  auto const* portalLoop = findPortalLoop(layerId, loopId);
+  auto const* portalLoop = findPortalLoop(layerId, loopId, endpointId);
   return portalLoop ? FindPortalEndpoint(*portalLoop, endpointId) : nullptr;
 }
 
@@ -668,8 +670,10 @@ ArrangementWorldData::getWallCollisionSegments(uint32_t wallIndex) const {
     float end;
   };
   std::vector<Interval> openings;
+  // Mirror views ship before reflected traversal: retain the supporting wall's
+  // collision until that subsequent slice handles reflected swept movement.
   for (auto const& portalLoop : mPortalLoops) {
-    if (!portalLoop.active) continue;
+    if (!portalLoop.active || portalLoop.endpoints.size() == 1) continue;
     for (auto const& endpoint : portalLoop.endpoints) {
       auto const& aperture = endpoint.aperture;
       if (std::find(

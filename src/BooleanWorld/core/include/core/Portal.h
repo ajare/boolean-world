@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -28,6 +29,26 @@ struct AuthoredAperture {
   float bottom{0.0f};
   float top{24.0f};
 };
+
+// Independent authored Portal. This expansion slice supports self targets only.
+class BW_API Portal {
+  uint32_t mId{};
+  std::string mName;
+  AuthoredAperture mAperture{};
+  uint32_t mTargetId{};
+  friend class Layer;
+public:
+  Portal(uint32_t id, std::string name, AuthoredAperture aperture,
+         uint32_t targetId);
+  [[nodiscard]] uint32_t getId() const { return mId; }
+  [[nodiscard]] std::string const& getName() const { return mName; }
+  [[nodiscard]] AuthoredAperture const& getAperture() const { return mAperture; }
+  [[nodiscard]] uint32_t getTargetId() const { return mTargetId; }
+};
+
+// No authored loop owns an independent Portal. In transitional consumer keys,
+// this reserved loop ID means endpointId is a Layer-local Portal ID.
+inline constexpr uint32_t IndependentPortalLoopId = ~0u;
 
 class BW_API PortalEndpoint {
   uint32_t mId{};
@@ -133,6 +154,8 @@ struct ResolvedPortalEndpoint {
 
 struct ResolvedPortalLoop {
   uint32_t layerId{};
+  // Independent singleton cycles use IndependentPortalLoopId here and the
+  // authored Layer-local Portal ID in endpointId/traversalOrder.
   uint32_t loopId{};
   bool active{false};
   PortalResolutionDiagnostic diagnostic{PortalResolutionDiagnostic::None};
@@ -141,7 +164,7 @@ struct ResolvedPortalLoop {
 };
 
 // Canonical directed routing seam. Order contains stable endpoint IDs, not
-// vector indices; missing sources and cycles shorter than two are invalid.
+// vector indices; missing sources and empty cycles are invalid.
 [[nodiscard]] BW_API uint32_t NextPortalEndpointId(
     std::span<uint32_t const> order, uint32_t sourceId);
 // Stable-identity lookup used by every generated Portal consumer.
@@ -217,6 +240,9 @@ struct BW_API PortalMapping {
 struct PortalLoopSnapshot {
   uint32_t layerId{};
   PortalLoop loop{};
+  // When present, this independently authored Portal replaces `loop` as the
+  // resolution input. Legacy authored loops remain unchanged during expansion.
+  std::optional<Portal> portal;
 };
 
 [[nodiscard]] BW_API bool AuthoredApertureIsValid(

@@ -630,7 +630,7 @@ void StatePlayBooleanWorld::createWorldCollisions(
   // endpoints may chain in one update. Stage collision around every possible
   // emergence point before Willpower begins its recursive sweep.
   for (auto const& portalLoop : mWorldData->getPortalLoops()) {
-    if (!portalLoop.active) continue;
+    if (!portalLoop.active || portalLoop.endpoints.size() == 1) continue;
     for (auto const& endpoint : portalLoop.endpoints) {
       auto emergence = endpoint.aperture.centre +
                        endpoint.aperture.front *
@@ -691,7 +691,7 @@ void StatePlayBooleanWorld::createWorldCollisions(
   // vertically eligible front-to-back crossing into the canonical transform,
   // and otherwise use the ordinary wall response.
   for (auto const& portalLoop : mWorldData->getPortalLoops()) {
-    if (!portalLoop.active) continue;
+    if (!portalLoop.active || portalLoop.endpoints.size() == 1) continue;
     for (auto const& endpoint : portalLoop.endpoints) {
       auto const& aperture = endpoint.aperture;
       auto half = aperture.tangent * (aperture.width * 0.5f);

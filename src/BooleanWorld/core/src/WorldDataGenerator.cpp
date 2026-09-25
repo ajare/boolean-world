@@ -64,6 +64,9 @@ vector<PortalLoopSnapshot> snapshotPortalLoops(
     for (auto const& portalLoop : layer->getPortalLoops()) {
       result.push_back({layer->getId(), portalLoop});
     }
+    for (auto const& portal : layer->getPortals()) {
+      result.push_back({layer->getId(), {}, portal});
+    }
   }
   return result;
 }

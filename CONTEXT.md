@@ -13,19 +13,27 @@ A structural Primitive that participates fully in the boolean fold but can never
 _Avoid_: material-less Primitive (an authored Primitive with a missing material is still property-contributing), invisible Primitive (property transparency does not affect geometry or visibility)
 
 **Layer**:
-A named, owned collection of Primitives, WorldTriggerLines, and Portal loops within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: no owned object ever moves between Layers.
+A named, owned collection of Primitives, WorldTriggerLines, Portals, and legacy authored Portal loops within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: no owned object ever moves between Layers.
 _Avoid_: Layer tag, layer id (as a primitive attribute)
 
-**Portal loop**:
+**Portal**:
+An independently named aperture permanently owned by one Layer, with a stable identity and a target Portal on that same Layer. Names are labels, never identity.
+_Avoid_: Portal wall, generated endpoint index
+
+**Mirror Portal**:
+A Portal targeting itself, showing a planar reflection across its resolved aperture while preserving World-up. It obeys normal wall coverage and player-clearance requirements and contributes no Liquid transport.
+_Avoid_: half-turn Portal, decorative mirror
+
+**Legacy authored Portal loop**:
 A stably identified, ordered cycle permanently owned by one Layer and containing at least two stable Portal endpoints. Entering endpoint `i` exits endpoint `(i + 1) mod N`; the complete loop participates only when its owning Layer is selected and every endpoint resolves. A two-endpoint Portal loop has the same traversal mapping as the former Portal pair.
-_Avoid_: Portal pair, Portal link, teleporter, independent portals
+_Avoid_: Portal pair, Portal link, teleporter
 
 **Portal endpoint**:
 One stable member of a Portal loop, owning one authored aperture and occupying one mutable position in the loop's traversal order but no generated wall identity. Its id is stable and never reused within the loop; it accepts traversal only from its resolved front side and sends it to the next endpoint. It is neither a WorldTriggerLine nor an ArrangementWall property.
 _Avoid_: Portal wall, TriggerLine, wall flag, endpoint index
 
 **Authored aperture**:
-A Portal endpoint's persistent requested rectangle: a World-plane centre and width plus bottom and top elevations. Every endpoint in one Portal loop must have the same height; generation may narrow resolved apertures to the loop's smallest authored width without changing authored dimensions.
+A Portal's or legacy Portal endpoint's persistent requested rectangle: a World-plane centre and width plus bottom and top elevations. Every endpoint in one Portal loop must have the same height; generation may narrow resolved apertures to the loop's smallest authored width without changing authored dimensions.
 _Avoid_: Portal bounds (ambiguous between authored and resolved), wall opening
 
 **Resolved aperture**:

@@ -77,12 +77,10 @@ void Selection::revalidateSelection() {
       mSelectedTriggerLineIndex >= world->getNumTriggerLines()) {
     mSelectedTriggerLineIndex = ~0u;
   }
-  if (mSelectedPortalLoopId != ~0u) {
+  if (hasSelectedPortalEndpoint()) {
     auto const* layer = world->getLayer(mSelectedPortalLayerId);
-    auto const* portalLoop = layer
-                           ? layer->getPortalLoop(mSelectedPortalLoopId)
-                           : nullptr;
-    if (!portalLoop || !portalLoop->findEndpoint(mSelectedPortalEndpointId)) {
+    if (!layer || !layer->findAuthoredPortalAperture(
+                      mSelectedPortalLoopId, mSelectedPortalEndpointId)) {
       mSelectedPortalLayerId = ~0u;
       mSelectedPortalLoopId = ~0u;
       mSelectedPortalEndpointId = ~0u;
@@ -126,12 +124,12 @@ uint32_t Selection::getSelectedPortalEndpointId() const {
 }
 
 bool Selection::hasSelectedPortalEndpoint() const {
-  return mSelectedPortalLoopId != ~0u;
+  return mSelectedPortalLayerId != ~0u && mSelectedPortalEndpointId != ~0u;
 }
 
 bool Selection::hasSelection() const {
   return !mSelectedPrimitiveIndices.empty() || mSelectedTriggerLineIndex != ~0u ||
-         mSelectedPortalLoopId != ~0u ||
+         hasSelectedPortalEndpoint() ||
          mSelectedWorldVertexIndex != ~0u || !mSelectedMeshVertexIndices.empty() ||
          !mSelectedMeshEdgeIndices.empty() || !mSelectedMeshRingIndices.empty();
 }

@@ -25,7 +25,7 @@ class LayerBuildStep;
 class PrimitiveField;
 class World;
 
-// A named collection of Portal loops, WorldTriggerLines, and the Primitives
+// A named collection of Portals, legacy Portal loops, WorldTriggerLines, and the Primitives
 // its ordered LayerBuildSteps produce. A World holds an ordered set of Layers;
 // a generation selects a set of Layers by id and folds across their combined
 // content (docs/adr/0013, docs/adr/0047).
@@ -83,6 +83,8 @@ private:
   // First-class authored Portal loops. Unlike Primitives they are not recipe
   // output: each loop belongs to this Layer for its complete lifetime.
   std::vector<PortalLoop> mPortalLoops;
+  uint32_t mNextPortalId{0};
+  std::vector<Portal> mPortals;
 
   PrimitiveAccelerationGrid* mPrimitiveLookupGrid;
 
@@ -342,6 +344,14 @@ public:
 
   [[nodiscard]] std::vector<WorldTriggerLine*> findTriggerLines(wp::BoundingBox const& bounds) const;
 
+  // --- Independent Mirror Portals ---
+  [[nodiscard]] uint32_t addPortal(AuthoredAperture const& aperture);
+  void removePortal(uint32_t portalId);
+  void setPortalAperture(uint32_t portalId, AuthoredAperture const& aperture);
+  [[nodiscard]] Portal const* getPortal(uint32_t portalId) const;
+  [[nodiscard]] std::vector<Portal> const& getPortals() const { return mPortals; }
+  [[nodiscard]] uint32_t getNextPortalAllocator() const { return mNextPortalId; }
+
   // --- Portal loops ---
   [[nodiscard]] uint32_t addPortalLoop(
       AuthoredAperture const& first, AuthoredAperture const& second);
@@ -354,6 +364,8 @@ public:
       uint32_t loopId, uint32_t endpointId);
   [[nodiscard]] bool movePortalEndpointLater(
       uint32_t loopId, uint32_t endpointId);
+  [[nodiscard]] AuthoredAperture const* findAuthoredPortalAperture(
+      uint32_t loopId, uint32_t endpointId) const;
   void setPortalEndpointAperture(
       uint32_t loopId, uint32_t endpointId,
       AuthoredAperture const& aperture);

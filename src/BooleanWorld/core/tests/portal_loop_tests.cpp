@@ -77,6 +77,88 @@ bw::core::World binaryRoundTrip(bw::core::World const& world) {
   return result;
 }
 
+void namedMirrorsRoundTripAndResolveIndependently() {
+  bw::core::World world(200.0f, 10.0f);
+  addRoom(world);
+  auto* layer = world.getActiveLayer();
+  auto legacy = layer->addPortalLoop(aperture(-50, -25), aperture(50, -25));
+  auto first = layer->addPortal(aperture(-50, 17));
+  auto second = layer->addPortal(aperture(50, 17));
+  require(first == 0 && second == 1 && legacy == 0,
+          "independent Portal and legacy identities are not separate");
+  require(layer->getPortal(first)->getName() == "Portal 1" &&
+          layer->getPortal(second)->getName() == "Portal 2" &&
+          layer->getPortal(first)->getTargetId() == first,
+          "Mirror defaults are wrong");
+  layer->removePortal(first);
+  auto replacement = layer->addPortal(aperture(-50, 17));
+  require(replacement == 2 && layer->getPortal(replacement)->getName() == "Portal 1",
+          "default names should reuse gaps, IDs must not");
+  auto verify = [&](bw::core::World const& copy) {
+    auto const* owner = copy.getActiveLayer();
+    require(owner->getNextPortalAllocator() == 3 && owner->getPortals().size() == 2,
+            "Mirror allocator or storage lost on copy/load");
+    auto const* portal = owner->getPortal(replacement);
+    require(portal && portal->getName() == "Portal 1" &&
+            portal->getTargetId() == replacement &&
+            portal->getAperture().centre == wp::Vector2{-50, 17} &&
+            portal->getAperture().width == 16 && portal->getAperture().bottom == 0 &&
+            portal->getAperture().top == 24 && owner->getPortalLoop(legacy),
+            "Mirror authored state or legacy loop lost on copy/load");
+  };
+  verify(deserializeWorld(serializeWorld(world)));
+  verify(binaryRoundTrip(world));
+  auto yaml = serializeWorld(world);
+  for (auto const& [before, after] : std::vector<std::pair<std::string, std::string>>{
+      {"targetId: 1", "targetId: 999"},
+      {"nextPortalId: 3", "nextPortalId: 2"},
+      {"Portal 2", "portal 1"}}) {
+    auto malformed = yaml;
+    auto position = malformed.find(before);
+    require(position != std::string::npos, "Mirror serialization fixture field missing");
+    malformed.replace(position, before.size(), after);
+    bool rejected = false;
+    try { (void)deserializeWorld(malformed); }
+    catch (std::runtime_error const&) { rejected = true; }
+    require(rejected, "malformed Mirror target, allocator, or duplicate name was accepted");
+  }
+  verify(bw::core::World(world));
+  bw::core::World assigned(200.0f, 10.0f);
+  assigned = world;
+  verify(assigned);
+  auto data = world.getWorldData();
+  auto const* mirror = data->findPortalLoop(layer->getId(),
+      bw::core::IndependentPortalLoopId, replacement);
+  require(mirror && mirror->active && mirror->endpoints.size() == 1 &&
+          mirror->traversalOrder == std::vector<uint32_t>{replacement},
+          "self target did not generate a singleton cycle");
+  auto mapping = bw::core::BuildPortalMapping(*mirror, replacement);
+  auto reflected = mapping.transformPoint({-43, 21});
+  require(mapping.reversesHandedness() && reflected == wp::Vector2{-57, 21} &&
+          mapping.transformElevation(13) == 13,
+          "generated singleton did not use true planar reflection");
+  require(data->findPortalLoop(layer->getId(), legacy)->active,
+          "Mirror identity collided with a legacy loop");
+  for (auto const& adjacency : data->getPortalLiquidAdjacency())
+    require(adjacency.loopId != bw::core::IndependentPortalLoopId,
+            "Mirror contributed Liquid adjacency");
+  for (auto const& diagnostic : data->getPortalLiquidDiagnostics())
+    require(diagnostic.loopId != bw::core::IndependentPortalLoopId,
+            "Mirror contributed a Liquid error");
+
+  for (auto const& [authored, expected] : std::vector<std::pair<AuthoredAperture,
+          PortalResolutionDiagnostic>>{
+      {aperture(-50, 17, 1), PortalResolutionDiagnostic::InsufficientPlayerWidth},
+      {aperture(-50, 17, 16, 0, 1), PortalResolutionDiagnostic::InsufficientPlayerHeight},
+      {aperture(0, 0), PortalResolutionDiagnostic::MissingRenderedWall}}) {
+    layer->setPortalAperture(replacement, authored);
+    data = world.getWorldData();
+    mirror = data->findPortalLoop(layer->getId(), bw::core::IndependentPortalLoopId, replacement);
+    require(mirror && !mirror->active && mirror->diagnostic == expected,
+            "invalid Mirror did not retain the normal geometric diagnostic");
+  }
+}
+
 void equalAndUnequalWidthsResolveWithoutChangingAuthoredState() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
@@ -171,16 +253,21 @@ void layerSelectionIncludesCompleteLoopsOnly() {
   addRoom(world);
   auto const loopId = first->addPortalLoop(
       aperture(-50.0f, 0.0f), aperture(50.0f, 0.0f));
+  auto mirrorId = first->addPortal(aperture(-50, 25));
   auto* second = world.addLayer("Second");
 
   auto* generator = world.getWorldDataGenerator();
   generator->setLayerSelection(bw::core::SelectLayer(second->getId()));
   auto absent = world.getWorldData();
+  require(!absent->findPortalLoop(first->getId(), bw::core::IndependentPortalLoopId, mirrorId),
+          "Mirror participated while its owning Layer was unselected");
   require(absent->findPortalLoop(first->getId(), loopId) == nullptr,
           "a Portal loop participated while its owning Layer was unselected");
 
   generator->setLayerSelection(bw::core::SelectLayer(first->getId()));
   auto present = world.getWorldData();
+  auto const* mirror = present->findPortalLoop(first->getId(), bw::core::IndependentPortalLoopId, mirrorId);
+  require(mirror && mirror->active, "selecting a Layer failed to include its Mirror");
   auto const* resolved = present->findPortalLoop(first->getId(), loopId);
   require(resolved && resolved->active,
           "selecting a Portal's Layer did not include both endpoints");
@@ -504,9 +591,11 @@ void canonicalNextEndpointRoutesByStableIdentity() {
     // A stale ID must not silently select a different endpoint.
   }
   std::array<uint32_t, 1> singleton{17};
+  require(bw::core::NextPortalEndpointId(singleton, 17) == 17,
+          "generated singleton did not route to itself");
   try {
-    [[maybe_unused]] auto next = bw::core::NextPortalEndpointId(singleton, 17);
-    require(false, "singleton Portal loop was accepted");
+    bw::core::PortalLoop invalid{0, 18, {bw::core::PortalEndpoint{17, {}}}, {17}};
+    require(false, "legacy authored singleton Portal loop was accepted");
   } catch (bw::core::CoreException const&) {
   }
   std::array<uint32_t, 3> duplicate{17, 42, 17};
@@ -632,6 +721,7 @@ void reflectionMappingIsNotAHalfTurn() {
 int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
+    namedMirrorsRoundTripAndResolveIndependently();
     equalAndUnequalWidthsResolveWithoutChangingAuthoredState();
     invalidLoopsStayWholeAndDiagnosable();
     layerSelectionIncludesCompleteLoopsOnly();

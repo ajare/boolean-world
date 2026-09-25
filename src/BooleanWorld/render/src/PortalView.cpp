@@ -317,7 +317,9 @@ BuiltPortalView BuildPortalView(
   result.auxiliary.nearDistance = nearDistance;
   result.auxiliary.farDistance = farDistance;
   result.auxiliary.seamBias = 0.0f;
-  result.auxiliary.reverseWinding = false;
+  // Winding is camera parity, not just the latest hop: two reflections
+  // restore the original handedness, including across ordinary Portal hops.
+  result.auxiliary.reverseWinding = glm::determinant(glm::mat3(destinationView)) < 0.0f;
   return result;
 }
 
