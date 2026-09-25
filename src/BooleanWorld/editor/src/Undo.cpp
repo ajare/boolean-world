@@ -49,8 +49,7 @@ struct UndoData {
   uint32_t selectedWorldVertex{~0u};
   uint32_t selectedTriggerLine{~0u};
   uint32_t selectedPortalLayer{~0u};
-  uint32_t selectedPortalLoop{~0u};
-  uint32_t selectedPortalEndpoint{~0u};
+  uint32_t selectedPortal{~0u};
   uint32_t activeMeshPrimitive{~0u};
   set<uint32_t> selectedMeshVertices;
   set<uint32_t> selectedMeshEdges;
@@ -115,8 +114,7 @@ UndoData captureUndoData(Document* doc) {
       doc->getSelectedWorldVertexIndex(),
       doc->getSelectedTriggerLineIndex(),
       doc->getSelectedPortalLayerId(),
-      doc->getSelectedPortalLoopId(),
-      doc->getSelectedPortalEndpointId(),
+      doc->getSelectedPortalId(),
       doc->getActiveMeshPrimitiveIndex(),
       doc->getSelectedMeshVertexIndices(),
       doc->getSelectedMeshEdgeIndices(),
@@ -174,10 +172,10 @@ void restoreUndoData(Document* doc, UndoData const& data) {
     doc->setSelectedTriggerLineIndex(data.selectedTriggerLine);
   } else if (data.selectedWorldVertex != ~0u) {
     doc->setSelectedWorldVertexIndex(data.selectedWorldVertex);
-  } else if (data.selectedPortalEndpoint != ~0u) {
-    doc->setSelectedPortalEndpoint(
-        data.selectedPortalLayer, data.selectedPortalLoop,
-        data.selectedPortalEndpoint);
+  } else if (data.selectedPortal != ~0u) {
+    doc->setSelectedPortal(
+        data.selectedPortalLayer,
+        data.selectedPortal);
     doc->revalidateSelection();
   } else if (data.selectedMeshVertices.empty() && data.selectedMeshEdges.empty() &&
              data.selectedMeshRings.empty()) {

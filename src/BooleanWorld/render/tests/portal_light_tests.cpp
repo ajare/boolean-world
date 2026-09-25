@@ -17,20 +17,19 @@ bool near(float left, float right, float tolerance = 1e-4f) {
 }
 
 bw::core::ResolvedPortalLoop translationLoop(
-    uint32_t loopId, float sourceY, float destinationY,
+    uint32_t firstPortalId, float sourceY, float destinationY,
     float sourceX = 0.0f, float destinationX = 0.0f,
     float resolvedWidth = 2.0f) {
   bw::core::ResolvedPortalLoop portalLoop;
   portalLoop.endpoints.resize(2);
-  portalLoop.traversalOrder = {0, 1};
+  portalLoop.traversalOrder = {firstPortalId, firstPortalId + 1000};
   portalLoop.layerId = 3;
-  portalLoop.loopId = loopId;
   portalLoop.active = true;
-  portalLoop.endpoints[0].endpointId = 0;
+  portalLoop.endpoints[0].endpointId = firstPortalId;
   portalLoop.endpoints[0].resolved = true;
   portalLoop.endpoints[0].aperture = {
       {sourceX, sourceY}, {1.0f, 0.0f}, {0.0f, 1.0f}, resolvedWidth, 0.0f, 4.0f, {0}};
-  portalLoop.endpoints[1].endpointId = 1;
+  portalLoop.endpoints[1].endpointId = firstPortalId + 1000;
   portalLoop.endpoints[1].resolved = true;
   portalLoop.endpoints[1].aperture = {
       {destinationX, destinationY}, {-1.0f, 0.0f}, {0.0f, -1.0f}, resolvedWidth, 0.0f, 4.0f, {1}};
@@ -71,7 +70,7 @@ void namedCycleLightsUseExplicitTargets() {
 }
 
 void mirrorLightReflectsAndRemainsGated() {
-  auto mirror = translationLoop(bw::core::IndependentPortalLoopId, 0, 10);
+  auto mirror = translationLoop(0, 0, 10);
   mirror.endpoints.resize(1);
   mirror.endpoints[0].endpointId = 17;
   mirror.traversalOrder = {17};
@@ -134,11 +133,11 @@ void canonicalTransformPreservesThePlayerTorch() {
   options.attenuationFalloff = 17.0f;
   glm::vec3 realPosition{0.0f, 2.0f, -2.0f};
   auto attachment = BuildPortalLightAttachment(
-      portalLoop, 0, realPosition, options);
+      portalLoop, 7, realPosition, options);
   require(attachment.has_value(),
           "a clear one-hop path produced no virtual Player Torch");
 
-  auto canonical = bw::core::BuildPortalMapping(portalLoop, 0);
+  auto canonical = bw::core::BuildPortalMapping(portalLoop, 7);
   auto expectedPlane = canonical.transformPoint({0.0f, 2.0f});
   require(near(attachment->position.x, expectedPlane.x) &&
               near(attachment->position.y,
@@ -154,12 +153,12 @@ void canonicalTransformPreservesThePlayerTorch() {
   auto widerAuthored = portalLoop;
   widerAuthored.endpoints[0].authored.width = 20.0f;
   auto normalized = BuildPortalLightAttachment(
-      widerAuthored, 0, realPosition, options);
+      widerAuthored, 7, realPosition, options);
   require(normalized && normalized->radiance == attachment->radiance,
           "authored width normalization scaled transmitted radiance");
 
   realPosition.z = 2.0f;
-  require(!BuildPortalLightAttachment(portalLoop, 0, realPosition, options),
+  require(!BuildPortalLightAttachment(portalLoop, 7, realPosition, options),
           "a Player Torch behind the source endpoint created a spill path");
 }
 
@@ -171,9 +170,10 @@ void stableIdentityPreservesLightOutput() {
   bw::app::PlayerTorchOptions options;
   auto baseline = PlanPortalLights(loops, torch, options);
   for (auto& portalLoop : loops) {
-    portalLoop.endpoints[0].endpointId = 17;
-    portalLoop.endpoints[1].endpointId = 93;
-    portalLoop.traversalOrder = {93, 17};
+    auto offset = (portalLoop.endpoints[0].endpointId - 10) * 100;
+    portalLoop.endpoints[0].endpointId = offset + 17;
+    portalLoop.endpoints[1].endpointId = offset + 93;
+    portalLoop.traversalOrder = {offset + 93, offset + 17};
     std::swap(portalLoop.endpoints[0], portalLoop.endpoints[1]);
   }
   auto actual = PlanPortalLights(loops, torch, options);
@@ -191,9 +191,9 @@ void stableIdentityPreservesLightOutput() {
                 light.hops.size() == expected.hops.size(),
             "endpoint storage order changed virtual Torch output");
     for (size_t hop = 0; hop < light.hops.size(); ++hop) {
-      require(light.path[hop].endpointId == 17 &&
-                  light.hops[hop].sourceEndpoint.endpointId == 17 &&
-                  light.hops[hop].destinationEndpoint.endpointId == 93 &&
+      require(light.path[hop].endpointId % 100 == 17 &&
+                  light.hops[hop].sourceEndpoint.endpointId % 100 == 17 &&
+                  light.hops[hop].destinationEndpoint.endpointId % 100 == 93 &&
                   light.hops[hop].destinationToSource ==
                       expected.hops[hop].destinationToSource,
               "light paths or shadow transforms used endpoint slots");
@@ -220,8 +220,8 @@ void multiHopCompositionGatesEveryAperture() {
   auto plan = PlanPortalLights(
       loops, {0.0f, 2.0f, -2.0f}, bw::app::PlayerTorchOptions{}, limits);
   auto found = std::ranges::find_if(plan.lights, [](auto const& light) {
-    return light.path.size() == 2 && light.path[0].loopId == 10 &&
-           light.path[1].loopId == 11;
+    return light.path.size() == 2 && light.path[0].endpointId == 10 &&
+           light.path[1].endpointId == 11;
   });
   require(found != plan.lights.end(),
           "a visible two-hop Portal path was not retained");
@@ -308,7 +308,7 @@ void independentBudgetsUseDeterministicRanking() {
   auto first = PlanPortalLights(loops, torch, options, lightLimited);
   auto second = PlanPortalLights(loops, torch, options, lightLimited);
   require(first.lights.size() == 1 &&
-              first.lights.front().path.front().loopId == 30 &&
+              first.lights.front().path.front().endpointId == 30 &&
               first.count(
                   PortalLightDiagnosticReason::VirtualLightBudget) != 0,
           "virtual-light budget did not retain the strongest path");
@@ -336,7 +336,7 @@ void independentBudgetsUseDeterministicRanking() {
 
 void attachmentsFailAtomicallyWithoutCompleteShadows() {
   auto light = *BuildPortalLightAttachment(
-      translationLoop(40, 0.0f, 10.0f), 0,
+      translationLoop(40, 0.0f, 10.0f), 40,
       {0.0f, 2.0f, -2.0f}, bw::app::PlayerTorchOptions{});
   require(light.sourcePosition == glm::vec3(0.0f, 2.0f, -2.0f) &&
               light.hops.front().sourceApertureFront != glm::vec3{} &&

@@ -101,7 +101,7 @@ public:
       ArrangementStats* stats = nullptr,
       WedgeGenerationParameters const& wedgeGenerationParameters = {},
       bool createWayfinderMesh = false,
-      std::vector<PortalLoopSnapshot> const& portalLoops = {});
+      std::vector<PortalSnapshot> const& portals = {});
 
   // Present when navigation generation was requested and the arrangement has
   // at least one solid polygon.
@@ -128,12 +128,10 @@ public:
 
   [[nodiscard]] std::vector<ResolvedPortalLoop> const&
   getPortalLoops() const;
-  // For IndependentPortalLoopId, portalId is the authored Portal identity;
-  // legacy loop lookup ignores the third argument.
   [[nodiscard]] ResolvedPortalLoop const* findPortalLoop(
-      uint32_t layerId, uint32_t loopId, uint32_t portalId = ~0u) const;
+      uint32_t layerId, uint32_t portalId) const;
   [[nodiscard]] ResolvedPortalEndpoint const* findPortalEndpoint(
-      uint32_t layerId, uint32_t loopId, uint32_t endpointId) const;
+      uint32_t layerId, uint32_t endpointId) const;
 
   [[nodiscard]] std::vector<PortalLiquidAdjacency> const&
   getPortalLiquidAdjacency() const;

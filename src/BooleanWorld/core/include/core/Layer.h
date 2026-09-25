@@ -25,7 +25,7 @@ class LayerBuildStep;
 class PrimitiveField;
 class World;
 
-// A named collection of Portals, legacy Portal loops, WorldTriggerLines, and the Primitives
+// A named collection of Portals, WorldTriggerLines, and the Primitives
 // its ordered LayerBuildSteps produce. A World holds an ordered set of Layers;
 // a generation selects a set of Layers by id and folds across their combined
 // content (docs/adr/0013, docs/adr/0047).
@@ -54,7 +54,6 @@ private:
 
   uint32_t mId;
   uint32_t mNextStepId;
-  uint32_t mNextPortalLoopId;
 
   std::string mName;
 
@@ -80,9 +79,6 @@ private:
 
   std::vector<WorldTriggerLine*> mTriggerLines;
 
-  // First-class authored Portal loops. Unlike Primitives they are not recipe
-  // output: each loop belongs to this Layer for its complete lifetime.
-  std::vector<PortalLoop> mPortalLoops;
   uint32_t mNextPortalId{0};
   std::vector<Portal> mPortals;
 
@@ -354,26 +350,7 @@ public:
   [[nodiscard]] std::vector<Portal> const& getPortals() const { return mPortals; }
   [[nodiscard]] uint32_t getNextPortalAllocator() const { return mNextPortalId; }
 
-  // --- Portal loops ---
-  [[nodiscard]] uint32_t addPortalLoop(
-      AuthoredAperture const& first, AuthoredAperture const& second);
-  void removePortalLoop(uint32_t loopId);
-  [[nodiscard]] uint32_t addPortalEndpointAfter(
-      uint32_t loopId, uint32_t afterEndpointId,
-      AuthoredAperture const& aperture);
-  void removePortalEndpoint(uint32_t loopId, uint32_t endpointId);
-  [[nodiscard]] bool movePortalEndpointEarlier(
-      uint32_t loopId, uint32_t endpointId);
-  [[nodiscard]] bool movePortalEndpointLater(
-      uint32_t loopId, uint32_t endpointId);
-  [[nodiscard]] AuthoredAperture const* findAuthoredPortalAperture(
-      uint32_t loopId, uint32_t endpointId) const;
-  void setPortalEndpointAperture(
-      uint32_t loopId, uint32_t endpointId,
-      AuthoredAperture const& aperture);
-  [[nodiscard]] PortalLoop* getPortalLoop(uint32_t loopId);
-  [[nodiscard]] PortalLoop const* getPortalLoop(uint32_t loopId) const;
-  [[nodiscard]] std::vector<PortalLoop> const& getPortalLoops() const;
+
 };
 
 }  // namespace core

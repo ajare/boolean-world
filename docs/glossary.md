@@ -94,20 +94,16 @@ Portal** displays a true planar reflection, preserves World-up, obeys normal
 aperture-resolution requirements, and contributes no Liquid transport
 (ADR-0051).
 
-**Legacy authored Portal loop** — A stably identified, ordered cycle permanently owned by one
-Layer and containing at least two stable Portal endpoints. Entering endpoint
-`i` exits endpoint `(i + 1) mod N`; the complete loop participates only when
-its owning Layer is selected and every endpoint resolves. A two-endpoint Portal
-loop preserves the former Portal pair's traversal mapping (ADR-0050).
+**Portal loop** — A directed cycle inferred from same-Layer Portal targets,
+not an authored collection or identity. Every member must have exactly one
+incoming reference and every aperture must resolve before the cycle activates.
+A self target generates a Mirror Portal; mutual targets give a two-way route
+(ADR-0052).
 
-**Portal endpoint** — One stable member of a Portal loop, holding one authored
-aperture and occupying one mutable position in the loop's traversal order. Its
-id is stable and never reused within the loop, independently of insertion,
-removal, or reordering. It accepts traversal only from its resolved front side
-and sends it to the next endpoint by stable ID, not by traversal index. It is not a WorldTriggerLine or an
-ArrangementWall property, and it never stores generated wall or edge identity.
+**Target** — A Portal's explicit destination Portal on the same Layer. Incomplete
+or branching target graphs remain authored and editable but inactive.
 
-**Authored aperture** — A Portal's or legacy endpoint's persistent requested rectangle: a
+**Authored aperture** — A Portal's persistent requested rectangle: a
 World-plane centre and width plus bottom and top elevations. Every endpoint in
 one Portal loop must have the same height; generation narrows resolved
 apertures to the loop's smallest authored width but never mutates authored
@@ -175,7 +171,7 @@ active Portal loop, separate from ordinary shared-edge Liquid-adjacency and
 wall collision. Liquid settles at generation time to a deterministic fixed
 point, spilling only in traversal order after reaching each source Sill and
 mapping its surface by the same height above the source and destination lower
-edges. Loops are accepted atomically in stable Layer-id/loop-id order; a
+edges. Loops are accepted atomically in stable Layer-id/smallest-member-Portal-id order; a
 contradictory accumulated elevation offset omits that loop from Liquid without
 deactivating its other Portal behaviour.
 

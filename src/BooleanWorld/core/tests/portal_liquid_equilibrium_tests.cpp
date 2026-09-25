@@ -1,3 +1,4 @@
+#include "PortalTestSupport.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -59,7 +60,7 @@ AuthoredAperture aperture(
 
 struct TwoRoomResult {
   ArrangementWorldDataPtr data;
-  uint32_t loopId{};
+  uint32_t cyclePortalId{};
 };
 
 TwoRoomResult twoRooms(
@@ -79,10 +80,10 @@ TwoRoomResult twoRooms(
     proxy->commitTo(*destination);
   }
   auto* layer = world.getActiveLayer();
-  auto loopId = layer->addPortalLoop(
+  auto firstPortalId = bw::test::addPortalCycle(layer,
       aperture(-50.0f, 0.0f, 5.0f, width),
       aperture(50.0f, 0.0f, 15.0f, width));
-  return {world.getWorldData(), loopId};
+  return {world.getWorldData(), firstPortalId};
 }
 
 void portalAdjacencyIsSeparateAndWaitsForItsSill() {
@@ -90,7 +91,7 @@ void portalAdjacencyIsSeparateAndWaitsForItsSill() {
   require(below.data->getPortalLiquidAdjacency().size() == 2,
           "an active resolved aperture did not expose portal liquid-adjacency");
   auto const& link = below.data->getPortalLiquidAdjacency().front();
-  require(link.loopId == below.loopId &&
+  require(link.cyclePortalId == below.cyclePortalId &&
               link.sourceEndpointId == 0 &&
               link.destinationEndpointId == 1 &&
               link.face0 != link.face1 && link.sill0 == 5.0 &&
@@ -198,13 +199,13 @@ CycleResult portalCycle(bool contradictory) {
   addRoom(world, {0.0f, 0.0f}, 10.0f, 50.0f);
   addRoom(world, {100.0f, 0.0f}, 20.0f, 60.0f);
   auto* layer = world.getActiveLayer();
-  [[maybe_unused]] auto firstLoop = layer->addPortalLoop(
+  [[maybe_unused]] auto firstLoop = bw::test::addPortalCycle(layer,
       aperture(-75.0f, 0.0f, 5.0f),
       aperture(-25.0f, 0.0f, 15.0f));
-  [[maybe_unused]] auto secondLoop = layer->addPortalLoop(
+  [[maybe_unused]] auto secondLoop = bw::test::addPortalCycle(layer,
       aperture(25.0f, 0.0f, 15.0f),
       aperture(75.0f, 0.0f, 25.0f));
-  auto closingLoop = layer->addPortalLoop(
+  auto closingLoop = bw::test::addPortalCycle(layer,
       aperture(125.0f, 0.0f, 25.0f),
       aperture(-125.0f, 0.0f, contradictory ? 6.0f : 5.0f));
   return {world.getWorldData(), closingLoop};
@@ -226,14 +227,14 @@ void consistentAndContradictoryCyclesAreSettledDeterministically() {
           "a contradictory accumulated elevation cycle lacked one deterministic diagnostic");
   auto const& diagnostic =
       contradictory.data->getPortalLiquidDiagnostics().front();
-  require(diagnostic.loopId == contradictory.closingLoop &&
+  require(diagnostic.cyclePortalId == contradictory.closingLoop &&
               diagnostic.diagnostic ==
                   PortalLiquidDiagnostic::ContradictoryElevationCycle,
           "the contradictory cycle diagnostic did not identify the conflicting loop");
   require(std::ranges::none_of(
               contradictory.data->getPortalLiquidAdjacency(),
               [&](auto const& adjacency) {
-                return adjacency.loopId == contradictory.closingLoop;
+                return adjacency.cyclePortalId == contradictory.closingLoop;
               }),
           "the conflicting portal liquid-adjacency was not excluded");
   requireNear(contradictory.data->getLiquidDepth({-100.0f, 0.0f}), 10.0,
@@ -249,8 +250,8 @@ void consistentAndContradictoryCyclesAreSettledDeterministically() {
               rebuilt.data->getLiquidPoolElevations() ==
                   contradictory.data->getLiquidPoolElevations() &&
               rebuilt.data->getPortalLiquidDiagnostics().size() == 1 &&
-              rebuilt.data->getPortalLiquidDiagnostics().front().loopId ==
-                  diagnostic.loopId &&
+              rebuilt.data->getPortalLiquidDiagnostics().front().cyclePortalId ==
+                  diagnostic.cyclePortalId &&
               rebuilt.data->getPortalLiquidDiagnostics().front().diagnostic ==
                   diagnostic.diagnostic,
           "rebuilding an unchanged Portal cycle changed Liquid or diagnostics");
@@ -373,10 +374,9 @@ void directedSpillIntegratesAffineCapacity() {
   addRoom(world, {0.0f, 0.0f}, -20.0f, 50.0f);
   addRoom(world, {100.0f, 0.0f}, 0.0f, 50.0f);
   auto* layer = world.getActiveLayer();
-  auto loop = layer->addPortalLoop(
+  auto loop = bw::test::addPortalCycle(layer,
       aperture(-75.0f, 0.0f, 7.0f), aperture(-25.0f, 0.0f, 7.0f));
-  [[maybe_unused]] auto third = layer->addPortalEndpointAfter(
-      loop, 1, aperture(75.0f, 0.0f, 7.0f));
+  [[maybe_unused]] auto third = bw::test::insertPortalAfter(layer, layer->getPortal(loop)->getTargetId(), aperture(75.0f, 0.0f, 7.0f));
   auto data = world.getWorldData();
   require(data->getPortalLiquidAdjacency().size() == 3,
           "sloped source aperture did not resolve into directed hops");
@@ -402,12 +402,10 @@ void floodedIntermediateCellsRemainDirectedConduits() {
       addRoom(world, {50.0f, 0.0f}, 0.0f, 29.0f);
       addRoom(world, {150.0f, 0.0f}, 0.0f, 100.0f);
       auto* layer = world.getActiveLayer();
-      auto loop = layer->addPortalLoop(
+      auto loop = bw::test::addPortalCycle(layer,
           aperture(-125.0f, 0.0f, 5.0f), aperture(-25.0f, 0.0f, 5.0f));
-      auto third = layer->addPortalEndpointAfter(
-          loop, 1, aperture(75.0f, 0.0f, 5.0f));
-      [[maybe_unused]] auto fourth = layer->addPortalEndpointAfter(
-          loop, third, aperture(175.0f, 0.0f, 5.0f));
+      auto third = bw::test::insertPortalAfter(layer, layer->getPortal(loop)->getTargetId(), aperture(75.0f, 0.0f, 5.0f));
+      [[maybe_unused]] auto fourth = bw::test::insertPortalAfter(layer, third, aperture(175.0f, 0.0f, 5.0f));
       auto data = world.getWorldData();
       require(data->getPortalLiquidAdjacency().size() == 4 &&
                   data->getPortalLiquidDiagnostics().empty(),
@@ -435,21 +433,20 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
   addRoom(world, {0.0f, 0.0f}, 10.0f, 60.0f);
   addRoom(world, {100.0f, 0.0f}, 20.0f, 70.0f);
   auto* layer = world.getActiveLayer();
-  auto accepted = layer->addPortalLoop(
+  auto accepted = bw::test::addPortalCycle(layer,
       aperture(-75.0f, 0.0f, 5.0f), aperture(-25.0f, 0.0f, 15.0f));
-  auto rejected = layer->addPortalLoop(
+  auto rejected = bw::test::addPortalCycle(layer,
       aperture(25.0f, 0.0f, 15.0f), aperture(75.0f, 0.0f, 25.0f));
-  auto last = layer->addPortalEndpointAfter(
-      rejected, 1, aperture(-125.0f, 0.0f, 6.0f));
+  auto last = bw::test::insertPortalAfter(layer, layer->getPortal(rejected)->getTargetId(), aperture(-125.0f, 0.0f, 6.0f));
   auto data = world.getWorldData();
   require(data->getPortalLiquidDiagnostics().size() == 1 &&
-              data->getPortalLiquidDiagnostics().front().loopId == rejected &&
+              data->getPortalLiquidDiagnostics().front().cyclePortalId == rejected &&
               data->getPortalLiquidDiagnostics().front().diagnostic ==
                   PortalLiquidDiagnostic::ContradictoryElevationCycle,
           "a late offset conflict did not produce one loop diagnostic");
   require(data->getPortalLiquidAdjacency().size() == 2 &&
               std::ranges::all_of(data->getPortalLiquidAdjacency(),
-                                  [&](auto const& hop) { return hop.loopId == accepted; }),
+                                  [&](auto const& hop) { return hop.cyclePortalId == accepted; }),
           "a rejected loop leaked its earlier valid hop");
   auto const* loop = data->findPortalLoop(layer->getId(), rejected);
   require(loop && loop->active && loop->endpoints.size() == 3,
@@ -485,22 +482,22 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
   auto missing = bw::core::BuildPortalLiquidAdjacency(
       data->getArrangement(), data->getWalls(), cells, {*loop});
   require(missing.diagnostics.size() == 1 &&
-              missing.diagnostics.front().loopId == rejected &&
+              missing.diagnostics.front().cyclePortalId == rejected &&
               missing.diagnostics.front().diagnostic ==
                   PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint &&
               std::ranges::none_of(missing.adjacency,
-                                   [&](auto const& hop) { return hop.loopId == rejected; }),
+                                   [&](auto const& hop) { return hop.cyclePortalId == rejected; }),
           "a missing incident cell did not reject the entire loop atomically");
 
   // This offset deliberately disagrees with the rejected loop's first
   // tentative hop; leaking its constraints would reject this valid loop too.
-  auto later = layer->addPortalLoop(
+  auto later = bw::test::addPortalCycle(layer,
       aperture(25.0f, 0.0f, 15.0f), aperture(75.0f, 0.0f, 26.0f));
   auto after = world.getWorldData();
   require(after->getPortalLiquidDiagnostics().size() == 1 &&
               after->getPortalLiquidAdjacency().size() == 4 &&
               std::ranges::any_of(after->getPortalLiquidAdjacency(),
-                                  [&](auto const& hop) { return hop.loopId == later; }),
+                                  [&](auto const& hop) { return hop.cyclePortalId == later; }),
           "a failed trial poisoned the constraints for a later valid loop");
   requireNear(liquidVolume(after), 20.0 * 2500.0,
               "a later accepted loop lost Liquid volume");
@@ -511,27 +508,20 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
       after->getArrangement(), after->getWalls(), after->getHydraulicCells(),
       shuffled);
   require(reordered.diagnostics.size() == 1 &&
-              reordered.diagnostics.front().loopId == rejected &&
+              reordered.diagnostics.front().cyclePortalId == rejected &&
               reordered.adjacency.size() == after->getPortalLiquidAdjacency().size(),
           "trial order depended on snapshot vector order rather than stable IDs");
   for (size_t index = 0; index < reordered.adjacency.size(); ++index) {
     auto const& actual = reordered.adjacency[index];
     auto const& expected = after->getPortalLiquidAdjacency()[index];
-    require(actual.loopId == expected.loopId &&
+    require(actual.cyclePortalId == expected.cyclePortalId &&
                 actual.sourceEndpointId == expected.sourceEndpointId &&
                 actual.cell0 == expected.cell0 && actual.cell1 == expected.cell1,
             "stable loop order did not produce stable directed hops");
   }
 
-  // The transitional independent namespace is shared by multiple cycles.
-  // Conflict arbitration and diagnostics must use their stable member IDs.
+  // Independent cycles arbitrate by their smallest stable Portal ID.
   auto named = after->getPortalLoops();
-  for (auto& cycle : named) {
-    auto offset = cycle.loopId * 10;
-    for (auto& endpoint : cycle.endpoints) endpoint.endpointId += offset;
-    for (auto& id : cycle.traversalOrder) id += offset;
-    cycle.loopId = bw::core::IndependentPortalLoopId;
-  }
   auto resolveNamed = [&] {
     return bw::core::BuildPortalLiquidAdjacency(after->getArrangement(),
         after->getWalls(), after->getHydraulicCells(), named);
@@ -540,8 +530,8 @@ void lateLoopConflictsAreAtomicAndLiquidOnly() {
   std::ranges::reverse(named);
   auto reversedNamed = resolveNamed();
   require(namedResult.diagnostics.size() == 1 && reversedNamed.diagnostics.size() == 1 &&
-          namedResult.diagnostics.front().cyclePortalId == rejected * 10 &&
-          reversedNamed.diagnostics.front().cyclePortalId == rejected * 10 &&
+          namedResult.diagnostics.front().cyclePortalId == rejected &&
+          reversedNamed.diagnostics.front().cyclePortalId == rejected &&
           namedResult.adjacency.size() == 4 && reversedNamed.adjacency.size() == 4,
           "independent-cycle conflict handling lost atomicity or stable identity");
   for (size_t i = 0; i < namedResult.adjacency.size(); ++i) {

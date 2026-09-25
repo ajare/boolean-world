@@ -1,6 +1,8 @@
+#include "PortalTestSupport.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <format>
 #include <iostream>
 #include <memory>
@@ -78,6 +80,192 @@ bw::core::World binaryRoundTrip(bw::core::World const& world) {
   return result;
 }
 
+void legacyMigrationIsDeterministicAcrossLoopsAndLayers() {
+  bw::core::World source(200, 10);
+  auto* room = addRoom(source);
+  {
+    auto mutation = room->mutate();
+    mutation.animation(bw::core::VertexTransformer::Key::OrbitDistance)
+        .setPoints({{0, 0}, {1, 0}});
+  }
+  auto yaml = serializeWorld(source);
+  yaml += R"(
+      nextPortalLoopId: 9
+      portalLoops:
+        - id: 8
+          nextEndpointId: 94
+          endpoints:
+            - {id: 93, centre: [50, -9], width: 18, bottom: 0, top: 24}
+            - {id: 17, centre: [-50, 7], width: 20, bottom: 0, top: 24}
+            - {id: 42, centre: [0, 50], width: 16, bottom: 0, top: 24}
+          traversalOrder: [{endpointId: 17}, {endpointId: 42}, {endpointId: 93}]
+        - id: 2
+          nextEndpointId: 94
+          endpoints:
+            - {id: 93, centre: [50, -30], width: 16, bottom: 0, top: 24}
+            - {id: 17, centre: [-50, -30], width: 16, bottom: 0, top: 24}
+          traversalOrder: [{endpointId: 93}, {endpointId: 17}]
+)";
+  // Each Layer restarts its own migration identities and default-name search.
+  auto layerStart = yaml.find("\n    - id: 0");
+  require(layerStart != std::string::npos, "legacy Layer fixture missing");
+  auto secondLayer = yaml.substr(layerStart);
+  secondLayer.replace(secondLayer.find("id: 0"), 5, "id: 1");
+  auto twoLayers = deserializeWorld(yaml + secondLayer);
+  for (auto const* layer : twoLayers.getLayers()) {
+    require(layer->getPortals().size() == 5 && layer->getPortal(0)->getName() == "Portal 1" &&
+                layer->getPortal(4)->getTargetId() == 3,
+            "legacy migration identities or names escaped their owning Layer");
+  }
+  for (auto const& suffix : {
+           "\n      nextPortalId: 4294967294\n      portals: []\n",
+           "\n      nextPortalPairId: 0\n      portalPairs: []\n"}) {
+    bool rejected = false;
+    try { (void)deserializeWorld(yaml + suffix); } catch (std::exception const&) { rejected = true; }
+    require(rejected, "exhausted Portal allocator or ambiguous legacy schema accepted");
+  }
+  auto migrated = deserializeWorld(yaml);
+  auto repeated = deserializeWorld(yaml);
+  auto canonical = serializeWorld(migrated);
+  auto yamlReload = deserializeWorld(canonical);
+  auto binaryReload = binaryRoundTrip(migrated);
+  require(canonical == serializeWorld(repeated) && canonical == serializeWorld(yamlReload) &&
+              canonical == serializeWorld(binaryReload),
+          "migration and named-schema round trips must be deterministic");
+  require(canonical.find("portalLoops:") == std::string::npos &&
+              canonical.find("traversalOrder:") == std::string::npos &&
+              canonical.find("nextPortalLoopId:") == std::string::npos,
+          "new saves retained authored-loop schema");
+  for (auto* candidate : {&migrated, &yamlReload, &binaryReload}) {
+    auto const* layer = candidate->getActiveLayer();
+    require(layer->getPortals().size() == 5, "migration lost an aperture");
+    for (uint32_t id = 0; id < 5; ++id) {
+      auto const* portal = layer->getPortal(id);
+      require(portal && portal->getName() == std::format("Portal {}", id + 1) &&
+                  portal->getTargetId() == std::array<uint32_t, 5>{1, 2, 0, 4, 3}[id],
+              "migration ignored old-loop/traversal order or collided local IDs");
+    }
+    require(layer->getPortal(1)->getAperture().centre == wp::Vector2{0, 50} &&
+                layer->getPortal(2)->getAperture().centre == wp::Vector2{50, -9},
+            "migration confused storage with traversal order");
+    auto data = candidate->getWorldData();
+    auto const* cycle = data->findPortalLoop(layer->getId(), 0);
+    require(cycle && cycle->active && cycle->traversalOrder == std::vector<uint32_t>{0, 1, 2} &&
+                cycle->endpoints.front().aperture.width == 16,
+            "migration changed inferred routing or resolved width");
+  }
+  for (auto const& [before, after] : std::vector<std::pair<std::string, std::string>>{
+           {"endpointId: 42", "endpointId: 17"},
+           {"endpointId: 42", "endpointId: 999"},
+           {"nextEndpointId: 94", "nextEndpointId: 42"}}) {
+    auto malformed = yaml;
+    malformed.replace(malformed.find(before), before.size(), after);
+    bool rejected = false;
+    try { (void)deserializeWorld(malformed); } catch (std::exception const&) { rejected = true; }
+    require(rejected, "invalid legacy traversal or allocator was accepted");
+  }
+}
+
+// Build old positional tails explicitly, independent of the current writer's
+// schema. A one-Layer v5 World ends in nextPortalId, the empty Portal array,
+// then the Layer-array terminator. All earlier fields are unchanged since v1.
+void legacyBinaryVersionsAndMixedNamesMigrate() {
+  bw::core::World empty(200, 10);
+  auto writer = std::shared_ptr<bw::core::BinarySerializer>(bw::core::BinarySerializer::toString());
+  bw::core::SerializationWorkData work;
+  empty.serialize(writer, work);
+  auto base = writer->getSerializedString();
+  uint32_t currentVersion{};
+  std::memcpy(&currentVersion, base.data() + 4, sizeof(currentVersion));
+  require(currentVersion == 5 && base.substr(base.size() - 6) == std::string(6, '\0'),
+          "v5 writer did not emit exactly the named-only empty Layer tail");
+  base.resize(base.size() - 6);
+  auto readBinary = [](std::string const& bytes) {
+    auto reader = std::shared_ptr<bw::core::BinarySerializer>(bw::core::BinarySerializer::fromString(bytes));
+    reader->deserialize();
+    bw::core::World result(200, 10);
+    bw::core::SerializationWorkData work;
+    work.accelGridSize = 10;
+    work.allowEmptyWorld = true;
+    require(result.deserialize(reader, work), "legacy binary failed to deserialize");
+    return result;
+  };
+  for (uint32_t version = 1; version <= 4; ++version) {
+    auto tail = std::shared_ptr<bw::core::BinarySerializer>(bw::core::BinarySerializer::toString());
+    if (version >= 2) {
+      tail->writeUint32("nextLegacyId", 1);
+      tail->beginArray("legacy");
+      tail->beginMap("loop");
+      tail->writeUint32("id", 0);
+      if (version >= 3) tail->writeUint32("nextEndpointId", 94);
+      tail->beginArray("endpoints");
+      for (uint32_t slot = 0; slot < 2; ++slot) {
+        tail->beginMap("endpoint");
+        if (version == 2) tail->writeUint8("id", uint8_t(slot));
+        else tail->writeUint32("id", slot == 0 ? 93 : 17);
+        tail->writeVector2("centre", slot == 0 ? wp::Vector2{50, -9} : wp::Vector2{-50, 7});
+        tail->writeFloat("width", slot == 0 ? 18 : 20);
+        tail->writeFloat("bottom", 3);
+        tail->writeFloat("top", 27);
+        tail->endMap();
+      }
+      tail->endArray();
+      if (version >= 3) {
+        tail->beginArray("traversalOrder");
+        for (auto id : {17u, 93u}) {
+          tail->beginMap("entry");
+          tail->writeUint32("endpointId", id);
+          tail->endMap();
+        }
+        tail->endArray();
+      }
+      tail->endMap();
+      tail->endArray();
+    }
+    if (version == 4) {
+      tail->writeUint32("nextPortalId", 3);
+      tail->beginArray("portals");
+      tail->beginMap("portal");
+      tail->writeUint32("id", 2);
+      tail->writeString("name", "pOrTaL 1");
+      tail->writeVector2("centre", {0, 0});
+      tail->writeFloat("width", 16);
+      tail->writeFloat("bottom", 0);
+      tail->writeFloat("top", 24);
+      tail->writeUint32("targetId", 2);
+      tail->endMap();
+      tail->endArray();
+    }
+    auto bytes = base + tail->getSerializedString().substr(8) + std::string(1, '\0');
+    std::memcpy(bytes.data() + 4, &version, sizeof(version));
+    auto loaded = readBinary(bytes);
+    auto repeated = readBinary(bytes);
+    auto reloaded = binaryRoundTrip(loaded);
+    require(serializeWorld(loaded) == serializeWorld(repeated) &&
+                serializeWorld(loaded) == serializeWorld(reloaded),
+            "binary legacy identities or apertures changed on repeat/reload");
+    auto const* layer = loaded.getActiveLayer();
+    if (version == 1) {
+      require(layer->getPortals().empty(), "v1 World acquired Portals");
+    } else {
+      auto first = version == 4 ? 3u : 0u;
+      auto const* portal = layer->getPortal(first);
+      require(portal && portal->getTargetId() == first + 1 &&
+                  layer->getPortal(first + 1)->getTargetId() == first &&
+                  portal->getName() == (version == 4 ? "Portal 2" : "Portal 1") &&
+                  portal->getAperture().centre == (version == 2 ? wp::Vector2{50, -9} : wp::Vector2{-50, 7}) &&
+                  portal->getAperture().bottom == 3 && portal->getAperture().top == 27,
+              "legacy pair/loop order, aperture, allocator or unique name lost");
+    }
+    if (version >= 2) {
+      auto truncated = bytes.substr(0, bytes.size() - 2);
+      bool rejected = false;
+      try { (void)readBinary(truncated); } catch (std::exception const&) { rejected = true; }
+      require(rejected, "truncated legacy binary was accepted");
+    }
+  }
+}
+
 void namedCyclesFollowStableTargets() {
   bw::core::World world(200, 10);
   auto* room = addRoom(world);
@@ -109,7 +297,7 @@ void namedCyclesFollowStableTargets() {
             owner->getPortal(c)->getName() == "Destination C",
             "copy, rename or persistence changed target IDs");
     auto data = copy.getWorldData();
-    auto* loop = data->findPortalLoop(owner->getId(), bw::core::IndependentPortalLoopId, b);
+    auto* loop = data->findPortalLoop(owner->getId(), b);
     require(loop != nullptr, "named cycle missing");
     require(loop->active, stage + ": named cycle inactive: " +
         std::string(bw::core::PortalTargetGraphDiagnosticText(
@@ -152,8 +340,8 @@ void namedCyclesFollowStableTargets() {
             candidate->getNextPortalAllocator() == layer->getNextPortalAllocator(),
             "Layer value operations lost Portal state");
   }
-  std::vector<bw::core::PortalLoopSnapshot> snapshots;
-  for (auto const& portal : layer->getPortals()) snapshots.push_back({layer->getId(), {}, portal});
+  std::vector<bw::core::PortalSnapshot> snapshots;
+  for (auto const& portal : layer->getPortals()) snapshots.push_back({layer->getId(), portal});
   auto resolve = [&] { return bw::core::ResolvePortalLoops(data->getArrangement(), data->getWalls(), snapshots); };
   auto original = resolve();
   std::reverse(snapshots.begin(), snapshots.end());
@@ -177,12 +365,12 @@ void namedCyclesFollowStableTargets() {
   require(rejected, "deserialization resolved a target in a foreign Layer");
   layer->setPortalAperture(c, aperture(13, 50, 24, 6, 31));
   auto invalid = world.getWorldData();
-  require(!invalid->findPortalLoop(layer->getId(), bw::core::IndependentPortalLoopId, a)->active,
+  require(!invalid->findPortalLoop(layer->getId(), a)->active,
           "unequal-height cycle did not fail atomically");
   layer->setPortalTarget(a, b);
   layer->setPortalTarget(c, c);
   auto pair = world.getWorldData();
-  auto const* resolvedPair = pair->findPortalLoop(layer->getId(), bw::core::IndependentPortalLoopId, a);
+  auto const* resolvedPair = pair->findPortalLoop(layer->getId(), a);
   require(resolvedPair && resolvedPair->active && resolvedPair->endpoints.size() == 2 &&
           bw::core::NextPortalEndpoint(*resolvedPair, a)->endpointId == b &&
           bw::core::NextPortalEndpoint(*resolvedPair, b)->endpointId == a,
@@ -194,7 +382,7 @@ void namedCyclesFollowStableTargets() {
           "destination deletion reconnected a cycle or left dangling targets");
   auto deleted = world.getWorldData();
   auto const* endpoint = deleted->findPortalEndpoint(
-      layer->getId(), bw::core::IndependentPortalLoopId, c);
+      layer->getId(), c);
   require(endpoint && endpoint->targetGraphDiagnostic != bw::core::PortalTargetGraphDiagnostic::None,
           "deleting B from A -> B -> C -> A hid the resulting graph diagnostic");
 }
@@ -227,7 +415,7 @@ void incompleteNamedTargetGraphsRemainAuthoredAndInactive() {
             "an incomplete target graph was normalized during a value operation");
     auto data = candidate.getWorldData();
     auto const* invalid = data->findPortalLoop(
-        owner->getId(), bw::core::IndependentPortalLoopId, a);
+        owner->getId(), a);
     require(invalid && !invalid->active && invalid->endpoints.size() == 2 &&
                 invalid->traversalOrder == std::vector<uint32_t>{a, b},
             "tail-plus-cycle component was omitted, split, or activated");
@@ -251,13 +439,13 @@ void incompleteNamedTargetGraphsRemainAuthoredAndInactive() {
                 data->circleIntersectsWall(bEndpoint->authored.centre, 2.0f) >= 0,
             "an invalid target component cut collision apertures");
     auto const* mirror = data->findPortalLoop(
-        owner->getId(), bw::core::IndependentPortalLoopId, unrelated);
+        owner->getId(), unrelated);
     require(mirror && mirror->active &&
                 data->circleIntersectsWall(
                     mirror->endpoints.front().aperture.centre, 2.0f) < 0,
             "an invalid component deactivated an unrelated Mirror Portal");
     auto const* otherCycle = data->findPortalLoop(
-        owner->getId(), bw::core::IndependentPortalLoopId, cycleFirst);
+        owner->getId(), cycleFirst);
     require(otherCycle && otherCycle->active && otherCycle->endpoints.size() == 2 &&
                 bw::core::NextPortalEndpoint(*otherCycle, cycleFirst)->endpointId ==
                     cycleSecond,
@@ -273,9 +461,9 @@ void incompleteNamedTargetGraphsRemainAuthoredAndInactive() {
   verifyAuthored(copied);
 
   auto data = world.getWorldData();
-  std::vector<bw::core::PortalLoopSnapshot> snapshots;
+  std::vector<bw::core::PortalSnapshot> snapshots;
   for (auto const& portal : layer->getPortals())
-    snapshots.push_back({layer->getId(), {}, portal});
+    snapshots.push_back({layer->getId(), portal});
   auto first = bw::core::ResolvePortalLoops(
       data->getArrangement(), data->getWalls(), snapshots);
   std::reverse(snapshots.begin(), snapshots.end());
@@ -300,7 +488,7 @@ void incompleteNamedTargetGraphsRemainAuthoredAndInactive() {
   layer->setPortalTarget(b, a);
   auto completed = world.getWorldData();
   auto const* cycle = completed->findPortalLoop(
-      layer->getId(), bw::core::IndependentPortalLoopId, a);
+      layer->getId(), a);
   require(cycle && cycle->active && cycle->endpoints.size() == 2 &&
               bw::core::NextPortalEndpoint(*cycle, a)->endpointId == b &&
               bw::core::NextPortalEndpoint(*cycle, b)->endpointId == a &&
@@ -313,10 +501,9 @@ void namedMirrorsRoundTripAndResolveIndependently() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
   auto* layer = world.getActiveLayer();
-  auto legacy = layer->addPortalLoop(aperture(-50, -25), aperture(50, -25));
   auto first = layer->addPortal(aperture(-50, 17));
   auto second = layer->addPortal(aperture(50, 17));
-  require(first == 0 && second == 1 && legacy == 0,
+  require(first == 0 && second == 1,
           "independent Portal and legacy identities are not separate");
   require(layer->getPortal(first)->getName() == "Portal 1" &&
           layer->getPortal(second)->getName() == "Portal 2" &&
@@ -340,7 +527,7 @@ void namedMirrorsRoundTripAndResolveIndependently() {
             portal->getTargetId() == replacement &&
             portal->getAperture().centre == wp::Vector2{-50, 17} &&
             portal->getAperture().width == 16 && portal->getAperture().bottom == 0 &&
-            portal->getAperture().top == 24 && owner->getPortalLoop(legacy),
+            portal->getAperture().top == 24,
             "Mirror authored state or legacy loop lost on copy/load");
   };
   verify(deserializeWorld(serializeWorld(world)));
@@ -366,8 +553,7 @@ void namedMirrorsRoundTripAndResolveIndependently() {
   assigned = world;
   verify(assigned);
   auto data = world.getWorldData();
-  auto const* mirror = data->findPortalLoop(layer->getId(),
-      bw::core::IndependentPortalLoopId, replacement);
+  auto const* mirror = data->findPortalLoop(layer->getId(), replacement);
   require(mirror && mirror->active && mirror->endpoints.size() == 1 &&
           mirror->traversalOrder == std::vector<uint32_t>{replacement},
           "self target did not generate a singleton cycle");
@@ -376,14 +562,8 @@ void namedMirrorsRoundTripAndResolveIndependently() {
   require(mapping.reversesHandedness() && reflected == wp::Vector2{-57, 21} &&
           mapping.transformElevation(13) == 13,
           "generated singleton did not use true planar reflection");
-  require(data->findPortalLoop(layer->getId(), legacy)->active,
-          "Mirror identity collided with a legacy loop");
-  for (auto const& adjacency : data->getPortalLiquidAdjacency())
-    require(adjacency.loopId != bw::core::IndependentPortalLoopId,
-            "Mirror contributed Liquid adjacency");
-  for (auto const& diagnostic : data->getPortalLiquidDiagnostics())
-    require(diagnostic.loopId != bw::core::IndependentPortalLoopId,
-            "Mirror contributed a Liquid error");
+  require(data->getPortalLiquidAdjacency().empty(), "Mirror contributed Liquid adjacency");
+  require(data->getPortalLiquidDiagnostics().empty(), "Mirror contributed a Liquid error");
 
   for (auto const& [authored, expected] : std::vector<std::pair<AuthoredAperture,
           PortalResolutionDiagnostic>>{
@@ -392,7 +572,7 @@ void namedMirrorsRoundTripAndResolveIndependently() {
       {aperture(0, 0), PortalResolutionDiagnostic::MissingRenderedWall}}) {
     layer->setPortalAperture(replacement, authored);
     data = world.getWorldData();
-    mirror = data->findPortalLoop(layer->getId(), bw::core::IndependentPortalLoopId, replacement);
+    mirror = data->findPortalLoop(layer->getId(), replacement);
     require(mirror && !mirror->active && mirror->diagnostic == expected,
             "invalid Mirror did not retain the normal geometric diagnostic");
   }
@@ -402,17 +582,17 @@ void equalAndUnequalWidthsResolveWithoutChangingAuthoredState() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
   auto* layer = world.getActiveLayer();
-  auto const loopId = layer->addPortalLoop(
+  auto const firstPortalId = bw::test::addPortalCycle(layer,
       aperture(-50.0f, 0.0f, 16.0f), aperture(50.0f, 0.0f, 28.0f));
 
   auto snapshot = world.getWorldData();
-  auto const* resolved = snapshot->findPortalLoop(layer->getId(), loopId);
+  auto const* resolved = snapshot->findPortalLoop(layer->getId(), firstPortalId);
   require(resolved && resolved->active,
           "a fully covered Portal loop did not become active");
   auto const* first = snapshot->findPortalEndpoint(
-      layer->getId(), loopId, 0);
+      layer->getId(), 0);
   auto const* second = snapshot->findPortalEndpoint(
-      layer->getId(), loopId, 1);
+      layer->getId(), 1);
   require(first && second &&
               std::abs(first->aperture.width - 16.0f) < 0.001f &&
               std::abs(second->aperture.width - 16.0f) < 0.001f,
@@ -420,8 +600,7 @@ void equalAndUnequalWidthsResolveWithoutChangingAuthoredState() {
   require(first->aperture.centre == wp::Vector2{-50.0f, 0.0f} &&
               second->aperture.centre == wp::Vector2{50.0f, 0.0f},
           "normalizing Portal widths moved an endpoint centre");
-  require(layer->getPortalLoop(loopId)
-                  ->findEndpoint(1)
+  require(layer->getPortal(1)
                   ->getAperture()
                   .width == 28.0f,
           "Portal resolution mutated the wider authored aperture");
@@ -435,9 +614,9 @@ void invalidLoopsStayWholeAndDiagnosable() {
     bw::core::World world(200.0f, 10.0f);
     addRoom(world);
     auto* layer = world.getActiveLayer();
-    auto const loopId = layer->addPortalLoop(first, second);
+    auto const firstPortalId = bw::test::addPortalCycle(layer,first, second);
     auto snapshot = world.getWorldData();
-    auto const* portalLoop = snapshot->findPortalLoop(layer->getId(), loopId);
+    auto const* portalLoop = snapshot->findPortalLoop(layer->getId(), firstPortalId);
     require(portalLoop != nullptr, "selected Portal loop disappeared from generation");
     return *portalLoop;
   };
@@ -490,7 +669,7 @@ void layerSelectionIncludesCompleteLoopsOnly() {
   bw::core::World world(200.0f, 10.0f);
   auto* first = world.getActiveLayer();
   addRoom(world);
-  auto const loopId = first->addPortalLoop(
+  auto const firstPortalId = bw::test::addPortalCycle(first,
       aperture(-50.0f, 0.0f), aperture(50.0f, 0.0f));
   auto mirrorId = first->addPortal(aperture(-50, 25));
   auto* second = world.addLayer("Second");
@@ -498,23 +677,23 @@ void layerSelectionIncludesCompleteLoopsOnly() {
   auto* generator = world.getWorldDataGenerator();
   generator->setLayerSelection(bw::core::SelectLayer(second->getId()));
   auto absent = world.getWorldData();
-  require(!absent->findPortalLoop(first->getId(), bw::core::IndependentPortalLoopId, mirrorId),
+  require(!absent->findPortalLoop(first->getId(), mirrorId),
           "Mirror participated while its owning Layer was unselected");
-  require(absent->findPortalLoop(first->getId(), loopId) == nullptr,
+  require(absent->findPortalLoop(first->getId(), firstPortalId) == nullptr,
           "a Portal loop participated while its owning Layer was unselected");
 
   generator->setLayerSelection(bw::core::SelectLayer(first->getId()));
   auto present = world.getWorldData();
-  auto const* mirror = present->findPortalLoop(first->getId(), bw::core::IndependentPortalLoopId, mirrorId);
+  auto const* mirror = present->findPortalLoop(first->getId(), mirrorId);
   require(mirror && mirror->active, "selecting a Layer failed to include its Mirror");
-  auto const* resolved = present->findPortalLoop(first->getId(), loopId);
+  auto const* resolved = present->findPortalLoop(first->getId(), firstPortalId);
   require(resolved && resolved->active,
           "selecting a Portal's Layer did not include both endpoints");
 
   // Geometry only on an unselected Layer cannot satisfy either endpoint.
   bw::core::World split(200.0f, 10.0f);
   auto* portalLayer = split.getActiveLayer();
-  auto const splitLoop = portalLayer->addPortalLoop(
+  auto const splitLoop = bw::test::addPortalCycle(portalLayer,
       aperture(-50.0f, 0.0f), aperture(50.0f, 0.0f));
   auto* geometryLayer = split.addLayer("Geometry");
   split.setActiveLayer(geometryLayer);
@@ -528,196 +707,22 @@ void layerSelectionIncludesCompleteLoopsOnly() {
           "Portal resolution used geometry absent from the selected generation");
 }
 
-void identityAndEndpointStateRoundTripCopyAndAssignment() {
-  bw::core::World source(200.0f, 10.0f);
-  addRoom(source);
-  auto* layer = source.getActiveLayer();
-  auto removed = layer->addPortalLoop(
-      aperture(-50.0f, -20.0f), aperture(50.0f, -20.0f));
-  layer->removePortalLoop(removed);
-  auto const loopId = layer->addPortalLoop(
-      aperture(-50.0f, 7.0f, 18.0f, 3.0f, 27.0f),
-      aperture(50.0f, -9.0f, 22.0f, 5.0f, 29.0f));
 
-  bw::core::World copied(source);
-  bw::core::World assigned(100.0f, 10.0f);
-  assigned = source;
-  auto loaded = deserializeWorld(serializeWorld(source));
-  auto binaryLoaded = binaryRoundTrip(source);
-  for (auto const* candidate : {&copied, &assigned, &loaded, &binaryLoaded}) {
-    auto const* portalLoop = candidate->getActiveLayer()->getPortalLoop(loopId);
-    require(portalLoop && portalLoop->getId() == loopId,
-            "Portal loop identity did not survive a value operation");
-    auto const& first = portalLoop->findEndpoint(0)->getAperture();
-    auto const& second = portalLoop->findEndpoint(1)->getAperture();
-    require(first.centre == wp::Vector2{-50.0f, 7.0f} &&
-                first.width == 18.0f && first.bottom == 3.0f &&
-                first.top == 27.0f &&
-                second.centre == wp::Vector2{50.0f, -9.0f} &&
-                second.width == 22.0f && second.bottom == 5.0f &&
-                second.top == 29.0f,
-            "Portal endpoint state did not survive a value operation");
-  }
 
-  auto const yaml = serializeWorld(source);
-  require(yaml.find("wallIndices") == std::string::npos &&
-              yaml.find("edge:") == std::string::npos,
-          "generated wall identity leaked into Portal serialization");
-
-  bw::core::World deletedLoopWorld(200.0f, 10.0f);
-  auto* deletedLoopLayer = deletedLoopWorld.getActiveLayer();
-  auto const deletedId = deletedLoopLayer->addPortalLoop(
-      aperture(-50.0f, 0.0f), aperture(50.0f, 0.0f));
-  deletedLoopLayer->removePortalLoop(deletedId);
-  auto yamlAfterDelete = deserializeWorld(serializeWorld(deletedLoopWorld));
-  auto binaryAfterDelete = binaryRoundTrip(deletedLoopWorld);
-  require(yamlAfterDelete.getActiveLayer()->addPortalLoop(
-              aperture(-50.0f, 0.0f), aperture(50.0f, 0.0f)) == 1 &&
-              binaryAfterDelete.getActiveLayer()->addPortalLoop(
-                  aperture(-50.0f, 0.0f), aperture(50.0f, 0.0f)) == 1,
-          "reload reused a deleted Portal loop's stable id");
-
-  auto generationInput = bw::core::snapshotPortalLoops(
-      source, bw::core::SelectAllLayers());
-  auto changed = layer->getPortalLoop(loopId)
-                     ->findEndpoint(0)
-                     ->getAperture();
-  changed.centre = {-25.0f, 25.0f};
-  layer->setPortalEndpointAperture(loopId, 0, changed);
-  require(generationInput.size() == 1 &&
-              generationInput.front().loop.getTraversalOrder()[0] == 0 &&
-              generationInput.front().loop.findEndpoint(0)
-                      ->getAperture()
-                      .centre == wp::Vector2{-50.0f, 7.0f},
-          "asynchronous generation input did not retain endpoint identity and state");
-}
-
-void serializedEndpointSequenceCarriesExplicitTraversalOrder() {
-  bw::core::World source(200.0f, 10.0f);
-  addRoom(source);
-  auto* layer = source.getActiveLayer();
-  auto const loopId = layer->addPortalLoop(
-      aperture(-50.0f, 7.0f), aperture(50.0f, -9.0f));
-
-  require(layer->movePortalEndpointEarlier(loopId, 1),
-          "two-endpoint Portal loop could not be reordered");
-  auto yaml = serializeWorld(source);
-  auto const endpoints = yaml.find("endpoints:", yaml.find("portalLoops:"));
-  auto const order = yaml.find("traversalOrder:", endpoints);
-  require(endpoints != std::string::npos && order != std::string::npos &&
-              yaml.find("endpointId: 1", order) <
-                  yaml.find("endpointId: 0", order),
-          "Portal loop serialization omitted explicit traversal order");
-
-  auto loaded = deserializeWorld(yaml);
-  auto const* loadedLoop = loaded.getActiveLayer()->getPortalLoop(loopId);
-  require(loadedLoop && loadedLoop->getTraversalOrder()[0] == 1 &&
-              loadedLoop->getTraversalOrder()[1] == 0 &&
-              loadedLoop->findEndpoint(0)->getAperture().centre ==
-                  wp::Vector2{-50.0f, 7.0f} &&
-              loadedLoop->findEndpoint(1)->getAperture().centre ==
-                  wp::Vector2{50.0f, -9.0f},
-          "deserialization confused explicit traversal order with endpoint identity");
-
-  auto snapshot = loaded.getWorldData();
-  auto const* resolved = snapshot->findPortalLoop(
-      loaded.getActiveLayer()->getId(), loopId);
-  require(resolved && resolved->traversalOrder ==
-                          std::vector<uint32_t>{1, 0} &&
-              snapshot->findPortalEndpoint(
-                  loaded.getActiveLayer()->getId(), loopId, 1)
-                      ->authored.centre == wp::Vector2{50.0f, -9.0f},
-          "generation did not preserve serialized endpoint identity and order");
-
-  auto const saved = serializeWorld(loaded);
-  auto const savedOrder =
-      saved.find("traversalOrder:", saved.find("portalLoops:"));
-  require(saved.find("endpointId: 1", savedOrder) <
-              saved.find("endpointId: 0", savedOrder),
-          "saving changed the explicit loop traversal order or its format");
-}
-
-void orderedLoopsPreserveStableIdentityAndResolveEveryEndpoint() {
-  bw::core::World world(200.0f, 10.0f);
-  addRoom(world);
-  auto* layer = world.getActiveLayer();
-  auto const loopId = layer->addPortalLoop(
-      aperture(-50.0f, 0.0f, 20.0f),
-      aperture(50.0f, 0.0f, 18.0f));
-  auto const thirdId = layer->addPortalEndpointAfter(
-      loopId, 0, aperture(0.0f, 50.0f, 14.0f));
-  auto const* loop = layer->getPortalLoop(loopId);
-  require(thirdId == 2 &&
-              std::ranges::equal(
-                  loop->getTraversalOrder(),
-                  std::array<uint32_t, 3>{0, 2, 1}) &&
-              loop->getNextEndpointId(0) == 2 &&
-              loop->getNextEndpointId(2) == 1 &&
-              loop->getNextEndpointId(1) == 0,
-          "adding a Portal endpoint did not splice the directed loop");
-
-  require(layer->movePortalEndpointLater(loopId, thirdId) &&
-              loop->getTraversalOrder()[1] == 1 &&
-              loop->getTraversalOrder()[2] == thirdId &&
-              layer->movePortalEndpointEarlier(loopId, thirdId) &&
-              loop->getTraversalOrder()[1] == thirdId,
-          "reordering a Portal endpoint did not preserve its stable identity");
-  layer->removePortalEndpoint(loopId, thirdId);
-  auto const replacementId = layer->addPortalEndpointAfter(
-      loopId, 0, aperture(0.0f, 50.0f, 14.0f));
-  require(replacementId == 3 &&
-              !loop->findEndpoint(thirdId) &&
-              loop->getNextEndpointId(0) == replacementId,
-          "Portal endpoint deletion reused an identity or failed to reconnect neighbours");
-
-  auto snapshot = world.getWorldData();
-  auto const* resolved = snapshot->findPortalLoop(layer->getId(), loopId);
-  require(resolved && resolved->active && resolved->endpoints.size() == 3 &&
-              std::ranges::all_of(
-                  resolved->endpoints,
-                  [](auto const& endpoint) {
-                    return endpoint.resolved &&
-                           std::abs(endpoint.aperture.width - 14.0f) < 0.001f;
-                  }) &&
-              bw::core::NextPortalEndpoint(*resolved, 0)->endpointId ==
-                  replacementId &&
-              bw::core::NextPortalEndpoint(*resolved, replacementId)
-                      ->endpointId == 1 &&
-              bw::core::NextPortalEndpoint(*resolved, 1)->endpointId == 0,
-          "three-endpoint Portal loop did not resolve and route as one directed cycle");
-
-  auto const yaml = serializeWorld(world);
-  require(yaml.find("portalLoops:") != std::string::npos &&
-              yaml.find("traversalOrder:") != std::string::npos &&
-              yaml.find("portalPairs:") == std::string::npos,
-          "new saves did not emit only the explicit Portal-loop schema");
-  auto loaded = deserializeWorld(yaml);
-  auto const* loadedLoop = loaded.getActiveLayer()->getPortalLoop(loopId);
-  require(loadedLoop && loadedLoop->getTraversalOrder().size() == 3 &&
-              loadedLoop->getNextEndpointAllocator() == 4,
-          "Portal loop identities and allocator did not survive serialization");
-
-  try {
-    layer->removePortalEndpoint(loopId, replacementId);
-    layer->removePortalEndpoint(loopId, 1);
-    require(false, "a two-endpoint Portal loop allowed endpoint deletion");
-  } catch (bw::core::CoreException const&) {
-  }
-}
 
 void activeAperturesCutWallRenderingCollisionAndExposeFallback() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
   auto* layer = world.getActiveLayer();
-  auto loopId = layer->addPortalLoop(
+  auto firstPortalId = bw::test::addPortalCycle(layer,
       aperture(-50.0f, 0.0f, 16.0f),
       aperture(50.0f, 0.0f, 16.0f));
   auto snapshot = world.getWorldData();
-  auto const* portalLoop = snapshot->findPortalLoop(layer->getId(), loopId);
+  auto const* portalLoop = snapshot->findPortalLoop(layer->getId(), firstPortalId);
   require(portalLoop && portalLoop->active, "Portal aperture fixture did not resolve");
 
   auto const* endpoint = snapshot->findPortalEndpoint(
-      layer->getId(), loopId, 0);
+      layer->getId(), 0);
   auto wallIndex = endpoint->aperture.wallIndices.front();
   auto segments = snapshot->getWallCollisionSegments(wallIndex);
   require(segments.size() == 2,
@@ -832,11 +837,7 @@ void canonicalNextEndpointRoutesByStableIdentity() {
   std::array<uint32_t, 1> singleton{17};
   require(bw::core::NextPortalEndpointId(singleton, 17) == 17,
           "generated singleton did not route to itself");
-  try {
-    bw::core::PortalLoop invalid{0, 18, {bw::core::PortalEndpoint{17, {}}}, {17}};
-    require(false, "legacy authored singleton Portal loop was accepted");
-  } catch (bw::core::CoreException const&) {
-  }
+
   std::array<uint32_t, 3> duplicate{17, 42, 17};
   try {
     [[maybe_unused]] auto next = bw::core::NextPortalEndpointId(duplicate, 17);
@@ -849,23 +850,23 @@ void canonicalRigidTransformPreservesScaleAndWorldUp() {
   bw::core::World world(200.0f, 10.0f);
   addRoom(world);
   auto* layer = world.getActiveLayer();
-  auto loopId = layer->addPortalLoop(
+  auto firstPortalId = bw::test::addPortalCycle(layer,
       aperture(-50.0f, 0.0f, 16.0f, 2.0f, 26.0f),
       aperture(0.0f, 50.0f, 16.0f, 10.0f, 34.0f));
   auto snapshot = world.getWorldData();
-  auto const* portalLoop = snapshot->findPortalLoop(layer->getId(), loopId);
+  auto const* portalLoop = snapshot->findPortalLoop(layer->getId(), firstPortalId);
   require(portalLoop && portalLoop->active, "rigid Portal transform fixture did not resolve");
-  require(layer->getPortalLoop(loopId)->getNextEndpointId(0) == 1 &&
-              layer->getPortalLoop(loopId)->getNextEndpointId(1) == 0 &&
+  require(layer->getPortal(0)->getTargetId() == 1 &&
+              layer->getPortal(1)->getTargetId() == 0 &&
               bw::core::NextPortalEndpoint(*portalLoop, 0)->endpointId == 1 &&
               bw::core::NextPortalEndpoint(*portalLoop, 1)->endpointId == 0,
           "authored and resolved two-endpoint routes disagree");
   auto reverse = bw::core::BuildPortalMapping(*portalLoop, 1);
   require(reverse.source.centre ==
-                  snapshot->findPortalEndpoint(layer->getId(), loopId, 1)
+                  snapshot->findPortalEndpoint(layer->getId(), 1)
                       ->aperture.centre &&
               reverse.destination.centre ==
-                  snapshot->findPortalEndpoint(layer->getId(), loopId, 0)
+                  snapshot->findPortalEndpoint(layer->getId(), 0)
                       ->aperture.centre,
           "reverse route did not exit through the first endpoint");
   auto transform = bw::core::BuildPortalMapping(*portalLoop, 0);
@@ -960,15 +961,14 @@ void reflectionMappingIsNotAHalfTurn() {
 int main() {
   try {
     bw::core::LayerBuildStep::registerCoreTypes();
+    legacyMigrationIsDeterministicAcrossLoopsAndLayers();
+    legacyBinaryVersionsAndMixedNamesMigrate();
     namedMirrorsRoundTripAndResolveIndependently();
     namedCyclesFollowStableTargets();
     incompleteNamedTargetGraphsRemainAuthoredAndInactive();
     equalAndUnequalWidthsResolveWithoutChangingAuthoredState();
     invalidLoopsStayWholeAndDiagnosable();
     layerSelectionIncludesCompleteLoopsOnly();
-    identityAndEndpointStateRoundTripCopyAndAssignment();
-    serializedEndpointSequenceCarriesExplicitTraversalOrder();
-    orderedLoopsPreserveStableIdentityAndResolveEveryEndpoint();
     activeAperturesCutWallRenderingCollisionAndExposeFallback();
     portalCentresSnapOnlyToNearestLegalWallCoverage();
     canonicalNextEndpointRoutesByStableIdentity();

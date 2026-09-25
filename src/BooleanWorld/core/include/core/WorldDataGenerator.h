@@ -51,7 +51,7 @@ selectAndOrderPrimitiveEntries(
 
 // Copies complete loops from selected owning Layers. Portal participation is
 // intentionally not inferred endpoint-by-endpoint.
-[[nodiscard]] BW_API std::vector<PortalLoopSnapshot> snapshotPortalLoops(
+[[nodiscard]] BW_API std::vector<PortalSnapshot> snapshotPortals(
     World const& world, LayerSelection const& selection);
 
 class WorldDataGenerator {

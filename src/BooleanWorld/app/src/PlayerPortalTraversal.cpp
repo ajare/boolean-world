@@ -14,7 +14,7 @@ constexpr float RepeatedStateTolerance = 0.001f;
 
 PortalEndpointIdentity Identity(
     core::ResolvedPortalLoop const& portalLoop, uint32_t endpointId) {
-  return {portalLoop.layerId, portalLoop.loopId, endpointId};
+  return {portalLoop.layerId, endpointId};
 }
 
 bool SameRepeatedState(
@@ -149,7 +149,7 @@ void updatePortalExitSideState(
     PortalExitSideState& state) {
   if (!state.active) return;
   auto const* portalLoop = world.findPortalLoop(
-      state.endpoint.layerId, state.endpoint.loopId, state.endpoint.endpointId);
+      state.endpoint.layerId, state.endpoint.endpointId);
   auto const* endpoint = portalLoop
                              ? core::FindPortalEndpoint(
                                    *portalLoop, state.endpoint.endpointId)

@@ -18,7 +18,6 @@
 
 struct PortalEndpointKey {
   uint32_t layerId{};
-  uint32_t loopId{};
   uint32_t endpointId{};
 
   auto operator<=>(PortalEndpointKey const&) const = default;

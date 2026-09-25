@@ -1,3 +1,4 @@
+#include "../../core/tests/PortalTestSupport.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -39,10 +40,10 @@ struct Fixture {
     room->setSize(100.0f, 100.0f);
     world.addPrimitive(room);
     auto* layer = world.getActiveLayer();
-    auto loopId = layer->addPortalLoop(
+    auto firstPortalId = bw::test::addPortalCycle(layer,
         {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f}, second);
     data = world.getWorldData();
-    portalLoop = data->findPortalLoop(layer->getId(), loopId);
+    portalLoop = data->findPortalLoop(layer->getId(), firstPortalId);
     require(portalLoop && portalLoop->active, "player Portal fixture did not resolve");
   }
 };
@@ -63,7 +64,7 @@ struct MirrorFixture {
     portalId = layer->addPortal({{-50.0f, 7.0f}, 20.0f, 0.0f, 24.0f});
     data = world.getWorldData();
     portalLoop = data->findPortalLoop(
-        layer->getId(), bw::core::IndependentPortalLoopId, portalId);
+        layer->getId(), portalId);
     require(portalLoop && portalLoop->active &&
                 portalLoop->endpoints.size() == 1,
             "player Mirror Portal fixture did not resolve");
@@ -209,7 +210,7 @@ void mirrorTraversalReflectsAsymmetricSweptMotion() {
           "Mirror crossing used a rotation instead of canonical reflection");
   auto const identity = bw::app::PortalEndpointIdentity{
       fixture.portalLoop->layerId,
-      bw::core::IndependentPortalLoopId, fixture.portalId};
+      fixture.portalId};
   require(state.exitSide.active && state.exitSide.endpoint == identity &&
               state.cameraCut,
           "Mirror traversal did not retain stable identity or camera-cut state");
@@ -416,7 +417,7 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   auto const& destination = routedLoop.endpoints[1].aperture;
   require(state.crossings == 1 &&
               state.exitSide.endpoint == bw::app::PortalEndpointIdentity{
-                  routedLoop.layerId, routedLoop.loopId,
+                  routedLoop.layerId,
                   routedLoop.endpoints[1].endpointId} &&
               (player->getCentre() - destination.centre)
                       .dot(destination.front) > (smallSteps ? 0.0f : 19.9f),
@@ -494,7 +495,7 @@ void threeEndpointLoopTraversesOnlyInDirectedOrder(bool named = false) {
   room->setSize(100.0f, 100.0f);
   world.addPrimitive(room);
   auto* layer = world.getActiveLayer();
-  auto loopId = bw::core::IndependentPortalLoopId;
+  uint32_t firstPortalId = 0;
   uint32_t thirdId;
   if (named) {
     auto a = layer->addPortal({{-50, 7}, 28, 0, 24});
@@ -504,14 +505,13 @@ void threeEndpointLoopTraversesOnlyInDirectedOrder(bool named = false) {
     layer->setPortalTarget(b, thirdId);
     layer->setPortalTarget(thirdId, a);
   } else {
-    loopId = layer->addPortalLoop(
+    firstPortalId = bw::test::addPortalCycle(layer,
         {{-50.0f, 0.0f}, 20.0f, 0.0f, 24.0f},
         {{50.0f, 0.0f}, 20.0f, 0.0f, 24.0f});
-    thirdId = layer->addPortalEndpointAfter(
-        loopId, 1, {{0.0f, 50.0f}, 20.0f, 0.0f, 24.0f});
+    thirdId = bw::test::insertPortalAfter(layer, layer->getPortal(firstPortalId)->getTargetId(), {{0.0f, 50.0f}, 20.0f, 0.0f, 24.0f});
   }
   auto data = world.getWorldData();
-  auto const* loop = data->findPortalLoop(layer->getId(), loopId, 0);
+  auto const* loop = data->findPortalLoop(layer->getId(), 0);
   require(loop && loop->active && loop->endpoints.size() == 3,
           "three-endpoint player Portal fixture did not resolve");
 
@@ -604,7 +604,7 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
 
   auto repeatedMotion = crossingMotion();
   bw::app::PlayerPortalUpdateState repeated;
-  repeated.visited.push_back({{fixture.portalLoop->layerId, fixture.portalLoop->loopId,
+  repeated.visited.push_back({{fixture.portalLoop->layerId,
                                fixture.portalLoop->endpoints[0].endpointId},
                               fixture.portalLoop->endpoints[0].aperture.centre,
                               {-20.0f, 0.0f}});

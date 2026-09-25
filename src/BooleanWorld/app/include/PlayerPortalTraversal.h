@@ -21,7 +21,6 @@ inline constexpr float PortalExitPlaneEpsilon = 0.01f;
 
 struct PortalEndpointIdentity {
   uint32_t layerId{~0u};
-  uint32_t loopId{~0u};
   uint32_t endpointId{~0u};
 
   auto operator<=>(PortalEndpointIdentity const&) const = default;

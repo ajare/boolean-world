@@ -463,7 +463,7 @@ void EditorInteraction::updateSelection(
   // Primitives: their interior is intentionally not a selectable solid face,
   // so treating release as a background click would clear their selection.
   if (mMovingSelectedPrimitives || mScalingSelectedPrimitives ||
-      mRotatingSelectedPrimitives || mMovingSelectedPortalEndpoint) {
+      mRotatingSelectedPrimitives || mMovingSelectedPortal) {
     if (input.leftReleased) {
       mPendingPrimitiveClick.clear();
       mBoxSelectPending = false;
@@ -499,11 +499,10 @@ void EditorInteraction::updateSelection(
         transact(doc, CommandId::SelectWorldVertex, [&] { selectWorldVertex(doc, mHover.indices.front()); });
         break;
 
-      case HoverableType::PortalEndpoint:
-        if (mHover.indices.size() == 2) {
-          transact(doc, CommandId::SelectPortalEndpoint, [&] {
-            selectPortalEndpoint(
-                doc, layer->getId(), mHover.indices[0], mHover.indices[1]);
+      case HoverableType::Portal:
+        if (mHover.indices.size() == 1) {
+          transact(doc, CommandId::SelectPortal, [&] {
+            selectPortal(doc, layer->getId(), mHover.indices[0]);
           });
         }
         break;
@@ -679,38 +678,33 @@ void EditorInteraction::updateDrag(
 
   auto const& primitiveSelection = doc->getSelectedPrimitiveIndices();
   auto selectedTriggerLineIndex = doc->getSelectedTriggerLineIndex();
-  auto selectedPortalLoopId = doc->getSelectedPortalLoopId();
   if (primitiveSelection.empty() && selectedTriggerLineIndex == ~0u &&
-      !doc->hasSelectedPortalEndpoint()) {
+      !doc->hasSelectedPortal()) {
     return;
   }
 
-  if (doc->hasSelectedPortalEndpoint()) {
+  if (doc->hasSelectedPortal()) {
     if (input.leftReleased) {
-      if (mMovingSelectedPortalEndpoint && undoableActionInProgress()) {
+      if (mMovingSelectedPortal && undoableActionInProgress()) {
         commitUndoableAction(doc);
       }
-      mMovingSelectedPortalEndpoint = false;
+      mMovingSelectedPortal = false;
       mPortalDragCumulativeDelta = {};
     } else if (input.leftDragging) {
       auto* portalLayer = doc->getWorld()->getLayer(
           doc->getSelectedPortalLayerId());
-      auto const* portalLoop =
-          portalLayer ? portalLayer->getPortalLoop(selectedPortalLoopId)
-                      : nullptr;
-      auto const endpointId = doc->getSelectedPortalEndpointId();
-      auto const* authored = portalLayer
-          ? portalLayer->findAuthoredPortalAperture(selectedPortalLoopId, endpointId)
-          : nullptr;
+      auto const portalId = doc->getSelectedPortalId();
+      auto const* portal = portalLayer ? portalLayer->getPortal(portalId) : nullptr;
+      auto const* authored = portal ? &portal->getAperture() : nullptr;
       if (authored) {
-        if (!mMovingSelectedPortalEndpoint) {
-          mMovingSelectedPortalEndpoint = true;
+        if (!mMovingSelectedPortal) {
+          mMovingSelectedPortal = true;
           mPortalDragStartPosition =
               authored->centre;
           mPortalDragCumulativeDelta = {};
           if (!undoableActionInProgress()) {
             beginTransaction(
-                doc, CommandId::MovePortalEndpointGesture, 0.0f);
+                doc, CommandId::MovePortalGesture, 0.0f);
           }
         }
         mPortalDragCumulativeDelta +=
@@ -725,9 +719,9 @@ void EditorInteraction::updateDrag(
         if (worldData) {
           auto const& aperture = *authored;
           auto resolvedWidth = aperture.width;
-          if (portalLoop) {
-            for (auto const& endpoint : portalLoop->getEndpoints()) {
-              resolvedWidth = std::min(resolvedWidth, endpoint.getAperture().width);
+          if (auto const* cycle = worldData->findPortalLoop(portalLayer->getId(), portalId)) {
+            for (auto const& endpoint : cycle->endpoints) {
+              resolvedWidth = std::min(resolvedWidth, endpoint.authored.width);
             }
           }
           wallSnap = bw::core::FindNearestLegalPortalCentre(
@@ -741,8 +735,8 @@ void EditorInteraction::updateDrag(
               round(target.x / settings.gridSize) * settings.gridSize,
               round(target.y / settings.gridSize) * settings.gridSize};
         }
-        setPortalEndpointPosition(
-            doc, portalLayer, selectedPortalLoopId, endpointId, target);
+        setPortalPosition(
+            doc, portalLayer, portalId, target);
       }
     }
     return;

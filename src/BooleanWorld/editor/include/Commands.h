@@ -143,17 +143,11 @@ namespace editor {
   X(DeletePortal, "Delete Portal", deletePortal) \
   X(SetPortalName, "Rename Portal", setPortalName) \
   X(SetPortalTarget, "Set Portal target", setPortalTarget) \
-  X(CreatePortalLoop, "Create Portal loop", createPortalLoop) \
-  X(DeletePortalLoop, "Delete Portal loop", deletePortalLoop) \
-  X(AddPortalEndpoint, "Add Portal endpoint", addPortalEndpoint) \
-  X(DeletePortalEndpoint, "Delete Portal endpoint", deletePortalEndpoint) \
-  X(MovePortalEndpointEarlier, "Move Portal endpoint earlier", movePortalEndpointEarlier) \
-  X(MovePortalEndpointLater, "Move Portal endpoint later", movePortalEndpointLater) \
-  X(SelectPortalEndpoint, "Select Portal endpoint", selectPortalEndpoint) \
-  X(SetPortalEndpointPosition, "Move Portal endpoint", setPortalEndpointPosition) \
-  X(MovePortalEndpoint, "Move Portal endpoint", movePortalEndpoint) \
-  X(SetPortalEndpointWidth, "Set Portal endpoint width", setPortalEndpointWidth) \
-  X(SetPortalEndpointVerticalBounds, "Set Portal vertical bounds", setPortalEndpointVerticalBounds)
+  X(SelectPortal, "Select Portal", selectPortal) \
+  X(SetPortalPosition, "Move Portal", setPortalPosition) \
+  X(MovePortal, "Move Portal", movePortal) \
+  X(SetPortalWidth, "Set Portal width", setPortalWidth) \
+  X(SetPortalVerticalBounds, "Set Portal vertical bounds", setPortalVerticalBounds)
 
 #define EDITOR_GESTURE_COMMANDS(X) \
   X(Edit, "Edit") \
@@ -166,7 +160,7 @@ namespace editor {
   X(PlacePrimitiveField, "Place Primitive field") \
   X(SwapPrimitivePriorities, "Swap Primitive priorities") \
   X(PaintTileMapCells, "Paint TileMap cells") \
-  X(MovePortalEndpointGesture, "Move Portal endpoint")
+  X(MovePortalGesture, "Move Portal")
 
 enum class CommandId : uint16_t {
 #define EDITOR_COMMAND_ENUM(type, label, function) type,

@@ -422,16 +422,8 @@ void WorldRenderer::create(mpp::ScenePtr scene, bw::core::World* world, mpp::Ren
   for (auto const* layer : world->getLayers()) {
     for (auto const& portal : layer->getPortals()) {
       mPortalEndpointBuckets.emplace(
-          PortalEndpointKey{layer->getId(), bw::core::IndependentPortalLoopId, portal.getId()},
+          PortalEndpointKey{layer->getId(), portal.getId()},
           static_cast<uint32_t>(mPortalEndpointBuckets.size()));
-    }
-    for (auto const& portalLoop : layer->getPortalLoops()) {
-      for (auto const& endpoint : portalLoop.getEndpoints()) {
-        mPortalEndpointBuckets.emplace(
-            PortalEndpointKey{
-                layer->getId(), portalLoop.getId(), endpoint.getId()},
-            static_cast<uint32_t>(mPortalEndpointBuckets.size()));
-      }
     }
   }
   for (auto const& [material, embossPresetId] : wallSurfaceMaterials) {
@@ -931,7 +923,7 @@ void WorldRenderer::updateWallDataProvider(
         if (triangle.kind == bw::core::arr::DetailTriangleKind::PortalFallback) {
           replacementMesh = backMesh;
           for (auto const& [key, bucket] : mPortalEndpointBuckets) {
-            auto const* portalLoop = snapshot.findPortalLoop(key.layerId, key.loopId, key.endpointId);
+            auto const* portalLoop = snapshot.findPortalLoop(key.layerId, key.endpointId);
             if (!portalLoop || !portalLoop->active) continue;
             auto endpoint = std::ranges::find_if(portalLoop->endpoints, [&](auto const& item) {
               return item.endpointId == key.endpointId;

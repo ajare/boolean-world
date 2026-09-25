@@ -1,6 +1,6 @@
 # ADR-0051: Named Mirror Portals expand alongside legacy loops
 
-**Status:** Accepted
+**Status:** Partially superseded by ADR-0052 (coexistence boundary removed)
 **Supersedes in part:** ADR-0050 (authored ownership and minimum cycle size)
 
 Following #481 and its first visible slice #484, a Portal is an independently named, permanently Layer-owned aperture with a stable ID and explicit target ID; a self target generates a singleton reflection cycle, rather than an authored singleton loop. During expansion, legacy authored loops retain their existing schema and behavior, while named Portals use a separate monotonic allocator and persistence array; binary version 4 appends these fields and retains readers for versions 1–3.

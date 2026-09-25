@@ -56,16 +56,13 @@ vector<Primitive*> selectAndOrderPrimitives(
   return primitives;
 }
 
-vector<PortalLoopSnapshot> snapshotPortalLoops(
+vector<PortalSnapshot> snapshotPortals(
     World const& world, LayerSelection const& selection) {
-  vector<PortalLoopSnapshot> result;
+  vector<PortalSnapshot> result;
   for (auto const* layer : world.getLayers()) {
     if (!IsLayerSelected(selection, layer->getId())) continue;
-    for (auto const& portalLoop : layer->getPortalLoops()) {
-      result.push_back({layer->getId(), portalLoop});
-    }
     for (auto const& portal : layer->getPortals()) {
-      result.push_back({layer->getId(), {}, portal});
+      result.push_back({layer->getId(), portal});
     }
   }
   return result;

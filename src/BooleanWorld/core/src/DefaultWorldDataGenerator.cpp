@@ -51,6 +51,6 @@ void DefaultWorldDataGenerator::generate(
       world->getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
       world->getWedgeGenerationParameters(), false,
-      snapshotPortalLoops(*world, getLayerSelection()));
+      snapshotPortals(*world, getLayerSelection()));
 }
 }  // namespace bw::core

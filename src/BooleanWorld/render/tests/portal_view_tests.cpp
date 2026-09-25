@@ -19,20 +19,19 @@ bool near(float left, float right, float tolerance = 1e-4f) {
 }
 
 bw::core::ResolvedPortalLoop makeLoop(
-    uint32_t layerId, uint32_t loopId,
+    uint32_t layerId, uint32_t firstPortalId,
     wp::Vector2 sourceCentre, wp::Vector2 sourceFront,
     float width = 2.0f, float bottom = -1.0f, float top = 1.0f) {
   bw::core::ResolvedPortalLoop result;
   result.endpoints.resize(2);
-  result.traversalOrder = {0, 1};
+  result.traversalOrder = {firstPortalId, firstPortalId + 1000};
   result.layerId = layerId;
-  result.loopId = loopId;
   result.active = true;
-  result.endpoints[0].endpointId = 0;
+  result.endpoints[0].endpointId = firstPortalId;
   result.endpoints[0].resolved = true;
   result.endpoints[0].aperture = {
       sourceCentre, {1.0f, 0.0f}, sourceFront, width, bottom, top, {0}};
-  result.endpoints[1].endpointId = 1;
+  result.endpoints[1].endpointId = firstPortalId + 1000;
   result.endpoints[1].resolved = true;
   result.endpoints[1].aperture = {
       {10.0f, 0.0f}, {0.0f, 1.0f}, {-1.0f, 0.0f}, width, bottom + 3.0f, top + 3.0f, {1}};
@@ -40,9 +39,9 @@ bw::core::ResolvedPortalLoop makeLoop(
 }
 
 bw::core::ResolvedPortalLoop translatedLoop(
-    uint32_t layerId, uint32_t loopId, float centreX = 0.0f) {
+    uint32_t layerId, uint32_t firstPortalId, float centreX = 0.0f) {
   auto result = makeLoop(
-      layerId, loopId, {centreX, 4.0f}, {0.0f, -1.0f}, 1.5f);
+      layerId, firstPortalId, {centreX, 4.0f}, {0.0f, -1.0f}, 1.5f);
   // Separate planes: the source remains visible beyond the destination clip
   // plane. Coincident endpoints merely test whether the exit surface leaks
   // through clipping, not a physically visible recursive Portal loop.
@@ -65,14 +64,14 @@ void selectionRejectsInvisibleEndpointsAndUsesDeterministicOrdering() {
   std::vector candidates{backFacing, outside, small, large};
   auto selected = SelectPortalView(
       candidates, projection * view, {0.0f, 0.0f, 0.0f});
-  require(selected && selected->key.loopId == 4,
+  require(selected && selected->key.endpointId == 4,
           "Portal selection did not reject invisible endpoints or rank projected coverage");
 
   auto nearLoop = makeLoop(2, 9, {0.0f, 5.0f}, {0.0f, -1.0f});
   auto farLoop = makeLoop(1, 8, {1.0f, 5.0f}, {0.0f, -1.0f});
   candidates = {farLoop, nearLoop};
   selected = SelectPortalView(candidates, projection * view, {0.0f, 0.0f, 0.0f});
-  require(selected && selected->key.loopId == 9,
+  require(selected && selected->key.endpointId == 9,
           "Portal distance did not break equal-shape selection deterministically");
 
   auto highIdentity = makeLoop(2, 4, {0.0f, 5.0f}, {0.0f, -1.0f});
@@ -146,7 +145,7 @@ void loopsTerminateOnlyAtNamedLimitsAndKeepStableSlots() {
           "Portal loop did not report its recursion-depth cutoff");
   auto revisits = std::ranges::count_if(
       first.diagnostics, [](auto const& diagnostic) {
-        return diagnostic.selected && diagnostic.endpoint.loopId == 20;
+        return diagnostic.selected && diagnostic.endpoint.endpointId == 20;
       });
   require(revisits == 3,
           "revisiting a Portal endpoint incorrectly terminated visual recursion");
@@ -223,7 +222,7 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
       loops, view, projection, 0.1f, 100.0f, 320, 240,
       [](PortalEndpointKey const& key,
          bw::core::ResolvedAperture const&, glm::mat4 const&) {
-        return key.loopId == 30;
+        return key.endpointId == 30;
       });
 
   require(plan.renderedPassCount == 0 && plan.rootChildren.empty(),
@@ -241,6 +240,8 @@ void invisibleAndSubThresholdBranchesConsumeNoSlots() {
 void threeEndpointViewsUseDirectedDestinations(bool named = false) {
   auto loop = makeLoop(7, 11, {0.0f, 4.0f}, {0.0f, -1.0f});
   loop.endpoints.push_back({});
+  loop.endpoints[0].endpointId = 0;
+  loop.endpoints[1].endpointId = 1;
   loop.endpoints[2].endpointId = 2;
   loop.endpoints[2].resolved = true;
   loop.endpoints[2].aperture = {
@@ -248,17 +249,16 @@ void threeEndpointViewsUseDirectedDestinations(bool named = false) {
       2.0f, 5.0f, 7.0f, {2}};
   loop.traversalOrder = {0, 1, 2};
   if (named) {
-    std::vector<bw::core::PortalLoopSnapshot> inputs;
+    std::vector<bw::core::PortalSnapshot> inputs;
     for (auto const& endpoint : loop.endpoints) {
       auto const& aperture = endpoint.aperture;
-      inputs.push_back({7, {}, bw::core::Portal(endpoint.endpointId,
+      inputs.push_back({7, bw::core::Portal(endpoint.endpointId,
           "Portal " + std::to_string(endpoint.endpointId),
           {aperture.centre, aperture.width, aperture.bottom, aperture.top},
           (endpoint.endpointId + 2) % 3)});
     }
     auto inferred = bw::core::ResolvePortalLoops({}, {}, inputs);
     require(inferred.size() == 1, "named view cycle not inferred");
-    loop.loopId = inferred.front().loopId;
     loop.traversalOrder = inferred.front().traversalOrder;
   }
   auto view = glm::lookAt(
@@ -269,7 +269,7 @@ void threeEndpointViewsUseDirectedDestinations(bool named = false) {
 
   for (uint32_t sourceId = 0; sourceId < 3; ++sourceId) {
     SelectedPortalView selected{
-        {loop.layerId, loop.loopId, sourceId}, &loop, 1.0f, 1.0f};
+        {loop.layerId, sourceId}, &loop, 1.0f, 1.0f};
     auto built = BuildPortalView(
         selected, view, projection, 0.1f, 100.0f, 320, 240);
     auto canonical = bw::core::BuildPortalMapping(loop, sourceId);
@@ -291,7 +291,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
   portalLoop.endpoints[1].endpointId = 93;
   portalLoop.traversalOrder = {93, 17};
   std::swap(portalLoop.endpoints[0], portalLoop.endpoints[1]);
-  SelectedPortalView selected{{3, 5, 17}, &portalLoop, 1.0f, 4.0f};
+  SelectedPortalView selected{{3, 17}, &portalLoop, 1.0f, 4.0f};
   auto eye = glm::vec3{0.75f, 0.25f, 0.0f};
   auto view = glm::lookAt(
       eye, eye + glm::normalize(glm::vec3{0.2f, 0.1f, -1.0f}),
@@ -346,7 +346,7 @@ void observingCameraUsesTheCanonicalRigidTransformAndExactProjection() {
           "destination aperture back face occludes the Portal's virtual view");
 }
 void mirrorsPreserveTangentAndAccumulateCameraParity() {
-  auto mirror = makeLoop(2, bw::core::IndependentPortalLoopId,
+  auto mirror = makeLoop(2, 0,
                          {1, 4}, {0, -1}, 8, -3, 3);
   mirror.endpoints.resize(1);
   mirror.endpoints[0].endpointId = 7;

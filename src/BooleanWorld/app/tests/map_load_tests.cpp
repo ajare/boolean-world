@@ -212,8 +212,9 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   bw::core::SerializationWorkData workData;
   map.getWorld()->serialize(writer, workData);
   auto const migratedYaml = writer->getSerializedString();
-  require(migratedYaml.find("portalLoops:") != std::string::npos &&
-              migratedYaml.find("traversalOrder:") != std::string::npos &&
+  require(migratedYaml.find("portals:") != std::string::npos &&
+              migratedYaml.find("portalLoops:") == std::string::npos &&
+              migratedYaml.find("traversalOrder:") == std::string::npos &&
               migratedYaml.find("portalPairs:") == std::string::npos &&
               migratedYaml.find("nextPortalPairId:") == std::string::npos,
           "saving the legacy mines World retained the pair schema");

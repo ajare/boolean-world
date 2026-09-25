@@ -1,3 +1,4 @@
+#include "../../core/tests/PortalTestSupport.h"
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -1720,10 +1721,10 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   document.newDoc();
   addRectangle(document, {0.0f, 0.0f}, 100.0f);
   auto* layer = document.getWorld()->getActiveLayer();
-  auto const loopId = layer->addPortalLoop(
+  auto const firstPortalId = bw::test::addPortalCycle(layer,
       {{-40.0f, 0.0f}, 16.0f, 0.0f, 24.0f},
       {{50.0f, 0.0f}, 16.0f, 0.0f, 24.0f});
-  document.setSelectedPortalEndpoint(layer->getId(), loopId, 0);
+  document.setSelectedPortal(layer->getId(), firstPortalId);
   auto snapshot = document.getWorld()->getWorldData();
 
   editor::Settings settings;
@@ -1736,8 +1737,7 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   drag.leftDragging = true;
   drag.dragDelta = {-8.0f, 0.0f};
   interaction.updateDrag(&document, settings, drag, snapshot.get());
-  require(layer->getPortalLoop(loopId)
-                  ->findEndpoint(0)
+  require(layer->getPortal(firstPortalId)
                   ->getAperture()
                   .centre == wp::Vector2{-50.0f, 0.0f},
           "a dragged Portal endpoint did not snap to a legal wall within three units");
@@ -1747,8 +1747,7 @@ void portalDragSnapsToLegalWallsWithinThreeUnitsAndCanDetach() {
   // the endpoint must detach rather than becoming stuck at its snapped centre.
   drag.dragDelta = {4.0f, 0.0f};
   interaction.updateDrag(&document, settings, drag, snapshot.get());
-  require(layer->getPortalLoop(loopId)
-                  ->findEndpoint(0)
+  require(layer->getPortal(firstPortalId)
                   ->getAperture()
                   .centre == wp::Vector2{-44.0f, 0.0f},
           "a wall-snapped Portal endpoint did not detach from cumulative drag motion");

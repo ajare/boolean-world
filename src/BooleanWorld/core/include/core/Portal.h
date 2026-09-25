@@ -19,7 +19,7 @@ struct ArrangementWall;
 struct HydraulicCell;
 }  // namespace arr
 
-// The authored rectangular opening requested by one Portal endpoint. The
+// The authored rectangular opening requested by one Portal. The
 // centre lives in the World plane; the width follows the rendered wall found
 // at generation time. Elevations are world-up bounds and are never changed by
 // generation.
@@ -46,64 +46,6 @@ public:
   [[nodiscard]] uint32_t getTargetId() const { return mTargetId; }
 };
 
-// No authored loop owns an independent Portal. In transitional consumer keys,
-// this reserved loop ID means endpointId is a Layer-local Portal ID.
-inline constexpr uint32_t IndependentPortalLoopId = ~0u;
-
-class BW_API PortalEndpoint {
-  uint32_t mId{};
-  AuthoredAperture mAperture{};
-
-public:
-  PortalEndpoint() = default;
-  PortalEndpoint(uint32_t id, AuthoredAperture aperture);
-
-  [[nodiscard]] uint32_t getId() const;
-  [[nodiscard]] AuthoredAperture const& getAperture() const;
-
-private:
-  friend class PortalLoop;
-  friend class Layer;
-  void setAperture(AuthoredAperture const& aperture);
-};
-
-// A permanently Layer-owned ordered cycle of stable endpoint identities.
-// Endpoint storage is independent of its explicit directed traversal order.
-class BW_API PortalLoop {
-  uint32_t mId{};
-  uint32_t mNextEndpointId{2};
-  std::vector<PortalEndpoint> mEndpoints{
-      PortalEndpoint{0, {}}, PortalEndpoint{1, {}}};
-  // Stable endpoint IDs in directed traversal order. Keeping this separate
-  // from storage prevents authored identity from becoming a container index.
-  std::vector<uint32_t> mTraversalOrder{0, 1};
-
-public:
-  PortalLoop() = default;
-  PortalLoop(
-      uint32_t id, AuthoredAperture first, AuthoredAperture second);
-  PortalLoop(
-      uint32_t id, uint32_t nextEndpointId,
-      std::vector<PortalEndpoint> endpoints,
-      std::vector<uint32_t> traversalOrder);
-
-  [[nodiscard]] uint32_t getId() const;
-  [[nodiscard]] uint32_t getNextEndpointAllocator() const;
-  [[nodiscard]] std::vector<PortalEndpoint> const& getEndpoints() const;
-  [[nodiscard]] PortalEndpoint const* findEndpoint(uint32_t endpointId) const;
-  [[nodiscard]] std::span<uint32_t const> getTraversalOrder() const;
-  [[nodiscard]] uint32_t getNextEndpointId(uint32_t endpointId) const;
-
-private:
-  friend class Layer;
-  [[nodiscard]] PortalEndpoint* findEndpointMutable(uint32_t endpointId);
-  [[nodiscard]] uint32_t addEndpointAfter(
-      uint32_t afterEndpointId, AuthoredAperture const& aperture);
-  void removeEndpoint(uint32_t endpointId);
-  bool moveEndpointEarlier(uint32_t endpointId);
-  bool moveEndpointLater(uint32_t endpointId);
-};
-
 // Target-graph validity is independent of aperture resolution. Every Portal
 // still has exactly one outgoing target, but an editable component is active
 // only when every member has exactly one incoming reference.
@@ -117,7 +59,7 @@ enum class PortalTargetGraphDiagnostic : uint8_t {
 [[nodiscard]] BW_API std::string_view PortalTargetGraphDiagnosticText(
     PortalTargetGraphDiagnostic diagnostic);
 
-// First aperture-resolution reason an authored endpoint or its loop cannot
+// First aperture-resolution reason a Portal or its inferred cycle cannot
 // participate in this generation. Diagnostics are snapshot data, not authored
 // state, and remain available even when the target graph is invalid.
 enum class PortalResolutionDiagnostic : uint8_t {
@@ -158,6 +100,7 @@ struct ResolvedAperture {
 };
 
 struct ResolvedPortalEndpoint {
+  // The authored Layer-local Portal ID, never an index or loop-local ID.
   uint32_t endpointId{};
   AuthoredAperture authored{};
   bool resolved{false};
@@ -168,13 +111,10 @@ struct ResolvedPortalEndpoint {
   ResolvedAperture aperture{};
 };
 
+// Inferred target component, not an authored object. Active cycles follow
+// targets from the smallest member ID; inactive components list members by ID.
 struct ResolvedPortalLoop {
   uint32_t layerId{};
-  // Independent named components use IndependentPortalLoopId here and the
-  // authored Layer-local Portal ID in endpointId/traversalOrder. Active
-  // components follow targets from their smallest member; inactive components
-  // list members by ID. The first ID identifies either deterministically.
-  uint32_t loopId{};
   bool active{false};
   PortalTargetGraphDiagnostic targetGraphDiagnostic{
       PortalTargetGraphDiagnostic::None};
@@ -184,7 +124,7 @@ struct ResolvedPortalLoop {
 };
 
 // Canonical directed routing seam for an active component. Order contains
-// stable endpoint IDs, not vector indices; missing sources and empty cycles
+// Layer-local Portal IDs, not vector indices; missing sources and empty cycles
 // are invalid.
 [[nodiscard]] BW_API uint32_t NextPortalEndpointId(
     std::span<uint32_t const> order, uint32_t sourceId);
@@ -201,7 +141,7 @@ struct ResolvedPortalLoop {
 // destination lower edge. A reverse hop exists only if explicitly generated.
 struct PortalLiquidAdjacency {
   uint32_t layerId{};
-  uint32_t loopId{};
+  uint32_t cyclePortalId{};
   uint32_t sourceEndpointId{};
   uint32_t destinationEndpointId{};
   uint32_t cell0{};
@@ -216,11 +156,9 @@ struct PortalLiquidAdjacency {
 
 struct PortalLiquidAdjacencyDiagnostic {
   uint32_t layerId{};
-  uint32_t loopId{};
   PortalLiquidDiagnostic diagnostic{
       PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint};
-  // Smallest member ID distinguishes independent cycles sharing the reserved
-  // loop namespace; absent for legacy authored loops.
+  // Smallest Portal ID identifies this inferred component in the snapshot.
   uint32_t cyclePortalId{~0u};
 };
 
@@ -261,12 +199,9 @@ struct BW_API PortalMapping {
 // A value-only copy made on the generation-requesting thread. It is safe to
 // carry to the asynchronous arrangement worker with the other generation
 // inputs.
-struct PortalLoopSnapshot {
+struct PortalSnapshot {
   uint32_t layerId{};
-  PortalLoop loop{};
-  // When present, this independently authored Portal replaces `loop` as the
-  // resolution input. Legacy authored loops remain unchanged during expansion.
-  std::optional<Portal> portal;
+  Portal portal;
 };
 
 [[nodiscard]] BW_API bool AuthoredApertureIsValid(
@@ -286,12 +221,11 @@ FindNearestLegalPortalCentre(
 [[nodiscard]] BW_API std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
-    std::vector<PortalLoopSnapshot> const& loops);
+    std::vector<PortalSnapshot> const& portals);
 
 // Resolves active apertures onto their incident Hydraulic cells, then accepts
-// Portal loops in stable (Layer id, loop id, cycle-start Portal id) order.
-// Ordinary links participate
-// in the offset graph. A loop that would close a contradictory elevation cycle
+// inferred Portal loops in stable (Layer id, smallest member Portal id) order.
+// Ordinary links participate in the offset graph. A loop that would close a contradictory elevation cycle
 // is diagnosed and omitted atomically.
 [[nodiscard]] BW_API PortalLiquidAdjacencyResult
 BuildPortalLiquidAdjacency(

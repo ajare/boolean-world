@@ -125,7 +125,7 @@ ArrangementWorldData::ArrangementWorldData(
     ArrangementStats* stats,
     WedgeGenerationParameters const& wedgeGenerationParameters,
     bool createWayfinderMesh,
-    std::vector<PortalLoopSnapshot> const& portalLoops)
+    std::vector<PortalSnapshot> const& portals)
     : mArrangement(std::move(arrangement)),
       mWedgeGenerationParameters(wedgeGenerationParameters) {
   wp::Timer timer;
@@ -137,7 +137,7 @@ ArrangementWorldData::ArrangementWorldData(
   timer.restart();
 
   mWalls = arr::BuildArrangementWalls(*mArrangement);
-  mPortalLoops = ResolvePortalLoops(*mArrangement, mWalls, portalLoops);
+  mPortalLoops = ResolvePortalLoops(*mArrangement, mWalls, portals);
   if (stats != nullptr) {
     stats->wallCount = uint32_t(mWalls.size());
     stats->wallGenerationTimeNs = timer.elapsedNanoseconds();
@@ -364,20 +364,18 @@ ArrangementWorldData::getPortalLoops() const {
 }
 
 ResolvedPortalLoop const* ArrangementWorldData::findPortalLoop(
-    uint32_t layerId, uint32_t loopId, uint32_t portalId) const {
+    uint32_t layerId, uint32_t portalId) const {
   auto found = std::find_if(
       mPortalLoops.begin(), mPortalLoops.end(),
       [=](auto const& portalLoop) {
-        return portalLoop.layerId == layerId && portalLoop.loopId == loopId &&
-               (loopId != IndependentPortalLoopId ||
-                FindPortalEndpoint(portalLoop, portalId) != nullptr);
+        return portalLoop.layerId == layerId && FindPortalEndpoint(portalLoop, portalId) != nullptr;
       });
   return found == mPortalLoops.end() ? nullptr : &*found;
 }
 
 ResolvedPortalEndpoint const* ArrangementWorldData::findPortalEndpoint(
-    uint32_t layerId, uint32_t loopId, uint32_t endpointId) const {
-  auto const* portalLoop = findPortalLoop(layerId, loopId, endpointId);
+    uint32_t layerId, uint32_t endpointId) const {
+  auto const* portalLoop = findPortalLoop(layerId, endpointId);
   return portalLoop ? FindPortalEndpoint(*portalLoop, endpointId) : nullptr;
 }
 

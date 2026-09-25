@@ -1,3 +1,4 @@
+#include "../../core/tests/PortalTestSupport.h"
 // Real OpenGL integration test. CTest runs the focused Triplanar scenario;
 // invoking without a scenario retains the broader manual renderer smoke. Both
 // drive EditorRenderSystem + PreviewRenderScene + WorldRenderer and compare
@@ -356,17 +357,23 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
     });
   }
   generator.generate(primitives);
-  std::vector<bw::core::PortalLoopSnapshot> portalLoops;
+  std::vector<bw::core::PortalSnapshot> portalLoops;
   if (fixture.portal) {
     auto* layer = world.getActiveLayer();
     if (fixture.manyPortalEndpoints) {
       // Reserve more endpoint buckets than the recursive GPU target budget.
       // The active endpoints below must still bind correctly at higher IDs.
       for (uint32_t i = 0; i < PortalViewSlotCount; ++i) {
-        auto id = layer->addPortalLoop(
+        auto id = bw::test::addPortalCycle(layer,
             {{1000.0f + float(i) * 20.0f, 1000.0f}, 12.0f, 4.0f, 36.0f},
             {{1000.0f + float(i) * 20.0f, -1000.0f}, 12.0f, 4.0f, 36.0f});
-        portalLoops.push_back({layer->getId(), *layer->getPortalLoop(id)});
+        (void)id;
+      }
+    }
+    if (fixture.stablePortalIdentity) {
+      for (int i = 0; i < 17; ++i) {
+        auto id = layer->addPortal({});
+        layer->removePortal(id);
       }
     }
     auto const portalCentres = fixture.threeEndpointPortal
@@ -376,32 +383,23 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
       if (fixture.mirror) {
         for (auto y : {16.0f, -16.0f}) {
           auto id = layer->addPortal({{centreX, y}, 12.0f, 4.0f, 36.0f});
-          portalLoops.push_back({layer->getId(), {}, *layer->getPortal(id)});
+          (void)id;
         }
         continue;
       }
-      auto loopId = layer->addPortalLoop(
+      auto firstPortalId = bw::test::addPortalCycle(layer,
           {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
           {{centreX, -16.0f}, 12.0f, 4.0f, 36.0f});
-      auto* portalLoop = layer->getPortalLoop(loopId);
       if (fixture.threeEndpointPortal) {
         [[maybe_unused]] auto const thirdEndpointId =
-            layer->addPortalEndpointAfter(
-                loopId, 1,
+            bw::test::insertPortalAfter(layer, layer->getPortal(firstPortalId)->getTargetId(),
                 {{8.0f, 16.0f}, 12.0f, 4.0f, 36.0f});
       }
-      if (fixture.stablePortalIdentity) {
-        auto first = portalLoop->getEndpoints()[0].getAperture();
-        auto second = portalLoop->getEndpoints()[1].getAperture();
-        *portalLoop = bw::core::PortalLoop{
-            loopId, 94,
-            {bw::core::PortalEndpoint{93, second},
-             bw::core::PortalEndpoint{17, first}},
-            {17, 93}};
-      }
-      portalLoops.push_back({layer->getId(), *portalLoop});
+
     }
   }
+  for (auto const& portal : world.getActiveLayer()->getPortals())
+    portalLoops.push_back({world.getActiveLayer()->getId(), portal});
   auto result = std::make_shared<bw::core::ArrangementWorldData>(
       generator.getWorldData(), world.getExtents(),
       float(BW_WORLD_SIZE / BW_PRIMITIVE_GRID_DIM_MAX), nullptr,
@@ -499,7 +497,7 @@ std::vector<float> render(
     editor::EditorRenderSystem& renderSystem, RenderFixture const& fixture,
     std::array<uint32_t, 3>* surfaceTriangles = nullptr,
     uint32_t* portalPasses = nullptr,
-    uint32_t* selectedPortalEndpoints = nullptr,
+    uint32_t* selectedPortals = nullptr,
     std::vector<float>* switchedZoneImage = nullptr,
     ViewTrace* trace = nullptr) {
   std::string dependencyError;
@@ -683,8 +681,8 @@ std::vector<float> render(
         "public WorldRenderer scene path did not select or render a Portal view");
   }
   if (portalPasses) *portalPasses = scene.portalRenderedPassCount();
-  if (selectedPortalEndpoints) {
-    *selectedPortalEndpoints = scene.portalSelectedEndpointCount();
+  if (selectedPortals) {
+    *selectedPortals = scene.portalSelectedEndpointCount();
   }
   if (surfaceTriangles) {
     *surfaceTriangles = {
@@ -950,7 +948,8 @@ void minesPortalRenders(editor::EditorRenderSystem& renderSystem) {
     throw std::runtime_error("mines world could not load");
   }
   auto data = world.getWorldData();
-  require(data->findPortalLoop(0, 0) && data->findPortalLoop(0, 0)->active,
+  auto const* cycle = data->findPortalLoop(0, 0);
+  require(cycle && cycle->active,
           "mines Portal loop inactive");
   editor::PreviewRenderScene scene(
       renderSystem, &world, kWidth, kHeight,

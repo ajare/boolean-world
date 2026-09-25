@@ -137,7 +137,7 @@ std::vector<CandidateEvaluation> evaluateCandidates(
 
   for (auto const& portalLoop : loops) {
     for (auto const& endpoint : portalLoop.endpoints) {
-      PortalEndpointKey key{portalLoop.layerId, portalLoop.loopId, endpoint.endpointId};
+      PortalEndpointKey key{portalLoop.layerId, endpoint.endpointId};
       PortalViewDiagnostic diagnostic;
       diagnostic.endpoint = key;
       diagnostic.recursionDepth = recursionDepth;

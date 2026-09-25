@@ -410,7 +410,7 @@ public:
 
   // Returns {loop id, stable endpoint id} for the nearest endpoint centre on the
   // active Layer, or an empty vector when no endpoint is in handle range.
-  [[nodiscard]] std::vector<uint32_t> getHoveredPortalEndpoint(
+  [[nodiscard]] std::vector<uint32_t> getHoveredPortal(
       wp::Vector2 const& mouseWorldPos, Settings const& settings) const;
 
   void setPlayerProxyPosition(wp::Vector2 const& pos);

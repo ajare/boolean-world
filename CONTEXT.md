@@ -13,7 +13,7 @@ A structural Primitive that participates fully in the boolean fold but can never
 _Avoid_: material-less Primitive (an authored Primitive with a missing material is still property-contributing), invisible Primitive (property transparency does not affect geometry or visibility)
 
 **Layer**:
-A named, owned collection of Primitives, WorldTriggerLines, Portals, and legacy authored Portal loops within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: no owned object ever moves between Layers.
+A named, owned collection of Primitives, WorldTriggerLines, and Portals within a World. A generation selects a set of Layers and folds them in World order; the World's active Layer is the one currently focused for authoring. Ownership is permanent: no owned object ever moves between Layers.
 _Avoid_: Layer tag, layer id (as a primitive attribute)
 
 **Portal**:
@@ -24,16 +24,16 @@ _Avoid_: Portal wall, generated endpoint index
 A Portal targeting itself, showing a planar reflection across its resolved aperture while preserving World-up. It obeys normal wall coverage and player-clearance requirements and contributes no Liquid transport.
 _Avoid_: half-turn Portal, decorative mirror
 
-**Legacy authored Portal loop**:
-A stably identified, ordered cycle permanently owned by one Layer and containing at least two stable Portal endpoints. Entering endpoint `i` exits endpoint `(i + 1) mod N`; the complete loop participates only when its owning Layer is selected and every endpoint resolves. A two-endpoint Portal loop has the same traversal mapping as the former Portal pair.
-_Avoid_: Portal pair, Portal link, teleporter
+**Portal loop**:
+A directed cycle inferred from same-Layer Portal targets, never authored independently. Every member must have exactly one incoming reference, and the complete cycle participates only when all its apertures resolve. A self-targeting Portal forms a Mirror Portal; two mutually targeting Portals form a two-way route.
+_Avoid_: authored loop, Portal pair, loop-local identity
 
-**Portal endpoint**:
-One stable member of a Portal loop, owning one authored aperture and occupying one mutable position in the loop's traversal order but no generated wall identity. Its id is stable and never reused within the loop; it accepts traversal only from its resolved front side and sends it to the next endpoint. It is neither a WorldTriggerLine nor an ArrangementWall property.
-_Avoid_: Portal wall, TriggerLine, wall flag, endpoint index
+**Target**:
+The same-Layer Portal an authored Portal explicitly names as its destination. Changing a target preserves the source's identity, name, and aperture; an incomplete or branching target graph remains editable but inactive.
+_Avoid_: complementary endpoint, next slot
 
 **Authored aperture**:
-A Portal's or legacy Portal endpoint's persistent requested rectangle: a World-plane centre and width plus bottom and top elevations. Every endpoint in one Portal loop must have the same height; generation may narrow resolved apertures to the loop's smallest authored width without changing authored dimensions.
+A Portal's persistent requested rectangle: a World-plane centre and width plus bottom and top elevations. Every Portal in one inferred Portal loop must have the same height; generation may narrow resolved apertures to the loop's smallest authored width without changing authored dimensions.
 _Avoid_: Portal bounds (ambiguous between authored and resolved), wall opening
 
 **Resolved aperture**:
@@ -321,7 +321,7 @@ The relation between two solid Arrangement faces across whose shared edge Hydrau
 _Avoid_: face adjacency (two faces sharing an edge are not liquid-adjacent when no traversable opening exists), Portal liquid-adjacency
 
 **Portal liquid-adjacency**:
-The generated directed relation from each resolved Portal endpoint's Hydraulic cell to the next endpoint's cell in an active Portal loop. Liquid settles at generation time to a deterministic fixed point, spilling only in traversal order after reaching each source Sill and mapping its surface by the same height above the source and destination lower edges. Loops are accepted atomically in stable Layer-id/loop-id order; a contradictory accumulated elevation offset omits that loop from Liquid without deactivating its other Portal behaviour.
+The generated directed relation from each resolved Portal endpoint's Hydraulic cell to the next endpoint's cell in an active Portal loop. Liquid settles at generation time to a deterministic fixed point, spilling only in traversal order after reaching each source Sill and mapping its surface by the same height above the source and destination lower edges. Loops are accepted atomically in stable Layer-id/smallest-member-Portal-id order; a contradictory accumulated elevation offset omits that loop from Liquid without deactivating its other Portal behaviour.
 _Avoid_: Liquid-adjacency (the ordinary shared-edge relation), Hydraulic link (which crosses a shared edge), bidirectional Portal adjacency, Portal flow rate (equilibrium is instantaneous)
 
 **Hydraulic cell**:

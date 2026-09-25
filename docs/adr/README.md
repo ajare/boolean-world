@@ -56,8 +56,9 @@ removed the dependency entirely. Geometry terms are defined in
 | [0047](0047-portals-are-layer-owned-and-resolve-as-complete-pairs.md) | Portals are Layer-owned and resolve as complete pairs | Superseded by ADR-0050 |
 | [0048](0048-zones-are-explicit-player-modes-entered-through-border-walls.md) | Zones are explicit player modes entered through Border walls | Partially superseded by ADR-0049 |
 | [0049](0049-phantom-views-euclidean-space-through-hidden-border-apertures.md) | Phantom views Euclidean space through hidden Border apertures | Accepted |
-| [0050](0050-portals-are-layer-owned-ordered-directed-loops.md) | Portals are Layer-owned ordered directed loops | Partially superseded by ADR-0051 |
-| [0051](0051-named-mirror-portals-expand-alongside-legacy-loops.md) | Named Mirror Portals expand alongside legacy loops | Accepted |
+| [0050](0050-portals-are-layer-owned-ordered-directed-loops.md) | Portals are Layer-owned ordered directed loops | Partially superseded by ADR-0052 |
+| [0051](0051-named-mirror-portals-expand-alongside-legacy-loops.md) | Named Mirror Portals expand alongside legacy loops | Partially superseded by ADR-0052 |
+| [0052](0052-portals-have-only-layer-local-identities-and-explicit-targets.md) | Portals have only Layer-local identities and explicit targets | Accepted |
 
 ## World geometry rewrite scope
 

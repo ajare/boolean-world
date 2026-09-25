@@ -733,7 +733,7 @@ StatePlayBooleanWorld::handlePlayerPortalLine(
   }
   if (response == bw::app::PlayerPortalCrossingResult::NotCrossing) {
     bw::app::PortalEndpointIdentity identity{
-        source.loop->layerId, source.loop->loopId, source.endpointId};
+        source.loop->layerId, source.endpointId};
     return !source.sourceWallBlocks ||
                    (mPlayerPortalUpdateState.exitSide.active &&
                     mPlayerPortalUpdateState.exitSide.endpoint == identity)

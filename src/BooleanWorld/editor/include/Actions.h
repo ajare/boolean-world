@@ -84,7 +84,7 @@ class EditorInteraction {
   bool mRotatingSelectedPrimitives{false};
   bool mMovingSelectedTriggerLine{false};
   int mMovingSelectedTriggerLinePart{-1};
-  bool mMovingSelectedPortalEndpoint{false};
+  bool mMovingSelectedPortal{false};
   wp::Vector2 mPortalDragStartPosition;
   wp::Vector2 mPortalDragCumulativeDelta;
 
@@ -299,39 +299,21 @@ bool setPortalTarget(Document* doc, bw::core::Layer* layer, uint32_t portalId, u
 bool createPortal(Document* doc, bw::core::Layer* layer);
 bool deletePortal(Document* doc, bw::core::Layer* layer, uint32_t portalId);
 bool setPortalName(Document* doc, bw::core::Layer* layer, uint32_t portalId, std::string const& name);
-bool createPortalLoop(
+bool selectPortal(
+    Document* doc, uint32_t layerId,
+    uint32_t portalId);
+bool setPortalPosition(
     Document* doc, bw::core::Layer* layer,
-    bw::core::AuthoredAperture const& first,
-    bw::core::AuthoredAperture const& second);
-bool deletePortalLoop(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId);
-bool addPortalEndpoint(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t afterEndpointId, bw::core::AuthoredAperture const& aperture);
-bool deletePortalEndpoint(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId);
-bool movePortalEndpointEarlier(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId);
-bool movePortalEndpointLater(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId);
-bool selectPortalEndpoint(
-    Document* doc, uint32_t layerId, uint32_t loopId,
-    uint32_t endpointId);
-bool setPortalEndpointPosition(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, wp::Vector2 const& position);
-bool movePortalEndpoint(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, wp::Vector2 const& delta);
-bool setPortalEndpointWidth(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, float width);
-bool setPortalEndpointVerticalBounds(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, float bottom, float top);
+    uint32_t portalId, wp::Vector2 const& position);
+bool movePortal(
+    Document* doc, bw::core::Layer* layer,
+    uint32_t portalId, wp::Vector2 const& delta);
+bool setPortalWidth(
+    Document* doc, bw::core::Layer* layer,
+    uint32_t portalId, float width);
+bool setPortalVerticalBounds(
+    Document* doc, bw::core::Layer* layer,
+    uint32_t portalId, float bottom, float top);
 
 bool selectPrimitive(Document* doc, uint32_t primitiveIndex);
 

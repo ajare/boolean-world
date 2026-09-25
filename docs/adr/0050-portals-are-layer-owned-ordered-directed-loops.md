@@ -1,6 +1,6 @@
 # ADR-0050: Portals are Layer-owned ordered directed loops
 
-**Status:** Partially superseded by ADR-0051 (named Portal expansion)
+**Status:** Partially superseded by ADR-0052 (named Portal contraction; ADR-0051 records expansion)
 **Date:** 2026-09-25
 **Supersedes:** ADR-0047 (fixed two-endpoint slots)
 **Supersedes in part:** ADR-0045 (bidirectional Portal Liquid amendment)

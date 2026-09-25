@@ -15,15 +15,14 @@ namespace editor {
 
 // Owns the editor's selection and hover state. Geometry and authored objects
 // remain owned by the document; Selection only records which of those objects
-// are selected. Portal endpoints are retained by stable authored identity.
+// are selected. Portals are retained by stable Layer-local authored identity.
 class Selection {
 protected:
   std::set<uint32_t> mSelectedPrimitiveIndices;
   uint32_t mSelectedWorldVertexIndex{~0u};
   uint32_t mSelectedTriggerLineIndex{~0u};
   uint32_t mSelectedPortalLayerId{~0u};
-  uint32_t mSelectedPortalLoopId{~0u};
-  uint32_t mSelectedPortalEndpointId{~0u};
+  uint32_t mSelectedPortalId{~0u};
   std::set<uint32_t> mSelectedMeshVertexIndices;
   std::set<uint32_t> mSelectedMeshEdgeIndices;
   std::set<uint32_t> mSelectedMeshRingIndices;
@@ -36,14 +35,7 @@ public:
 
   void setSelectedWorldVertexIndex(uint32_t index);
   void setSelectedTriggerLineIndex(uint32_t index);
-  void setSelectedPortal(uint32_t layerId, uint32_t portalId) {
-    setSelectedPortalEndpoint(layerId, ~0u, portalId);
-  }
-  [[nodiscard]] uint32_t getSelectedPortalId() const {
-    return mSelectedPortalLoopId == ~0u ? mSelectedPortalEndpointId : ~0u;
-  }
-  void setSelectedPortalEndpoint(
-      uint32_t layerId, uint32_t loopId, uint32_t endpointId);
+  void setSelectedPortal(uint32_t layerId, uint32_t portalId);
   void setSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
   void addSelectedPrimitiveIndex(uint32_t index);
   void addSelectedPrimitiveIndices(std::set<uint32_t> const& indices);
@@ -59,9 +51,8 @@ public:
   [[nodiscard]] uint32_t getSelectedWorldVertexIndex() const;
   [[nodiscard]] uint32_t getSelectedTriggerLineIndex() const;
   [[nodiscard]] uint32_t getSelectedPortalLayerId() const;
-  [[nodiscard]] uint32_t getSelectedPortalLoopId() const;
-  [[nodiscard]] uint32_t getSelectedPortalEndpointId() const;
-  [[nodiscard]] bool hasSelectedPortalEndpoint() const;
+  [[nodiscard]] uint32_t getSelectedPortalId() const;
+  [[nodiscard]] bool hasSelectedPortal() const;
   [[nodiscard]] bool hasSelection() const;
 
   [[nodiscard]] std::set<uint32_t> const& getSelectedMeshSubObjectIndices(

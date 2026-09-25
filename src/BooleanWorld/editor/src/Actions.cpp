@@ -509,120 +509,58 @@ bool deletePortal(Document* doc, bw::core::Layer* layer, uint32_t portalId) {
   return true;
 }
 
-bool createPortalLoop(
-    Document* doc, bw::core::Layer* layer,
-    bw::core::AuthoredAperture const& first,
-    bw::core::AuthoredAperture const& second) {
-  auto const loopId = layer->addPortalLoop(first, second);
-  auto const* portalLoop = layer->getPortalLoop(loopId);
-  doc->setSelectedPortalEndpoint(
-      layer->getId(), loopId, portalLoop->getTraversalOrder().front());
-  return true;
-}
-
-bool deletePortalLoop(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId) {
-  layer->removePortalLoop(loopId);
-  if (doc->getSelectedPortalLayerId() == layer->getId() &&
-      doc->getSelectedPortalLoopId() == loopId) {
-    doc->clearSelections();
-  }
-  return true;
-}
-
-bool addPortalEndpoint(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t afterEndpointId, bw::core::AuthoredAperture const& aperture) {
-  if (!layer || !layer->getPortalLoop(loopId)) return false;
-  auto const endpointId =
-      layer->addPortalEndpointAfter(loopId, afterEndpointId, aperture);
-  doc->setSelectedPortalEndpoint(layer->getId(), loopId, endpointId);
-  return true;
-}
-
-bool deletePortalEndpoint(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId) {
-  auto const* loop = layer ? layer->getPortalLoop(loopId) : nullptr;
-  if (!loop || loop->getEndpoints().size() <= 2 ||
-      !loop->findEndpoint(endpointId)) {
-    return false;
-  }
-  auto const nextEndpointId = loop->getNextEndpointId(endpointId);
-  layer->removePortalEndpoint(loopId, endpointId);
-  if (doc->getSelectedPortalLayerId() == layer->getId() &&
-      doc->getSelectedPortalLoopId() == loopId &&
-      doc->getSelectedPortalEndpointId() == endpointId) {
-    doc->setSelectedPortalEndpoint(
-        layer->getId(), loopId, nextEndpointId);
-  }
-  return true;
-}
-
-bool movePortalEndpointEarlier(
-    Document*, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId) {
-  return layer && layer->movePortalEndpointEarlier(loopId, endpointId);
-}
-
-bool movePortalEndpointLater(
-    Document*, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId) {
-  return layer && layer->movePortalEndpointLater(loopId, endpointId);
-}
-
-bool selectPortalEndpoint(
-    Document* doc, uint32_t layerId, uint32_t loopId,
-    uint32_t endpointId) {
+bool selectPortal(
+    Document* doc, uint32_t layerId,
+    uint32_t portalId) {
   auto const* layer = doc->getWorld()->getLayer(layerId);
-  if (!layer || !layer->findAuthoredPortalAperture(loopId, endpointId)) return false;
-  doc->setSelectedPortalEndpoint(layerId, loopId, endpointId);
+  if (!layer || !layer->getPortal(portalId)) return false;
+  doc->setSelectedPortal(layerId, portalId);
   return false;
 }
 
-bool setPortalEndpointPosition(
-    Document*, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, wp::Vector2 const& position) {
-  auto const* authored = layer->findAuthoredPortalAperture(loopId, endpointId);
+bool setPortalPosition(
+    Document*, bw::core::Layer* layer,
+    uint32_t portalId, wp::Vector2 const& position) {
+  auto const* authored = layer->getPortal(portalId);
   if (!authored) return false;
-  auto aperture = *authored;
+  auto aperture = authored->getAperture();
   if (aperture.centre == position) return false;
   aperture.centre = position;
-  layer->setPortalEndpointAperture(loopId, endpointId, aperture);
+  layer->setPortalAperture(portalId, aperture);
   return true;
 }
 
-bool movePortalEndpoint(
-    Document* doc, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, wp::Vector2 const& delta) {
-  auto const* authored = layer->findAuthoredPortalAperture(loopId, endpointId);
+bool movePortal(
+    Document* doc, bw::core::Layer* layer,
+    uint32_t portalId, wp::Vector2 const& delta) {
+  auto const* authored = layer->getPortal(portalId);
   if (!authored || delta == wp::Vector2::ZERO) return false;
-  return setPortalEndpointPosition(
-      doc, layer, loopId, endpointId, authored->centre + delta);
+  return setPortalPosition(
+      doc, layer, portalId, authored->getAperture().centre + delta);
 }
 
-bool setPortalEndpointWidth(
-    Document*, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, float width) {
-  auto const* authored = layer->findAuthoredPortalAperture(loopId, endpointId);
+bool setPortalWidth(
+    Document*, bw::core::Layer* layer,
+    uint32_t portalId, float width) {
+  auto const* authored = layer->getPortal(portalId);
   if (!authored) return false;
-  auto aperture = *authored;
+  auto aperture = authored->getAperture();
   if (aperture.width == width) return false;
   aperture.width = width;
-  layer->setPortalEndpointAperture(loopId, endpointId, aperture);
+  layer->setPortalAperture(portalId, aperture);
   return true;
 }
 
-bool setPortalEndpointVerticalBounds(
-    Document*, bw::core::Layer* layer, uint32_t loopId,
-    uint32_t endpointId, float bottom, float top) {
-  auto const* authored = layer->findAuthoredPortalAperture(loopId, endpointId);
+bool setPortalVerticalBounds(
+    Document*, bw::core::Layer* layer,
+    uint32_t portalId, float bottom, float top) {
+  auto const* authored = layer->getPortal(portalId);
   if (!authored) return false;
-  auto aperture = *authored;
+  auto aperture = authored->getAperture();
   if (aperture.bottom == bottom && aperture.top == top) return false;
   aperture.bottom = bottom;
   aperture.top = top;
-  layer->setPortalEndpointAperture(loopId, endpointId, aperture);
+  layer->setPortalAperture(portalId, aperture);
   return true;
 }
 

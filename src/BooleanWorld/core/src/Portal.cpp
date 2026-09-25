@@ -125,7 +125,7 @@ bool clipAffineInterval(
 ResolvedPortalEndpoint resolveEndpoint(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
-    PortalEndpoint const& endpoint, float resolvedWidth) {
+    Portal const& endpoint, float resolvedWidth) {
   ResolvedPortalEndpoint result;
   result.endpointId = endpoint.getId();
   result.authored = endpoint.getAperture();
@@ -347,136 +347,6 @@ Portal::Portal(uint32_t id, std::string name, AuthoredAperture aperture,
   }
 }
 
-PortalEndpoint::PortalEndpoint(uint32_t id, AuthoredAperture aperture)
-    : mId(id), mAperture(aperture) {
-  if (!AuthoredApertureIsValid(aperture)) {
-    throw CoreException("Invalid Portal endpoint");
-  }
-}
-
-uint32_t PortalEndpoint::getId() const { return mId; }
-
-AuthoredAperture const& PortalEndpoint::getAperture() const {
-  return mAperture;
-}
-
-void PortalEndpoint::setAperture(AuthoredAperture const& aperture) {
-  if (!AuthoredApertureIsValid(aperture)) {
-    throw CoreException(
-        "Portal aperture centre and dimensions must be finite, with positive width and top above bottom");
-  }
-  mAperture = aperture;
-}
-
-PortalLoop::PortalLoop(
-    uint32_t id, AuthoredAperture first, AuthoredAperture second)
-    : PortalLoop(
-          id, 2,
-          {PortalEndpoint{0, first}, PortalEndpoint{1, second}},
-          {0, 1}) {}
-
-PortalLoop::PortalLoop(
-    uint32_t id, uint32_t nextEndpointId,
-    std::vector<PortalEndpoint> endpoints,
-    std::vector<uint32_t> traversalOrder)
-    : mId(id),
-      mNextEndpointId(nextEndpointId),
-      mEndpoints(std::move(endpoints)),
-      mTraversalOrder(std::move(traversalOrder)) {
-  if (mEndpoints.size() < 2 || mTraversalOrder.size() != mEndpoints.size()) {
-    throw CoreException("A Portal loop requires at least two endpoints and one traversal entry per endpoint");
-  }
-  std::set<uint32_t> endpointIds;
-  for (auto const& endpoint : mEndpoints) {
-    if (!endpointIds.insert(endpoint.getId()).second ||
-        endpoint.getId() >= mNextEndpointId) {
-      throw CoreException("A Portal loop contains duplicate endpoint IDs or an identity-reusing allocator state");
-    }
-  }
-  std::set<uint32_t> orderedIds;
-  for (auto endpointId : mTraversalOrder) {
-    if (!endpointIds.contains(endpointId) || !orderedIds.insert(endpointId).second) {
-      throw CoreException("Portal traversal order is invalid");
-    }
-  }
-}
-
-uint32_t PortalLoop::getId() const { return mId; }
-
-uint32_t PortalLoop::getNextEndpointAllocator() const {
-  return mNextEndpointId;
-}
-
-std::vector<PortalEndpoint> const& PortalLoop::getEndpoints() const {
-  return mEndpoints;
-}
-
-PortalEndpoint const* PortalLoop::findEndpoint(uint32_t endpointId) const {
-  auto found = std::ranges::find(mEndpoints, endpointId, &PortalEndpoint::getId);
-  return found == mEndpoints.end() ? nullptr : &*found;
-}
-
-PortalEndpoint* PortalLoop::findEndpointMutable(uint32_t endpointId) {
-  auto found = std::ranges::find(mEndpoints, endpointId, &PortalEndpoint::getId);
-  return found == mEndpoints.end() ? nullptr : &*found;
-}
-
-std::span<uint32_t const> PortalLoop::getTraversalOrder() const {
-  return mTraversalOrder;
-}
-
-uint32_t PortalLoop::getNextEndpointId(uint32_t endpointId) const {
-  return NextPortalEndpointId(mTraversalOrder, endpointId);
-}
-
-uint32_t PortalLoop::addEndpointAfter(
-    uint32_t afterEndpointId, AuthoredAperture const& aperture) {
-  auto after = std::ranges::find(mTraversalOrder, afterEndpointId);
-  if (after == mTraversalOrder.end()) {
-    throw CoreException("Portal insertion endpoint ID is not in the loop");
-  }
-  if (mNextEndpointId == std::numeric_limits<uint32_t>::max()) {
-    throw CoreException("Portal endpoint ID space exhausted");
-  }
-  auto const id = mNextEndpointId++;
-  mEndpoints.emplace_back(id, aperture);
-  mTraversalOrder.insert(std::next(after), id);
-  return id;
-}
-
-void PortalLoop::removeEndpoint(uint32_t endpointId) {
-  if (mEndpoints.size() <= 2) {
-    throw CoreException("A Portal loop cannot contain fewer than two endpoints");
-  }
-  auto endpoint = std::ranges::find(mEndpoints, endpointId, &PortalEndpoint::getId);
-  auto order = std::ranges::find(mTraversalOrder, endpointId);
-  if (endpoint == mEndpoints.end() || order == mTraversalOrder.end()) {
-    throw CoreException("Portal endpoint ID is not in the loop");
-  }
-  mEndpoints.erase(endpoint);
-  mTraversalOrder.erase(order);
-}
-
-bool PortalLoop::moveEndpointEarlier(uint32_t endpointId) {
-  auto found = std::ranges::find(mTraversalOrder, endpointId);
-  if (found == mTraversalOrder.end()) {
-    throw CoreException("Portal endpoint ID is not in the loop");
-  }
-  if (found == mTraversalOrder.begin()) return false;
-  std::iter_swap(found, std::prev(found));
-  return true;
-}
-
-bool PortalLoop::moveEndpointLater(uint32_t endpointId) {
-  auto found = std::ranges::find(mTraversalOrder, endpointId);
-  if (found == mTraversalOrder.end()) {
-    throw CoreException("Portal endpoint ID is not in the loop");
-  }
-  if (std::next(found) == mTraversalOrder.end()) return false;
-  std::iter_swap(found, std::next(found));
-  return true;
-}
-
 std::string_view PortalTargetGraphDiagnosticText(
     PortalTargetGraphDiagnostic diagnostic) {
   switch (diagnostic) {
@@ -498,17 +368,17 @@ std::string_view PortalResolutionDiagnosticText(
     case PortalResolutionDiagnostic::None:
       return "Active";
     case PortalResolutionDiagnostic::UnequalEndpointHeights:
-      return "Inactive: endpoint heights differ";
+      return "Inactive: Portal heights differ";
     case PortalResolutionDiagnostic::InsufficientPlayerWidth:
       return "Inactive: aperture is narrower than the player";
     case PortalResolutionDiagnostic::InsufficientPlayerHeight:
       return "Inactive: aperture is shorter than the player";
     case PortalResolutionDiagnostic::MissingRenderedWall:
-      return "Inactive: no rendered ArrangementWall at endpoint";
+      return "Inactive: no rendered ArrangementWall at Portal";
     case PortalResolutionDiagnostic::IncompleteRenderedWallCoverage:
       return "Inactive: rendered ArrangementWall coverage is incomplete";
     case PortalResolutionDiagnostic::OtherEndpointUnresolved:
-      return "Inactive: linked endpoint did not resolve";
+      return "Inactive: another Portal in the cycle did not resolve";
   }
   return "Inactive: unknown Portal resolution failure";
 }
@@ -656,32 +526,26 @@ std::optional<wp::Vector2> FindNearestLegalPortalCentre(
   auto snappedAperture = aperture;
   snappedAperture.centre = *nearest;
   auto resolved = resolveEndpoint(
-      arrangement, walls, PortalEndpoint{0, snappedAperture}, resolvedWidth);
+      arrangement, walls, Portal{0, "Snap", snappedAperture, 0}, resolvedWidth);
   return resolved.resolved ? nearest : std::nullopt;
 }
 
 std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     arr::ArrangementResult const& arrangement,
     std::vector<arr::ArrangementWall> const& walls,
-    std::vector<PortalLoopSnapshot> const& loops) {
+    std::vector<PortalSnapshot> const& snapshots) {
   std::vector<ResolvedPortalLoop> result;
-  result.reserve(loops.size());
+  result.reserve(snapshots.size());
   struct Input {
-    uint32_t layerId, loopId;
+    uint32_t layerId;
     std::vector<uint32_t> order;
-    std::vector<PortalEndpoint> endpoints;
+    std::vector<Portal> endpoints;
     std::map<uint32_t, PortalTargetGraphDiagnostic> graphDiagnostics;
   };
   std::vector<Input> inputs;
   std::map<uint32_t, std::map<uint32_t, Portal const*>> named;
-  for (auto const& snapshot : loops) {
-    if (snapshot.portal) {
-      named[snapshot.layerId].emplace(snapshot.portal->getId(), &*snapshot.portal);
-    } else {
-      auto order = snapshot.loop.getTraversalOrder();
-      inputs.push_back({snapshot.layerId, snapshot.loop.getId(),
-          {order.begin(), order.end()}, snapshot.loop.getEndpoints(), {}});
-    }
+  for (auto const& snapshot : snapshots) {
+    named[snapshot.layerId].emplace(snapshot.portal.getId(), &snapshot.portal);
   }
 
   // Partition each Layer's functional target graph into weakly connected
@@ -722,7 +586,7 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
       }
       std::ranges::sort(component);
 
-      Input input{layerId, IndependentPortalLoopId, component, {}, {}};
+      Input input{layerId, component, {}, {}};
       auto graphValid = true;
       for (auto id : component) {
         auto diagnostic = PortalTargetGraphDiagnostic::None;
@@ -733,7 +597,7 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
         }
         input.graphDiagnostics[id] = diagnostic;
         graphValid &= diagnostic == PortalTargetGraphDiagnostic::None;
-        input.endpoints.emplace_back(id, portals.at(id)->getAperture());
+        input.endpoints.push_back(*portals.at(id));
       }
 
       // A valid component's canonical route starts at its smallest ID and
@@ -760,13 +624,12 @@ std::vector<ResolvedPortalLoop> ResolvePortalLoops(
     }
   }
   std::ranges::sort(inputs, [](auto const& a, auto const& b) {
-    return std::tie(a.layerId, a.loopId, a.order.front()) <
-           std::tie(b.layerId, b.loopId, b.order.front());
+    return std::tie(a.layerId, a.order.front()) <
+           std::tie(b.layerId, b.order.front());
   });
   for (auto const& input : inputs) {
     ResolvedPortalLoop resolved;
     resolved.layerId = input.layerId;
-    resolved.loopId = input.loopId;
     resolved.traversalOrder = input.order;
     auto const& authoredEndpoints = input.endpoints;
     auto const firstHeight = authoredEndpoints.front().getAperture().top -
@@ -882,8 +745,8 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
   }
   std::sort(
       orderedLoops.begin(), orderedLoops.end(), [](auto* left, auto* right) {
-        return std::tie(left->layerId, left->loopId, left->traversalOrder.front()) <
-               std::tie(right->layerId, right->loopId, right->traversalOrder.front());
+        return std::tie(left->layerId, left->traversalOrder.front()) <
+               std::tie(right->layerId, right->traversalOrder.front());
       });
 
   for (auto const* portalLoop : orderedLoops) {
@@ -925,7 +788,7 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
         for (auto cell1 : secondCells) {
           hops.push_back(
               {portalLoop->layerId,
-               portalLoop->loopId,
+               portalLoop->traversalOrder.front(),
                sourceEndpointId,
                destinationEndpointId,
                cell0,
@@ -941,11 +804,10 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
     }
     if (missingCells || !consistent) {
       result.diagnostics.push_back(
-          {portalLoop->layerId, portalLoop->loopId,
+          {portalLoop->layerId,
            missingCells ? PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint
                         : PortalLiquidDiagnostic::ContradictoryElevationCycle,
-           portalLoop->loopId == IndependentPortalLoopId
-               ? portalLoop->traversalOrder.front() : ~0u});
+           portalLoop->traversalOrder.front()});
       continue;
     }
     offsets = std::move(trial);

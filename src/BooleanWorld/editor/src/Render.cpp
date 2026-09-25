@@ -310,7 +310,7 @@ void renderPortalOverlays(
   for (auto const& portal : layer->getPortals()) {
     auto const& aperture = portal.getAperture();
     auto const* generated = worldData.findPortalLoop(
-        layer->getId(), bw::core::IndependentPortalLoopId, portal.getId());
+        layer->getId(), portal.getId());
     auto const* endpoint = generated
         ? bw::core::FindPortalEndpoint(*generated, portal.getId()) : nullptr;
     auto tangent = endpoint && endpoint->resolved
@@ -337,91 +337,7 @@ void renderPortalOverlays(
                      active ? colour : inactiveColour, label.c_str());
   }
 
-  for (auto const& portalLoop : layer->getPortalLoops()) {
-    auto const* generated =
-        worldData.findPortalLoop(layer->getId(), portalLoop.getId());
-    for (auto endpointId : portalLoop.getTraversalOrder()) {
-      auto const& authored =
-          portalLoop.findEndpoint(endpointId)->getAperture();
-      auto const* destination =
-          portalLoop.findEndpoint(portalLoop.getNextEndpointId(endpointId));
-      auto sourceScreen = worldToScreen(authored.centre);
-      auto destinationScreen =
-          worldToScreen(destination->getAperture().centre);
-      auto dx = destinationScreen.x - sourceScreen.x;
-      auto dy = destinationScreen.y - sourceScreen.y;
-      auto length = std::sqrt(dx * dx + dy * dy);
-      if (length > 1.0f) {
-        dx /= length;
-        dy /= length;
-        auto tip = ImVec2{
-            destinationScreen.x - dx * 7.0f,
-            destinationScreen.y - dy * 7.0f};
-        drawList->AddLine(sourceScreen, tip, authoredColour, 1.0f);
-        drawList->AddTriangleFilled(
-            tip,
-            {tip.x - dx * 8.0f - dy * 4.0f,
-             tip.y - dy * 8.0f + dx * 4.0f},
-            {tip.x - dx * 8.0f + dy * 4.0f,
-             tip.y - dy * 8.0f - dx * 4.0f},
-            authoredColour);
-      }
-      auto const* endpoint = generated
-                                 ? worldData.findPortalEndpoint(
-                                       layer->getId(), portalLoop.getId(), endpointId)
-                                 : nullptr;
-      auto tangent = endpoint && endpoint->resolved
-                         ? endpoint->aperture.tangent
-                         : wp::Vector2{1.0f, 0.0f};
-      auto const selected =
-          doc->getSelectedPortalLayerId() == layer->getId() &&
-          doc->getSelectedPortalLoopId() == portalLoop.getId() &&
-          doc->getSelectedPortalEndpointId() == endpointId;
-      auto const authoredHalf = tangent * (authored.width * 0.5f);
-      drawList->AddLine(
-          worldToScreen(authored.centre - authoredHalf),
-          worldToScreen(authored.centre + authoredHalf),
-          selected ? selectedColour : authoredColour, 5.0f);
 
-      if (endpoint && endpoint->resolved) {
-        auto const resolvedHalf =
-            tangent * (endpoint->aperture.width * 0.5f);
-        drawList->AddLine(
-            worldToScreen(endpoint->aperture.centre - resolvedHalf),
-            worldToScreen(endpoint->aperture.centre + resolvedHalf),
-            generated->active ? resolvedColour : inactiveColour, 2.0f);
-      }
-
-      auto centre = worldToScreen(authored.centre);
-      auto const active = generated && generated->active;
-      drawList->AddCircleFilled(
-          centre, 4.0f, active ? resolvedColour : inactiveColour, 12);
-      if (!active) {
-        drawList->AddLine(
-            {centre.x - 7.0f, centre.y - 7.0f},
-            {centre.x + 7.0f, centre.y + 7.0f}, inactiveColour, 2.0f);
-        drawList->AddLine(
-            {centre.x + 7.0f, centre.y - 7.0f},
-            {centre.x - 7.0f, centre.y + 7.0f}, inactiveColour, 2.0f);
-      }
-
-      if (selected || !active) {
-        auto diagnostic = endpoint
-                              ? bw::core::PortalResolutionDiagnosticText(
-                                    endpoint->diagnostic)
-                              : std::string_view{
-                                    "Inactive: owning Layer is not in this generation"};
-        char label[256];
-        std::snprintf(
-            label, sizeof(label), "Portal %u.%u [%.1f, %.1f]  %.*s",
-            portalLoop.getId(), endpointId, authored.bottom, authored.top,
-            static_cast<int>(diagnostic.size()), diagnostic.data());
-        drawList->AddText(
-            {centre.x + 9.0f, centre.y + 7.0f},
-            active ? resolvedColour : inactiveColour, label);
-      }
-    }
-  }
 }
 
 void renderWorld(

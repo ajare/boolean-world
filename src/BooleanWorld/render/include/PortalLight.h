@@ -33,7 +33,6 @@ inline constexpr float PortalLightTransformTolerance = 1e-5f;
 
 struct PortalLightEndpointKey {
   uint32_t layerId{};
-  uint32_t loopId{};
   uint32_t endpointId{};
 
   auto operator<=>(PortalLightEndpointKey const&) const = default;

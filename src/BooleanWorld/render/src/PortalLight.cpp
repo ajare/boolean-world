@@ -54,7 +54,7 @@ float attenuation(
 
 PortalLightEndpointKey endpointKey(
     bw::core::ResolvedPortalLoop const& portalLoop, uint32_t endpointId) {
-  return {portalLoop.layerId, portalLoop.loopId, endpointId};
+  return {portalLoop.layerId, endpointId};
 }
 
 std::optional<PortalLightPathHop> buildHop(

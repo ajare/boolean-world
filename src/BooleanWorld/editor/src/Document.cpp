@@ -243,11 +243,11 @@ DocumentHover Document::getHover(
                : DocumentHover{HoverableType::Primitive, std::move(primitiveIndices)};
   }
 
-  // Portal endpoints are explicit authored handles and take precedence over
+  // Portals are explicit authored handles and take precedence over
   // overlapping Primitive areas in Primitive mode.
-  auto portalEndpoint = getHoveredPortalEndpoint(mouseWorldPos, settings);
-  if (!portalEndpoint.empty()) {
-    return {HoverableType::PortalEndpoint, std::move(portalEndpoint)};
+  auto portal = getHoveredPortal(mouseWorldPos, settings);
+  if (!portal.empty()) {
+    return {HoverableType::Portal, std::move(portal)};
   }
 
   auto primitiveIndices = getHoveredPrimitiveIndices(mouseWorldPos, settings);
@@ -2337,7 +2337,7 @@ uint32_t Document::getHoveredTriggerLineIndex(wp::Vector2 const& mouseWorldPos, 
              : ~0u;
 }
 
-vector<uint32_t> Document::getHoveredPortalEndpoint(
+vector<uint32_t> Document::getHoveredPortal(
     wp::Vector2 const& mouseWorldPos, Settings const& settings) const {
   if (!isActive() || settings.mode == Settings::Mode::Mesh) return {};
   auto const* layer = mWorld->getActiveLayer();
@@ -2349,18 +2349,7 @@ vector<uint32_t> Document::getHoveredPortalEndpoint(
     auto distance = portal.getAperture().centre.distanceToSq(mouseWorldPos);
     if (distance <= radiusSquared && distance < bestDistance) {
       bestDistance = distance;
-      result = {bw::core::IndependentPortalLoopId, portal.getId()};
-    }
-  }
-  for (auto const& portalLoop : layer->getPortalLoops()) {
-    for (auto endpointId : portalLoop.getTraversalOrder()) {
-      auto const* endpoint = portalLoop.findEndpoint(endpointId);
-      auto const distance = endpoint->getAperture().centre.distanceToSq(
-          mouseWorldPos);
-      if (distance <= radiusSquared && distance < bestDistance) {
-        bestDistance = distance;
-        result = {portalLoop.getId(), endpointId};
-      }
+      result = {portal.getId()};
     }
   }
   return result;
