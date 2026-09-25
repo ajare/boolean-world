@@ -66,6 +66,8 @@ struct RenderFixture {
   bool lookAtCeiling{};
   bool lookAtWallBack{};
   bool wet{};
+  // Keeps Portal Liquid controls geometrically identical to their dry control.
+  bool recessed{};
   bool sloped{};
   bool fragmented{};
   bool triplanar{};
@@ -73,6 +75,7 @@ struct RenderFixture {
   bool angled{};
   bool continuityJunction{};
   bool portal{};
+  bool singlePortalCycle{};
   bool mirror{};
   bool mirroredCamera{};
   bool manyPortalEndpoints{};
@@ -211,7 +214,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   }
 
   auto properties = primitive->getProperties();
-  properties.floorZ = 0.0f;
+  properties.floorZ = fixture.recessed ? -6.0f : 0.0f;
   properties.ceilingZ = 48.0f;
   if (fixture.sloped) {
     properties.floorZ.gradient = {0.25f, 0.125f};
@@ -247,7 +250,7 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
   }
   if (fixture.phantomDiagnostic)
     properties.wallMaterial = bw::core::SurfaceMaterialReference::subMaterial("missing.phantom.diagnostic");
-  properties.liquidLevel = fixture.wet ? 2.0f : 0.0f;
+  properties.liquidLevel = fixture.wet ? (fixture.recessed ? 6.0f : 2.0f) : 0.0f;
   primitive->setProperties(properties);
   world.addPrimitive(primitive);
   std::vector<bw::core::Primitive*> primitives{primitive};
@@ -377,9 +380,10 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
         layer->removePortal(id);
       }
     }
-    auto const portalCentres = fixture.threeEndpointPortal
-                                   ? std::vector<float>{-8.0f}
-                                   : std::vector<float>{-8.0f, 8.0f};
+    auto const portalCentres =
+        fixture.threeEndpointPortal || fixture.singlePortalCycle
+            ? std::vector<float>{-8.0f}
+            : std::vector<float>{-8.0f, 8.0f};
     for (auto centreX : portalCentres) {
       if (fixture.mirror) {
         for (auto y : {16.0f, -16.0f}) {
@@ -388,9 +392,10 @@ bw::core::ArrangementWorldDataPtr buildWorldData(
         }
         continue;
       }
+      auto const portalBottom = fixture.recessed ? -6.0f : 4.0f;
       auto firstPortalId = bw::test::addPortalCycle(layer,
-          {{centreX, 16.0f}, 12.0f, 4.0f, 36.0f},
-          {{centreX, -16.0f}, 12.0f, 4.0f, 36.0f});
+          {{centreX, 16.0f}, 12.0f, portalBottom, 36.0f},
+          {{centreX, -16.0f}, 12.0f, portalBottom, 36.0f});
       if (fixture.threeEndpointPortal) {
         [[maybe_unused]] auto const thirdEndpointId =
             bw::test::insertPortalAfter(layer, layer->getPortal(firstPortalId)->getTargetId(),
@@ -500,7 +505,10 @@ std::vector<float> render(
     uint32_t* portalPasses = nullptr,
     uint32_t* selectedPortals = nullptr,
     std::vector<float>* switchedZoneImage = nullptr,
-    ViewTrace* trace = nullptr) {
+    ViewTrace* trace = nullptr,
+    std::vector<float>* portalAuxiliaryImage = nullptr,
+    mpp::AuxiliarySceneView* portalAuxiliaryView = nullptr,
+    mpp::CameraPtr overrideCamera = nullptr) {
   std::string dependencyError;
   auto triplanarDependency = fixture.continuityJunction
                                  ? "World/TriplanarWallContinuityDiagnostic"
@@ -546,7 +554,7 @@ std::vector<float> render(
       renderSystem, &world, kWidth, kHeight, fixture.horizontal, shadows,
       "Preview3D", true, reflections);
   auto pipeline = renderSystem.renderSystem()->getRenderPipeline("Editor.Preview3D.World");
-  auto camera = std::make_shared<ReactiveCamera>(
+  auto reactiveCamera = std::make_shared<ReactiveCamera>(
       glm::vec3{
           0.0f,
           fixture.lookAtCeiling
@@ -560,16 +568,16 @@ std::vector<float> render(
       BW_PLAYER_FOV,
       kWidth / float(kHeight));
   if (fixture.phantomWindow) {
-    camera->setLookAt(fixture.phantomReverse ? glm::vec3{0, 16, 0} : glm::vec3{0, 16, 80},
-                     fixture.phantomReverse ? glm::vec3{0, 16, 80} : glm::vec3{0, 16, 0});
+    reactiveCamera->setLookAt(fixture.phantomReverse ? glm::vec3{0, 16, 0} : glm::vec3{0, 16, 80},
+                             fixture.phantomReverse ? glm::vec3{0, 16, 80} : glm::vec3{0, 16, 0});
   }
-  if (fixture.mirror) camera->setLookAt({2, 19, 1}, {-4, 17, -16});
-  camera->setMirrored(fixture.mirroredCamera);
-  if (fixture.portalBackSurface) camera->setPitch(-12.0f);
+  if (fixture.mirror) reactiveCamera->setLookAt({2, 19, 1}, {-4, 17, -16});
+  reactiveCamera->setMirrored(fixture.mirroredCamera);
+  if (fixture.portalBackSurface) reactiveCamera->setPitch(-12.0f);
   if (fixture.horizontalBack) {
-    camera->setPosition({0, fixture.horizontalBack == 2 ? 52.0f :
-                               fixture.horizontalBack == 3 ? 1.0f : -4.0f, 0});
-    camera->setPitch(fixture.horizontalBack == 2 ? 90.0f : -90.0f);
+    reactiveCamera->setPosition({0, fixture.horizontalBack == 2 ? 52.0f :
+                                       fixture.horizontalBack == 3 ? 1.0f : -4.0f, 0});
+    reactiveCamera->setPitch(fixture.horizontalBack == 2 ? 90.0f : -90.0f);
   }
   if (fixture.detailBack >= 0) {
     auto const& facets = worldData->getDetail().getTriangles();
@@ -582,9 +590,10 @@ std::vector<float> render(
       centre += glm::vec3(vertex.position[0], vertex.position[2], -vertex.position[1]) / 3.0f;
     auto const& n = facet->v[0].normal;
     glm::vec3 normal{n[0], n[2], -n[1]};
-    camera->setLookAt(centre + normal * (fixture.detailFront ? 0.05f : -0.05f), centre,
+    reactiveCamera->setLookAt(centre + normal * (fixture.detailFront ? 0.05f : -0.05f), centre,
         std::abs(normal.y) > 0.9f ? glm::vec3{0, 0, 1} : glm::vec3{0, 1, 0});
   }
+  mpp::CameraPtr camera = overrideCamera ? overrideCamera : reactiveCamera;
   camera->setClipDistances(fixture.detailBack >= 0 ? 0.001f : 0.1f, 1000000.0f);
   uint32_t texture{};
   std::array<std::array<uint64_t, 2>, 3> surfaceCounters{};
@@ -592,7 +601,10 @@ std::vector<float> render(
   for (int frame = 0; frame < 3; ++frame) {
     if (trace) pipeline->requestGraphImageCapture();
     texture = scene.render(
-        &world, *worldData, camera, camera->getPosition(), 1.0f / 60.0f, {},
+        &world, *worldData, camera,
+        overrideCamera ? glm::vec3{0.0f, BW_PLAYER_EYE_HEIGHT, 0.0f}
+                       : camera->getPosition(),
+        1.0f / 60.0f, {},
         -1, fixture.debugWallTechnique,
         frame == 1 ? (fixture.zone == bw::core::ZoneId::Euclidean
                           ? bw::core::ZoneId::NegativeSpace
@@ -675,6 +687,20 @@ std::vector<float> render(
     auto after = readColour(texture);
     if (regionDifference(before, after) >= 0.0005)
       throw std::runtime_error("Phantom snapshot rebuild changed aperture view");
+  }
+  if (portalAuxiliaryImage) {
+    if (!fixture.portal || initialPortalPlan.nodes.empty())
+      throw std::runtime_error("Portal auxiliary capture requested without a rendered Portal");
+    auto node = std::ranges::find_if(initialPortalPlan.nodes, [](auto const& item) {
+      return item.recursionDepth == 1;
+    });
+    if (node == initialPortalPlan.nodes.end()) node = initialPortalPlan.nodes.begin();
+    auto output = pipeline->getAuxiliarySceneOutputs(node->auxiliary.slot);
+    auto target = std::dynamic_pointer_cast<mpp::RenderTexture>(output.colour);
+    if (!target || target->getNumColourAttachments() == 0)
+      throw std::runtime_error("Portal auxiliary colour output is unavailable");
+    *portalAuxiliaryImage = readColour(target->getColourAttachmentId(0));
+    if (portalAuxiliaryView) *portalAuxiliaryView = node->auxiliary;
   }
   if (texture == 0)
     throw std::runtime_error("WorldRenderer produced no render texture");
@@ -916,6 +942,44 @@ void portalRendersThroughPublicSceneAndNamedFinalOutput(
           "public render-scene did not render bounded A -> B -> C -> A views");
   require(regionDifference(image, directed) > 0.0005,
           "three directed Portal destinations were not visibly distinguished");
+}
+
+void portalRendersLiquidThroughTheRealPipeline(
+    editor::EditorRenderSystem& renderSystem) {
+  std::vector<float> portalImage;
+  mpp::AuxiliarySceneView portalView;
+  (void)render(renderSystem,
+               {.wet = true, .recessed = true, .portal = true,
+                .singlePortalCycle = true, .planar = true},
+               nullptr, nullptr, nullptr, nullptr, nullptr, &portalImage,
+               &portalView);
+
+  auto clipped = mpp::buildObliquelyClippedVirtualCamera(
+      portalView.view, portalView.projection, portalView.worldClipPlane,
+      portalView.seamBias);
+  auto directCamera = std::make_shared<mpp::VirtualCamera>(
+      clipped.view, clipped.projection, portalView.nearDistance,
+      portalView.farDistance);
+  auto directImage = render(
+      renderSystem, {.wet = true, .recessed = true, .planar = true}, nullptr,
+      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, directCamera);
+
+  std::vector<float> dryPortalImage;
+  (void)render(renderSystem,
+               {.recessed = true, .portal = true,
+                .singlePortalCycle = true, .planar = true},
+               nullptr, nullptr, nullptr, nullptr, nullptr, &dryPortalImage);
+  auto dryDirectImage = render(
+      renderSystem, {.recessed = true, .planar = true}, nullptr, nullptr,
+      nullptr, nullptr, nullptr, nullptr, nullptr, directCamera);
+  auto dryDifference = regionDifference(dryPortalImage, dryDirectImage);
+  auto wetDifference = regionDifference(portalImage, directImage);
+  auto portalWaterEffect = regionDifference(portalImage, dryPortalImage);
+  auto directWaterEffect = regionDifference(directImage, dryDirectImage);
+  require(wetDifference <= dryDifference + 0.01,
+          "Liquid added a Portal-only rendering error absent from the same transformed dry view");
+  require(std::abs(portalWaterEffect - directWaterEffect) < 0.025,
+          "Liquid absorption changed when the same view was rendered through a Portal");
 }
 
 void mirrorsRenderThroughTheRealPipeline(editor::EditorRenderSystem& renderSystem) {
@@ -1482,6 +1546,7 @@ int main(int argc, char** argv) {
         triplanarWallContinuityRendersThroughTheRealWorldProgram(renderSystem);
       } else if (scenario == "portal") {
         portalRendersThroughPublicSceneAndNamedFinalOutput(renderSystem);
+        portalRendersLiquidThroughTheRealPipeline(renderSystem);
         mirrorsRenderThroughTheRealPipeline(renderSystem);
       } else if (scenario == "mines-portal") {
         minesPortalRenders(renderSystem);

@@ -184,15 +184,37 @@ void liquidShaderPreservesTheSsrContract() {
       std::filesystem::path(BW_APP_RESOURCE_DIR) / "shaders" /
       "world_pbr_2d.frag");
   for (auto const* source : {&shader, &horizontalShader}) {
-    require(source->find("@@Uniform(int MPP_VIRTUAL_CAMERA)") !=
+    require(source->find("@@Uniform(int MPP_PLANAR_REFLECTION_CAMERA)") !=
                     std::string::npos &&
-                source->find("if (@Uniform(MPP_VIRTUAL_CAMERA) != 0)") !=
+                source->find("if (@Uniform(MPP_PLANAR_REFLECTION_CAMERA) != 0)") !=
                     std::string::npos &&
                 source->find("outTransmittance = vec3(1.0)") !=
                     std::string::npos &&
                 source->find("return direct + ambient") != std::string::npos,
-            "a reflected virtual camera can still invent ordinary Liquid absorption");
+            "a Planar reflection camera can still invent ordinary Liquid absorption");
   }
+
+  auto planarPasses = read(
+      std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path().parent_path()
+          .parent_path().parent_path() / "ext" / "willpower" / "ext" /
+      "massive-poly-pusher" / "mpp" / "src" /
+      "RenderGraphBuiltInPasses.cpp");
+  require(planarPasses.find(
+              "setUniform(\"MPP_PLANAR_REFLECTION_CAMERA\", int32_t{ 1 })") !=
+              std::string::npos,
+          "the Planar reflection pass does not identify itself independently of Portal cameras");
+
+  auto pipeline = read(
+      std::filesystem::path(BW_APP_RESOURCE_DIR).parent_path().parent_path()
+          .parent_path().parent_path() / "ext" / "willpower" / "ext" /
+      "massive-poly-pusher" / "mpp" / "src" / "RenderPipeline.cpp");
+  require(pipeline.find(
+              "uniforms.setUniform(\"MPP_PLANAR_REFLECTION_CAMERA\", int32_t{ 0 })") !=
+                  std::string::npos &&
+              pipeline.find(
+                  "pipelineUniformOverrides.setUniform(\"MPP_PLANAR_REFLECTION_CAMERA\", int32_t{ 0 })") !=
+                  std::string::npos,
+          "ordinary and Portal cameras do not reset the Planar-only Liquid absorption override");
 }
 
 }  // namespace

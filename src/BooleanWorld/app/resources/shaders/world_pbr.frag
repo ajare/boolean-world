@@ -29,6 +29,7 @@ layout(depth_greater) out float gl_FragDepth;
 @@Uniform(int LIQUID_WATER_PASS_ENABLED);
 @@Uniform(int LIQUID_REFLECTION_ENABLED);
 @@Uniform(int MPP_VIRTUAL_CAMERA);
+@@Uniform(int MPP_PLANAR_REFLECTION_CAMERA);
 @@Uniform(int MPP_WATER_REFLECTION_TECHNIQUE);
 @@Uniform(int MPP_PLANAR_REFLECTION_COUNT);
 @@Uniform(mat4 MPP_PLANAR_REFLECTION_VIEW_PROJECTION_0);
@@ -3487,7 +3488,7 @@ vec3 applyLiquidAbsorption(
     // A Planar reflected-scene pass uses a mirrored virtual eye. Applying the
     // ordinary camera-to-surface path to that eye would invent absorption through
     // Liquid that the reflected radiance never traversed.
-    if (@Uniform(MPP_VIRTUAL_CAMERA) != 0)
+    if (@Uniform(MPP_PLANAR_REFLECTION_CAMERA) != 0)
     {
         outTransmittance = vec3(1.0);
         return direct + ambient;
