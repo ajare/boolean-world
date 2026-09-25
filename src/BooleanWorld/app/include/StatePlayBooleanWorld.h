@@ -135,7 +135,7 @@ private:
 
   struct PortalCollisionEndpoint {
     bw::core::ResolvedPortalPair const* pair{};
-    uint32_t endpoint{};
+    uint32_t endpointId{};
     bool sourceWallBlocks{};
   };
   std::vector<PortalCollisionEndpoint> mPortalCollisionEndpoints;

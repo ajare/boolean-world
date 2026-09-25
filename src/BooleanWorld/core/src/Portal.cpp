@@ -283,18 +283,36 @@ uint32_t NextPortalEndpointId(
   return order[(static_cast<size_t>(found - order.begin()) + 1) % order.size()];
 }
 
+ResolvedPortalEndpoint const* FindPortalEndpoint(
+    ResolvedPortalPair const& pair, uint32_t endpointId) {
+  auto found = std::ranges::find(
+      pair.endpoints, endpointId, &ResolvedPortalEndpoint::endpointId);
+  return found == pair.endpoints.end() ? nullptr : &*found;
+}
+
+ResolvedPortalEndpoint const* NextPortalEndpoint(
+    ResolvedPortalPair const& pair, uint32_t sourceEndpointId) {
+  if (!FindPortalEndpoint(pair, sourceEndpointId)) return nullptr;
+  std::vector<uint32_t> order;
+  order.reserve(pair.endpoints.size());
+  for (auto const& endpoint : pair.endpoints) {
+    order.push_back(endpoint.endpointId);
+  }
+  return FindPortalEndpoint(
+      pair, NextPortalEndpointId(order, sourceEndpointId));
+}
+
 uint32_t NextPortalEndpointIndex(
     ResolvedPortalPair const& pair, uint32_t sourceIndex) {
   if (sourceIndex >= pair.endpoints.size()) {
     throw CoreException("Invalid Portal source endpoint index");
   }
-  std::array<uint32_t, 2> order{
-      pair.endpoints[0].endpointId, pair.endpoints[1].endpointId};
-  auto nextId = NextPortalEndpointId(order, order[sourceIndex]);
-  auto found = std::find_if(
-      pair.endpoints.begin(), pair.endpoints.end(),
-      [nextId](auto const& endpoint) { return endpoint.endpointId == nextId; });
-  return static_cast<uint32_t>(found - pair.endpoints.begin());
+  auto const* destination =
+      NextPortalEndpoint(pair, pair.endpoints[sourceIndex].endpointId);
+  if (!destination) {
+    throw CoreException("Portal destination endpoint ID is not in the loop");
+  }
+  return static_cast<uint32_t>(destination - pair.endpoints.data());
 }
 
 PortalRigidTransform BuildPortalRigidTransform(

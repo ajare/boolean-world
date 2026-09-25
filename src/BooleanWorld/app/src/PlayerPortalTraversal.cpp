@@ -13,8 +13,8 @@ constexpr float BoundsTolerance = 0.001f;
 constexpr float RepeatedStateTolerance = 0.001f;
 
 PortalEndpointIdentity Identity(
-    core::ResolvedPortalPair const& pair, uint32_t endpoint) {
-  return {pair.layerId, pair.pairId, static_cast<uint8_t>(endpoint)};
+    core::ResolvedPortalPair const& pair, uint32_t endpointId) {
+  return {pair.layerId, pair.pairId, endpointId};
 }
 
 bool SameRepeatedState(
@@ -30,18 +30,23 @@ bool SameRepeatedState(
 PlayerPortalCrossingResult tryPlayerPortalCrossing(
     core::ArrangementWorldData const& world,
     core::ResolvedPortalPair const& pair,
-    uint32_t sourceEndpoint,
+    uint32_t sourceEndpointId,
     float playerRadius,
     float playerHeight,
     PlayerPortalMotion& motion,
     PlayerPortalUpdateState& updateState) {
-  if (!pair.active || sourceEndpoint >= pair.endpoints.size()) {
+  auto const* sourceEndpoint =
+      core::FindPortalEndpoint(pair, sourceEndpointId);
+  if (!pair.active || !sourceEndpoint) {
     return PlayerPortalCrossingResult::NotCrossing;
   }
-  auto const& source = pair.endpoints[sourceEndpoint].aperture;
-  auto const destinationEndpoint =
-      core::NextPortalEndpointIndex(pair, sourceEndpoint);
-  auto const& destination = pair.endpoints[destinationEndpoint].aperture;
+  auto const* destinationEndpoint =
+      core::NextPortalEndpoint(pair, sourceEndpointId);
+  if (!destinationEndpoint) {
+    return PlayerPortalCrossingResult::NotCrossing;
+  }
+  auto const& source = sourceEndpoint->aperture;
+  auto const& destination = destinationEndpoint->aperture;
   auto startDistance = (motion.position - source.centre).dot(source.front);
   auto endPosition = motion.position + motion.unconsumedMovement;
   auto endDistance = (endPosition - source.centre).dot(source.front);
@@ -69,7 +74,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
     return PlayerPortalCrossingResult::Blocked;
   }
 
-  auto identity = Identity(pair, sourceEndpoint);
+  auto identity = Identity(pair, sourceEndpointId);
   if (updateState.exitSide.active &&
       updateState.exitSide.endpoint == identity) {
     return PlayerPortalCrossingResult::Blocked;
@@ -86,7 +91,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
     return PlayerPortalCrossingResult::Blocked;
   }
 
-  auto transform = core::BuildPortalRigidTransform(pair, sourceEndpoint);
+  core::PortalRigidTransform transform{source, destination};
   auto transformedCrossing = transform.transformPoint(crossing);
   auto destinationPosition =
       transformedCrossing + destination.front * PortalExitPlaneEpsilon;
@@ -132,7 +137,7 @@ PlayerPortalCrossingResult tryPlayerPortalCrossing(
   updateState.visited.push_back(repeated);
   ++updateState.crossings;
   updateState.exitSide = {
-      Identity(pair, destinationEndpoint), true};
+      Identity(pair, destinationEndpoint->endpointId), true};
   updateState.cameraCut = true;
   return PlayerPortalCrossingResult::Traversed;
 }
@@ -144,13 +149,16 @@ void updatePortalExitSideState(
     PortalExitSideState& state) {
   if (!state.active) return;
   auto const* pair = world.findPortalPair(
-      state.endpoint.layerId, state.endpoint.pairId);
-  if (!pair || !pair->active || state.endpoint.endpoint >= 2) {
+      state.endpoint.layerId, state.endpoint.portalId);
+  auto const* endpoint = pair
+                             ? core::FindPortalEndpoint(
+                                   *pair, state.endpoint.endpointId)
+                             : nullptr;
+  if (!pair || !pair->active || !endpoint) {
     state = {};
     return;
   }
-  auto const& aperture =
-      pair->endpoints[state.endpoint.endpoint].aperture;
+  auto const& aperture = endpoint->aperture;
   auto frontDistance =
       (playerPosition - aperture.centre).dot(aperture.front);
   if (frontDistance >= playerRadius + PortalExitPlaneEpsilon) {

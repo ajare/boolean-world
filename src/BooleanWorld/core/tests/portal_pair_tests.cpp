@@ -350,6 +350,15 @@ void canonicalNextEndpointRoutesByStableIdentity() {
   require(bw::core::NextPortalEndpointId(pairOrder, 17) == 42 &&
               bw::core::NextPortalEndpointId(pairOrder, 42) == 17,
           "two-endpoint routing must work in both directions");
+  bw::core::ResolvedPortalPair pair;
+  pair.endpoints[0].endpointId = 17;
+  pair.endpoints[1].endpointId = 42;
+  require(bw::core::FindPortalEndpoint(pair, 42) == &pair.endpoints[1] &&
+              bw::core::NextPortalEndpoint(pair, 17) == &pair.endpoints[1] &&
+              bw::core::NextPortalEndpoint(pair, 42) == &pair.endpoints[0] &&
+              !bw::core::FindPortalEndpoint(pair, 0) &&
+              !bw::core::NextPortalEndpoint(pair, 0),
+          "resolved Portal routing confused stable identity with array position");
   try {
     [[maybe_unused]] auto next = bw::core::NextPortalEndpointId(order, 99);
     require(false, "unknown endpoint ID was accepted");

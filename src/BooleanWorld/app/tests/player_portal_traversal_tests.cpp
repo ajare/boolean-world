@@ -107,8 +107,8 @@ void highSpeedCrossingTransformsCompleteMotionState() {
   auto speed = motion.horizontalVelocity.length();
   bw::app::PlayerPortalUpdateState state;
   auto result = bw::app::tryPlayerPortalCrossing(
-      *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT,
-      motion, state);
+      *fixture.data, *fixture.pair, fixture.pair->endpoints[0].endpointId,
+      BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT, motion, state);
   require(result == bw::app::PlayerPortalCrossingResult::Traversed,
           "high-speed swept Portal crossing was missed");
   auto const& destination = fixture.pair->endpoints[1].aperture;
@@ -135,7 +135,8 @@ void frameAndVerticalMissesRemainBlocked() {
   bw::app::PlayerPortalUpdateState state;
   require(
       bw::app::tryPlayerPortalCrossing(
-          *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+          *fixture.data, *fixture.pair,
+          fixture.pair->endpoints[0].endpointId, BW_PLAYER_RADIUS,
           BW_PLAYER_HEIGHT, beside, state) ==
           bw::app::PlayerPortalCrossingResult::Blocked,
       "crossing whose collider overlaps the Portal frame was accepted");
@@ -144,7 +145,8 @@ void frameAndVerticalMissesRemainBlocked() {
   above.feetElevation = 8.0f;
   require(
       bw::app::tryPlayerPortalCrossing(
-          *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+          *fixture.data, *fixture.pair,
+          fixture.pair->endpoints[0].endpointId, BW_PLAYER_RADIUS,
           BW_PLAYER_HEIGHT, above, state) ==
           bw::app::PlayerPortalCrossingResult::Blocked,
       "crossing outside the aperture's vertical bounds was accepted");
@@ -157,7 +159,8 @@ void validApproachesDoNotTeleportBeforeTheCentreReachesThePlane() {
   auto initialPosition = motion.position;
   bw::app::PlayerPortalUpdateState state;
   require(bw::app::tryPlayerPortalCrossing(
-              *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+              *fixture.data, *fixture.pair,
+              fixture.pair->endpoints[0].endpointId, BW_PLAYER_RADIUS,
               BW_PLAYER_HEIGHT, motion, state) ==
               bw::app::PlayerPortalCrossingResult::Approaching &&
               motion.position == initialPosition && state.crossings == 0 &&
@@ -165,7 +168,8 @@ void validApproachesDoNotTeleportBeforeTheCentreReachesThePlane() {
           "a valid approach must allow collider overlap without teleporting");
   motion.feetElevation = 30.0f;
   require(bw::app::tryPlayerPortalCrossing(
-              *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+              *fixture.data, *fixture.pair,
+              fixture.pair->endpoints[0].endpointId, BW_PLAYER_RADIUS,
               BW_PLAYER_HEIGHT, motion, state) ==
               bw::app::PlayerPortalCrossingResult::Blocked,
           "an approach outside the vertical aperture must still block");
@@ -179,15 +183,18 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
   auto* player = collider.get();
   simulation.addSlidingCollider(std::move(collider));
 
+  auto routedPair = *fixture.pair;
+  routedPair.endpoints[0].endpointId = 41;
+  routedPair.endpoints[1].endpointId = 9;
   struct Endpoint {
     bw::core::ResolvedPortalPair const* pair;
-    uint32_t endpoint;
+    uint32_t endpointId;
   };
   std::vector<Endpoint> endpoints;
-  for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
-    auto const& aperture = fixture.pair->endpoints[endpoint].aperture;
+  for (auto const& endpoint : routedPair.endpoints) {
+    auto const& aperture = endpoint.aperture;
     auto half = aperture.tangent * (aperture.width * 0.5f);
-    endpoints.push_back({fixture.pair, endpoint});
+    endpoints.push_back({&routedPair, endpoint.endpointId});
     simulation.addPortalLine(
         aperture.centre - half, aperture.centre + half);
   }
@@ -200,7 +207,7 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
         motion.unconsumedMovement = sweep->movementDesired;
         auto result = bw::app::tryPlayerPortalCrossing(
             *fixture.data, *endpoints[lineIndex].pair,
-            endpoints[lineIndex].endpoint, BW_PLAYER_RADIUS,
+            endpoints[lineIndex].endpointId, BW_PLAYER_RADIUS,
             BW_PLAYER_HEIGHT, motion, state);
         if (result == bw::app::PlayerPortalCrossingResult::Approaching) {
           return WorldCollisionSim::PortalLineResponse::Ignore;
@@ -231,8 +238,11 @@ void collisionSweepContinuesItsTransformedRemainder(bool smallSteps = false) {
     simulation.update(0.3f);
   }
 
-  auto const& destination = fixture.pair->endpoints[1].aperture;
+  auto const& destination = routedPair.endpoints[1].aperture;
   require(state.crossings == 1 &&
+              state.exitSide.endpoint == bw::app::PortalEndpointIdentity{
+                  routedPair.layerId, routedPair.pairId,
+                  routedPair.endpoints[1].endpointId} &&
               (player->getCentre() - destination.centre)
                       .dot(destination.front) > (smallSteps ? 0.0f : 19.9f),
           "collision sweep did not consume transformed movement after the Portal crossing");
@@ -307,7 +317,8 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
   bw::app::PlayerPortalUpdateState state;
   require(
       bw::app::tryPlayerPortalCrossing(
-          *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+          *fixture.data, *fixture.pair,
+          fixture.pair->endpoints[0].endpointId, BW_PLAYER_RADIUS,
           BW_PLAYER_HEIGHT, motion, state) ==
           bw::app::PlayerPortalCrossingResult::Traversed,
       "initial crossing failed");
@@ -316,7 +327,8 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
       -fixture.pair->endpoints[1].aperture.front * 2.0f;
   require(
       bw::app::tryPlayerPortalCrossing(
-          *fixture.data, *fixture.pair, 1, BW_PLAYER_RADIUS,
+          *fixture.data, *fixture.pair,
+          fixture.pair->endpoints[1].endpointId, BW_PLAYER_RADIUS,
           BW_PLAYER_HEIGHT, motion, state) ==
           bw::app::PlayerPortalCrossingResult::Blocked,
       "destination endpoint immediately bounced the player back");
@@ -334,7 +346,8 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
       -destination.front * (BW_PLAYER_RADIUS + 1.0f);
   require(
       bw::app::tryPlayerPortalCrossing(
-          *fixture.data, *fixture.pair, 1, BW_PLAYER_RADIUS,
+          *fixture.data, *fixture.pair,
+          fixture.pair->endpoints[1].endpointId, BW_PLAYER_RADIUS,
           BW_PLAYER_HEIGHT, motion, state) ==
           bw::app::PlayerPortalCrossingResult::Traversed,
       "deliberate reverse traversal stayed suppressed after clearing the plane");
@@ -344,7 +357,8 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
   budget.crossings = bw::app::MaxPortalCrossingsPerUpdate;
   require(
       bw::app::tryPlayerPortalCrossing(
-          *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+          *fixture.data, *fixture.pair,
+          fixture.pair->endpoints[0].endpointId, BW_PLAYER_RADIUS,
           BW_PLAYER_HEIGHT, budgetMotion, budget) ==
               bw::app::PlayerPortalCrossingResult::Blocked &&
           budget.terminatedByBudgetOrRepeat,
@@ -352,13 +366,14 @@ void exitSideAndSameUpdateGuardsAreGeometricAndFinite() {
 
   auto repeatedMotion = crossingMotion();
   bw::app::PlayerPortalUpdateState repeated;
-  repeated.visited.push_back({
-      {fixture.pair->layerId, fixture.pair->pairId, 0},
-      fixture.pair->endpoints[0].aperture.centre,
-      {-20.0f, 0.0f}});
+  repeated.visited.push_back({{fixture.pair->layerId, fixture.pair->pairId,
+                               fixture.pair->endpoints[0].endpointId},
+                              fixture.pair->endpoints[0].aperture.centre,
+                              {-20.0f, 0.0f}});
   require(
       bw::app::tryPlayerPortalCrossing(
-          *fixture.data, *fixture.pair, 0, BW_PLAYER_RADIUS,
+          *fixture.data, *fixture.pair,
+          fixture.pair->endpoints[0].endpointId, BW_PLAYER_RADIUS,
           BW_PLAYER_HEIGHT, repeatedMotion, repeated) ==
               bw::app::PlayerPortalCrossingResult::Blocked &&
           repeated.terminatedByBudgetOrRepeat,

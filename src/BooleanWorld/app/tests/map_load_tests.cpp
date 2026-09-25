@@ -205,22 +205,25 @@ void minesCreateLevelRailRunsAndWoodenSupports() {
   auto const* portalPair = portalData->findPortalPair(0, 0);
   require(portalPair && portalPair->active,
           "mines example Portal pair is not active in the game");
-  for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
-    auto const& aperture = portalPair->endpoints[endpointIndex].aperture;
+  for (auto const& endpoint : portalPair->endpoints) {
+    auto const& aperture = endpoint.aperture;
     bw::app::PlayerPortalMotion motion;
     motion.position = aperture.centre + aperture.front * 10.0f;
     motion.feetElevation = aperture.bottom;
     motion.unconsumedMovement = -aperture.front * 20.0f;
     bw::app::PlayerPortalUpdateState state;
     require(bw::app::tryPlayerPortalCrossing(
-                *portalData, *portalPair, endpointIndex, BW_PLAYER_RADIUS,
-                BW_PLAYER_HEIGHT, motion, state) ==
+                *portalData, *portalPair, endpoint.endpointId,
+                BW_PLAYER_RADIUS, BW_PLAYER_HEIGHT, motion, state) ==
                 bw::app::PlayerPortalCrossingResult::Traversed,
             "mines example Portal pair cannot be traversed in both directions");
     auto torch = bw::app::placePlayerTorch(
         *portalData, aperture.centre + aperture.front * 2.0f,
         aperture.bottom + 12.0f, -aperture.front, 4.0f);
-    auto const& exit = portalPair->endpoints[1 - endpointIndex].aperture;
+    auto const* destination =
+        bw::core::NextPortalEndpoint(*portalPair, endpoint.endpointId);
+    require(destination, "mines Portal route has no destination endpoint");
+    auto const& exit = destination->aperture;
     require((torch.position - (exit.centre + exit.front * 2.0f)).length() < 0.01f &&
                 std::abs(torch.elevation - (exit.bottom + 12.0f)) < 0.01f,
             "mines Torch did not teleport through both actual example apertures");

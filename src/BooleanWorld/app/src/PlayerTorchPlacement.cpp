@@ -5,6 +5,7 @@
 #include <limits>
 
 #include <common/GameDefines.h>
+#include <core/Portal.h>
 
 namespace bw::app {
 namespace {
@@ -12,7 +13,7 @@ constexpr float exitEpsilon = 0.001f;
 // Independent of the rendering recursion budget. Very long/cyclic debug
 // reaches must still terminate; stop before the next aperture at this limit.
 constexpr uint32_t maximumCrossings = 64;
-}
+}  // namespace
 
 PlayerTorchPlacement placePlayerTorch(
     core::WorldData const& world, wp::Vector2 position, float elevation,
@@ -24,12 +25,12 @@ PlayerTorchPlacement placePlayerTorch(
   direction.normalise();
   for (uint32_t crossings = 0; ; ++crossings) {
     core::ResolvedPortalPair const* nearestPair = nullptr;
-    uint32_t nearestEndpoint = 0;
+    core::ResolvedPortalEndpoint const* nearestEndpoint = nullptr;
     float nearestDistance = std::numeric_limits<float>::infinity();
     for (auto const& pair : world.getPortalPairs()) {
       if (!pair.active) continue;
-      for (uint32_t endpoint = 0; endpoint < 2; ++endpoint) {
-        auto const& aperture = pair.endpoints[endpoint].aperture;
+      for (auto const& endpoint : pair.endpoints) {
+        auto const& aperture = endpoint.aperture;
         auto side = (position - aperture.centre).dot(aperture.front);
         auto approach = direction.dot(aperture.front);
         if (side < 0.0f || approach >= -0.000001f ||
@@ -40,7 +41,7 @@ PlayerTorchPlacement placePlayerTorch(
         if (std::abs((intersection - aperture.centre).dot(aperture.tangent)) >=
             aperture.width * 0.5f) continue;
         nearestPair = &pair;
-        nearestEndpoint = endpoint;
+        nearestEndpoint = &endpoint;
         nearestDistance = distance;
       }
     }
@@ -60,7 +61,14 @@ PlayerTorchPlacement placePlayerTorch(
           0.0f, nearestDistance - BW_PLAYER_TORCH_WALL_CLEARANCE), elevation};
     }
 
-    auto transform = core::BuildPortalRigidTransform(*nearestPair, nearestEndpoint);
+    auto const* destination = core::NextPortalEndpoint(
+        *nearestPair, nearestEndpoint->endpointId);
+    if (!destination) {
+      return {position + direction * std::max(
+          0.0f, nearestDistance - BW_PLAYER_TORCH_WALL_CLEARANCE), elevation};
+    }
+    core::PortalRigidTransform transform{
+        nearestEndpoint->aperture, destination->aperture};
     position = transform.transformPoint(position + direction * nearestDistance);
     direction = transform.transformVector(direction);
     elevation = transform.transformElevation(elevation);

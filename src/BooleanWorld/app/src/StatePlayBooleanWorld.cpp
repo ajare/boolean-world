@@ -692,8 +692,8 @@ void StatePlayBooleanWorld::createWorldCollisions(
   // and otherwise use the ordinary wall response.
   for (auto const& pair : mWorldData->getPortalPairs()) {
     if (!pair.active) continue;
-    for (uint32_t endpointIndex = 0; endpointIndex < 2; ++endpointIndex) {
-      auto const& aperture = pair.endpoints[endpointIndex].aperture;
+    for (auto const& endpoint : pair.endpoints) {
+      auto const& aperture = endpoint.aperture;
       auto half = aperture.tangent * (aperture.width * 0.5f);
       auto sourceWallBlocks = std::ranges::any_of(
           aperture.wallIndices, [&](uint32_t wallIndex) {
@@ -701,7 +701,7 @@ void StatePlayBooleanWorld::createWorldCollisions(
                    addedWallIndices.end();
           });
       mPortalCollisionEndpoints.push_back(
-          {&pair, endpointIndex, sourceWallBlocks});
+          {&pair, endpoint.endpointId, sourceWallBlocks});
       mWorldCollisionSim->addPortalLine(
           aperture.centre - half, aperture.centre + half);
     }
@@ -721,7 +721,7 @@ StatePlayBooleanWorld::handlePlayerPortalLine(
   mPlayerPortalMotion.position = result->oldPosition;
   mPlayerPortalMotion.unconsumedMovement = result->movementDesired;
   auto response = bw::app::tryPlayerPortalCrossing(
-      *mWorldData, *source.pair, source.endpoint, BW_PLAYER_RADIUS,
+      *mWorldData, *source.pair, source.endpointId, BW_PLAYER_RADIUS,
       BW_PLAYER_HEIGHT, mPlayerPortalMotion, mPlayerPortalUpdateState);
   if (response == bw::app::PlayerPortalCrossingResult::Approaching) {
     return WorldCollisionSim::PortalLineResponse::Ignore;
@@ -733,8 +733,7 @@ StatePlayBooleanWorld::handlePlayerPortalLine(
   }
   if (response == bw::app::PlayerPortalCrossingResult::NotCrossing) {
     bw::app::PortalEndpointIdentity identity{
-        source.pair->layerId, source.pair->pairId,
-        static_cast<uint8_t>(source.endpoint)};
+        source.pair->layerId, source.pair->pairId, source.endpointId};
     return !source.sourceWallBlocks ||
                    (mPlayerPortalUpdateState.exitSide.active &&
                     mPlayerPortalUpdateState.exitSide.endpoint == identity)

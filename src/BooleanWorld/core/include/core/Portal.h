@@ -131,6 +131,12 @@ struct ResolvedPortalPair {
 // via stable IDs rather than by assuming the other slot is 1 - index.
 [[nodiscard]] BW_API uint32_t NextPortalEndpointIndex(
     ResolvedPortalPair const& pair, uint32_t sourceIndex);
+// Stable-identity adapters for consumers migrating away from endpoint
+// positions. The pair's current endpoint sequence is its traversal order.
+[[nodiscard]] BW_API ResolvedPortalEndpoint const* FindPortalEndpoint(
+    ResolvedPortalPair const& pair, uint32_t endpointId);
+[[nodiscard]] BW_API ResolvedPortalEndpoint const* NextPortalEndpoint(
+    ResolvedPortalPair const& pair, uint32_t sourceEndpointId);
 
 // A generated, bidirectional connection between Hydraulic cells touching the
 // two resolved apertures. This is intentionally distinct from ordinary

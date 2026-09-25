@@ -21,8 +21,8 @@ inline constexpr float PortalExitPlaneEpsilon = 0.01f;
 
 struct PortalEndpointIdentity {
   uint32_t layerId{~0u};
-  uint32_t pairId{~0u};
-  uint8_t endpoint{0xff};
+  uint32_t portalId{~0u};
+  uint32_t endpointId{~0u};
 
   auto operator<=>(PortalEndpointIdentity const&) const = default;
 };
@@ -67,13 +67,13 @@ enum class PlayerPortalCrossingResult : uint8_t {
   Traversed
 };
 
-// Attempts one source endpoint against the complete swept centre movement.
-// On success motion contains the destination position and transformed
+// Attempts one stable source endpoint ID against the complete swept centre
+// movement. On success motion contains the destination position and transformed
 // remaining displacement; pitch and vertical velocity are left unchanged.
 [[nodiscard]] PlayerPortalCrossingResult tryPlayerPortalCrossing(
     core::ArrangementWorldData const& world,
     core::ResolvedPortalPair const& pair,
-    uint32_t sourceEndpoint,
+    uint32_t sourceEndpointId,
     float playerRadius,
     float playerHeight,
     PlayerPortalMotion& motion,
