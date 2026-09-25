@@ -149,11 +149,11 @@ struct ResolvedPortalLoop {
 [[nodiscard]] BW_API ResolvedPortalEndpoint const* NextPortalEndpoint(
     ResolvedPortalLoop const& pair, uint32_t sourceEndpointId);
 
-// A generated, bidirectional connection between Hydraulic cells touching the
-// two resolved apertures. This is intentionally distinct from ordinary
-// shared-edge Hydraulic links and from wall collision. At equilibrium the
-// destination surface is elevationOffset above the source surface; sill0 and
-// sill1 are the two resolved lower edges and differ by that same offset.
+// A generated directed next-endpoint hop between incident Hydraulic cells,
+// distinct from ordinary shared-edge Hydraulic links and wall collision.
+// Liquid crosses only from cell0 after reaching sill0. Its surface maps by
+// elevationOffset (destination bottom minus source bottom); sill1 is the
+// destination lower edge. A reverse hop exists only if explicitly generated.
 struct PortalLiquidAdjacency {
   uint32_t layerId{};
   uint32_t loopId{};

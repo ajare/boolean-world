@@ -2186,6 +2186,7 @@ struct LiquidSettlementLink {
   uint32_t cell1{};
   double canonicalSill{};
   bool drain{false};
+  bool directed{false};
 };
 
 // Every accepted edge contributes an elevation relation, independently of
@@ -2242,13 +2243,15 @@ vector<LiquidSettlementLink> BuildLiquidSettlementLinks(
   }
   for (auto const& link : portalAdjacency) {
     result.push_back(
-        {link.cell0, link.cell1, link.sill0 - offsets[link.cell0], false});
+        {link.cell0, link.cell1, link.sill0 - offsets[link.cell0], false, true});
   }
   sort(result.begin(), result.end(), [](auto const& left, auto const& right) {
     return tie(
-               left.canonicalSill, left.cell0, left.cell1, left.drain) <
+               left.canonicalSill, left.cell0, left.cell1, left.drain,
+               left.directed) <
            tie(
-               right.canonicalSill, right.cell0, right.cell1, right.drain);
+               right.canonicalSill, right.cell0, right.cell1, right.drain,
+               right.directed);
   });
   return result;
 }
@@ -2471,92 +2474,255 @@ LiquidState ComputeLiquidState(
     return node;
   };
 
-  // Rising-level fill: repeatedly take the lowest sill whose liquid has
-  // actually risen high enough to cross it, and resolve what crossing it
-  // means. Two outcomes, and which one applies is decided by asking what
-  // elevation the two pools would settle at as a single body of liquid:
-  //
-  //  - At or above the sill, the sill is submerged and they really are one
-  //    body - two separate ponds becoming one lake the moment the rising
-  //    surface tops the saddle between them. Merge them.
-  //  - Below the sill, they are not: the higher pool is pouring over a saddle
-  //    into somewhere lower and drier, and once its own surface falls back to
-  //    the saddle the pouring stops. Only the liquid standing above the sill
-  //    crosses, leaving the donor exactly brim-full at the sill and the two
-  //    still separate.
-  //
-  // Every pass either merges two distinct groups - at most cellCount times -
-  // or leaves a donor standing exactly at a sill, which cannot spill
-  // over that sill again until something else pours into it, and can only
-  // ever be poured into from strictly higher up. So this is a union-find walk
-  // over liquid flowing downhill, not a convergence loop: there is no epsilon
-  // and no iteration count anywhere in it.
-  for (auto flowing = true; flowing;) {
-    flowing = false;
+  if (!portalAdjacency.empty()) {
+    // Only permanently join ordinary cells when their Sill is no higher
+    // than either cell's lowest floor. Such a join cannot later strand Liquid
+    // below an internal Sill when a directed hop lowers the Pool. In
+    // particular this coalesces flat-room triangulation without giving any
+    // Portal hop an implicit reverse route.
+    vector<double> lowestFloor(cellCount);
+    for (uint32_t cell = 0; cell < cellCount; ++cell) {
+      lowestFloor[cell] = LiquidElevationBounds(
+          result.cells, members[cell], elevationOffsets)[0];
+    }
     for (auto const& link : links) {
-      auto root0 = findRoot(link.cell0);
-      auto root1 = findRoot(link.drain ? drainNode : link.cell1);
-      if (root0 == root1 ||
-          max(groupLevel[root0], groupLevel[root1]) <
-              link.canonicalSill) {
+      if (link.directed || link.drain ||
+          link.canonicalSill > min(lowestFloor[link.cell0],
+                                   lowestFloor[link.cell1])) {
         continue;
       }
+      auto first = findRoot(link.cell0);
+      auto second = findRoot(link.cell1);
+      if (first == second) continue;
+      parent[second] = first;
+      members[first].insert(
+          members[first].end(), members[second].begin(), members[second].end());
+      members[second].clear();
+      groupVolume[first] += groupVolume[second];
+    }
+    auto updateLevel = [&](uint32_t root) {
+      groupLevel[root] = groupVolume[root] > 0.0
+                             ? SolveLiquidLevel(result.cells, members[root], elevationOffsets,
+                                                groupVolume[root])
+                             : -numeric_limits<double>::infinity();
+    };
+    for (uint32_t cell = 0; cell < cellCount; ++cell) {
+      if (findRoot(cell) == cell) updateLevel(cell);
+    }
 
-      auto drained = groupDrained[root0] || groupDrained[root1];
-      auto combinedVolume = groupVolume[root0] + groupVolume[root1];
-      auto combined = members[root0];
-      combined.insert(
-          combined.end(), members[root1].begin(), members[root1].end());
-      // A pool that reaches the exterior empties completely, and so does
-      // anything that later spills into it.
-      auto combinedLevel =
-          drained || combinedVolume <= 0.0
-              ? -numeric_limits<double>::infinity()
-              : SolveLiquidLevel(
-                    result.cells, combined, elevationOffsets,
-                    combinedVolume);
+    // Generation-only, conservative fixed-point solve. Each hop transfers
+    // its entire admissible surplus (to its Sill or the two-Pool equilibrium),
+    // not a time/conductance-weighted fraction. Never union across a directed
+    // hop: a later outgoing spill may lower its destination and must not pull
+    // Liquid backward through the incoming hop. Ordinary high-Sill links also
+    // stay separate so they can become unsubmerged again.
+    //
+    // A complete stable-order sweep with no transferable volume is the
+    // stopping criterion. The relative roundoff guard is far below the float
+    // output precision; skipped residuals remain in their donor, not deleted.
+    // No flow state or iteration budget survives generation.
+    auto const volumeRoundoff = 1e-12 * max(
+                                            1.0, accumulate(volumes.begin(), volumes.end(), 0.0));
+    vector<double> fullLevel(nodeCount, 0.0);
+    vector<double> capacity(nodeCount, 0.0);
+    for (uint32_t cell = 0; cell < cellCount; ++cell) {
+      if (findRoot(cell) != cell) continue;
+      fullLevel[cell] = LiquidElevationBounds(
+          result.cells, members[cell], elevationOffsets)[1];
+      capacity[cell] = LiquidCapacityBelow(
+          result.cells, members[cell], elevationOffsets, fullLevel[cell]);
+    }
+    auto canReach = [&](uint32_t root, double sill) {
+      // Seed volume above local sealed capacity must remain available to
+      // fill reachable capacity elsewhere, even above this cell's ceiling.
+      return groupLevel[root] >= sill ||
+             groupVolume[root] > capacity[root] + volumeRoundoff;
+    };
+    auto transferTo = [&](uint32_t donor, uint32_t recipient, double sill) {
+      if (donor == recipient || groupDrained[donor] ||
+          !canReach(donor, sill)) return false;
+      if (groupDrained[recipient]) {
+        // Preserve the permanent-exterior rule, but propagate it only
+        // upstream along a reached directed hop, never downstream.
+        groupDrained[donor] = true;
+        groupVolume[donor] = 0.0;
+        updateLevel(donor);
+        return true;
+      }
+      auto combined = members[donor];
+      combined.insert(combined.end(), members[recipient].begin(),
+                      members[recipient].end());
+      auto combinedLevel = SolveLiquidLevel(
+          result.cells, combined, elevationOffsets,
+          groupVolume[donor] + groupVolume[recipient]);
+      auto retained = LiquidCapacityBelow(
+          result.cells, members[donor], elevationOffsets,
+          max(sill, combinedLevel));
+      auto received = LiquidCapacityBelow(
+          result.cells, members[recipient], elevationOffsets, combinedLevel);
+      auto transfer = min(groupVolume[donor] - retained,
+                          received - groupVolume[recipient]);
+      if (transfer <= volumeRoundoff) return false;
+      groupVolume[donor] -= transfer;
+      groupVolume[recipient] += transfer;
+      updateLevel(donor);
+      updateLevel(recipient);
+      return true;
+    };
 
-      if (drained || combinedLevel >= link.canonicalSill) {
-        // One body of liquid. Merging changes its surface elevation, so
-        // restart from the lowest sill rather than continuing down a stale
-        // ordering.
-        parent[root1] = root0;
-        members[root0] = std::move(combined);
-        members[root1].clear();
-        groupVolume[root0] = drained ? 0.0 : combinedVolume;
-        groupDrained[root0] = drained;
-        groupLevel[root0] = combinedLevel;
+    vector<vector<pair<uint32_t, double>>> outgoing(nodeCount);
+    for (auto const& link : links) {
+      auto first = findRoot(link.cell0);
+      auto second = findRoot(link.drain ? drainNode : link.cell1);
+      if (first == second) continue;
+      outgoing[first].push_back({second, link.canonicalSill});
+      if (!link.directed && !link.drain) {
+        outgoing[second].push_back({first, link.canonicalSill});
+      }
+    }
+    auto isFull = [&](uint32_t root) {
+      return !groupDrained[root] && capacity[root] > 0.0 &&
+             groupVolume[root] >= capacity[root] - volumeRoundoff;
+    };
+    for (auto flowing = true; flowing;) {
+      flowing = false;
+      for (auto const& link : links) {
+        auto donor = findRoot(link.cell0);
+        auto recipient = findRoot(link.drain ? drainNode : link.cell1);
+        if (!link.directed &&
+            (groupDrained[donor] ||
+             (!groupDrained[recipient] &&
+              groupLevel[recipient] > groupLevel[donor]))) {
+          std::swap(donor, recipient);
+        }
+        flowing |= transferTo(donor, recipient, link.canonicalSill);
+      }
+
+      // A completely flooded cell has no exposed surface, but is still a
+      // conduit. Once its capacity is exhausted, transmit surplus through
+      // it instead of treating its ceiling as a dam. Walk only explicit
+      // directed routes, requiring every intervening Sill AND flooded
+      // ceiling to be submerged. Intermediate non-full cells cannot be
+      // skipped: they must first receive Liquid through their own hop.
+      auto hasFullCell = false;
+      for (uint32_t root = 0; root < cellCount; ++root) {
+        hasFullCell |= findRoot(root) == root && isFull(root);
+      }
+      if (!hasFullCell) continue;
+      for (uint32_t donor = 0; donor < cellCount; ++donor) {
+        if (findRoot(donor) != donor || groupDrained[donor] ||
+            groupVolume[donor] <= 0.0) continue;
+        vector<double> routeSill(nodeCount, numeric_limits<double>::infinity());
+        routeSill[donor] = -numeric_limits<double>::infinity();
+        vector<uint32_t> pending{donor};
+        for (size_t next = 0; next < pending.size(); ++next) {
+          auto relay = pending[next];
+          if (relay != donor && !isFull(relay)) continue;
+          auto sill = relay == donor ? routeSill[relay]
+                                     : max(routeSill[relay], fullLevel[relay]);
+          for (auto const& [destination, hopSill] : outgoing[relay]) {
+            auto reachedSill = max(sill, hopSill);
+            if (reachedSill >= routeSill[destination] ||
+                !canReach(donor, reachedSill)) continue;
+            routeSill[destination] = reachedSill;
+            if (isFull(destination)) pending.push_back(destination);
+          }
+        }
+        for (uint32_t recipient = 0; recipient < nodeCount; ++recipient) {
+          if (std::isfinite(routeSill[recipient])) {
+            flowing |= transferTo(donor, recipient, routeSill[recipient]);
+          }
+        }
+      }
+    }
+  } else {
+    // Rising-level fill: repeatedly take the lowest sill whose liquid has
+    // actually risen high enough to cross it, and resolve what crossing it
+    // means. Two outcomes, and which one applies is decided by asking what
+    // elevation the two pools would settle at as a single body of liquid:
+    //
+    //  - At or above the sill, the sill is submerged and they really are one
+    //    body - two separate ponds becoming one lake the moment the rising
+    //    surface tops the saddle between them. Merge them.
+    //  - Below the sill, they are not: the higher pool is pouring over a saddle
+    //    into somewhere lower and drier, and once its own surface falls back to
+    //    the saddle the pouring stops. Only the liquid standing above the sill
+    //    crosses, leaving the donor exactly brim-full at the sill and the two
+    //    still separate.
+    //
+    // Every pass either merges two distinct groups - at most cellCount times -
+    // or leaves a donor standing exactly at a sill, which cannot spill
+    // over that sill again until something else pours into it, and can only
+    // ever be poured into from strictly higher up. So this is a union-find walk
+    // over liquid flowing downhill, not a convergence loop: there is no epsilon
+    // and no iteration count anywhere in it.
+    for (auto flowing = true; flowing;) {
+      flowing = false;
+      for (auto const& link : links) {
+        auto root0 = findRoot(link.cell0);
+        auto root1 = findRoot(link.drain ? drainNode : link.cell1);
+        if (root0 == root1 ||
+            max(groupLevel[root0], groupLevel[root1]) <
+                link.canonicalSill) {
+          continue;
+        }
+
+        auto drained = groupDrained[root0] || groupDrained[root1];
+        auto combinedVolume = groupVolume[root0] + groupVolume[root1];
+        auto combined = members[root0];
+        combined.insert(
+            combined.end(), members[root1].begin(), members[root1].end());
+        // A pool that reaches the exterior empties completely, and so does
+        // anything that later spills into it.
+        auto combinedLevel =
+            drained || combinedVolume <= 0.0
+                ? -numeric_limits<double>::infinity()
+                : SolveLiquidLevel(
+                      result.cells, combined, elevationOffsets,
+                      combinedVolume);
+
+        if (drained || combinedLevel >= link.canonicalSill) {
+          // One body of liquid. Merging changes its surface elevation, so
+          // restart from the lowest sill rather than continuing down a stale
+          // ordering.
+          parent[root1] = root0;
+          members[root0] = std::move(combined);
+          members[root1].clear();
+          groupVolume[root0] = drained ? 0.0 : combinedVolume;
+          groupDrained[root0] = drained;
+          groupLevel[root0] = combinedLevel;
+          flowing = true;
+          break;
+        }
+
+        // Not one body of liquid: a directed spill from the pool standing above
+        // the sill into the one below it. Both pools survive, at their own two
+        // elevations, with the donor left exactly at the sill.
+        auto donor = groupLevel[root0] >= groupLevel[root1] ? root0 : root1;
+        auto recipient = donor == root0 ? root1 : root0;
+        auto retained = LiquidCapacityBelow(
+            result.cells, members[donor], elevationOffsets,
+            link.canonicalSill);
+        auto spilled = groupVolume[donor] - retained;
+        if (spilled <= 0.0) {
+          // Already brim-full at this sill and holding nothing back. Re-running
+          // LiquidCapacityBelow over an unchanged member list and an unchanged
+          // sill reproduces the retained volume exactly, so this subtracts to
+          // exactly zero rather than dribbling.
+          continue;
+        }
+        groupVolume[donor] = retained;
+        groupLevel[donor] = link.canonicalSill;
+        groupVolume[recipient] += spilled;
+        groupLevel[recipient] =
+            groupVolume[recipient] > 0.0
+                ? SolveLiquidLevel(
+                      result.cells, members[recipient], elevationOffsets,
+                      groupVolume[recipient])
+                : -numeric_limits<double>::infinity();
         flowing = true;
         break;
       }
-
-      // Not one body of liquid: a directed spill from the pool standing above
-      // the sill into the one below it. Both pools survive, at their own two
-      // elevations, with the donor left exactly at the sill.
-      auto donor = groupLevel[root0] >= groupLevel[root1] ? root0 : root1;
-      auto recipient = donor == root0 ? root1 : root0;
-      auto retained = LiquidCapacityBelow(
-          result.cells, members[donor], elevationOffsets,
-          link.canonicalSill);
-      auto spilled = groupVolume[donor] - retained;
-      if (spilled <= 0.0) {
-        // Already brim-full at this sill and holding nothing back. Re-running
-        // LiquidCapacityBelow over an unchanged member list and an unchanged
-        // sill reproduces the retained volume exactly, so this subtracts to
-        // exactly zero rather than dribbling.
-        continue;
-      }
-      groupVolume[donor] = retained;
-      groupLevel[donor] = link.canonicalSill;
-      groupVolume[recipient] += spilled;
-      groupLevel[recipient] =
-          groupVolume[recipient] > 0.0
-              ? SolveLiquidLevel(
-                    result.cells, members[recipient], elevationOffsets,
-                    groupVolume[recipient])
-              : -numeric_limits<double>::infinity();
-      flowing = true;
-      break;
     }
   }
 

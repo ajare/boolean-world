@@ -27,7 +27,7 @@ void require(bool condition, std::string const& message) {
 }
 
 void requireNear(double actual, double expected, std::string const& message) {
-  if (std::abs(actual - expected) >= Epsilon) {
+  if (!std::isfinite(actual) || std::abs(actual - expected) >= Epsilon) {
     throw std::runtime_error(
         message + " (expected " + std::to_string(expected) + ", got " +
         std::to_string(actual) + ")");
@@ -87,7 +87,7 @@ TwoRoomResult twoRooms(
 
 void portalAdjacencyIsSeparateAndWaitsForItsSill() {
   auto below = twoRooms(4.0f);
-  require(below.data->getPortalLiquidAdjacency().size() == 1,
+  require(below.data->getPortalLiquidAdjacency().size() == 2,
           "an active resolved aperture did not expose portal liquid-adjacency");
   auto const& link = below.data->getPortalLiquidAdjacency().front();
   require(link.loopId == below.loopId &&
@@ -255,6 +255,272 @@ void consistentAndContradictoryCyclesAreSettledDeterministically() {
                   diagnostic.diagnostic,
           "rebuilding an unchanged Portal cycle changed Liquid or diagnostics");
 }
+double liquidVolume(ArrangementWorldDataPtr const& data) {
+  double volume = 0.0;
+  auto const& cells = data->getHydraulicCells();
+  auto const& elevations = data->getLiquidPoolElevations();
+  for (size_t cell = 0; cell < cells.size(); ++cell) {
+    if (std::isfinite(elevations[cell])) {
+      volume += cells[cell].volumeBelow(elevations[cell]);
+    }
+  }
+  return volume;
+}
+
+ArrangementWorldDataPtr directedRooms(
+    float seed, float intermediateFloor, bool reverse = false,
+    bool drain = false) {
+  World world(400.0f, 10.0f);
+  addRoom(world, {-100.0f, 0.0f}, 0.0f, 50.0f, seed);
+  auto* middle = addRoom(world, {0.0f, 0.0f}, intermediateFloor, 60.0f);
+  addRoom(world, {100.0f, 0.0f}, 20.0f, 70.0f);
+  if (drain) {
+    auto proxy = middle->createEditingProxy();
+    require(proxy->setEdgeCollisionOverride(proxy->getFirstEdgeIndex(), false),
+            "could not open intermediate ordinary drain");
+    proxy->commitTo(*middle);
+  }
+  auto* layer = world.getActiveLayer();
+  auto loop = layer->addPortalLoop(
+      aperture(-75.0f, 0.0f, 5.0f), aperture(-25.0f, 0.0f, 15.0f));
+  auto third = layer->addPortalEndpointAfter(
+      loop, reverse ? 0 : 1, aperture(75.0f, 0.0f, 25.0f));
+  auto data = world.getWorldData();
+  require(data->getPortalLiquidDiagnostics().empty(),
+          "directed loop unexpectedly failed Liquid validation");
+  require(data->getPortalLiquidAdjacency().size() == 3,
+          "a three-endpoint loop must produce exactly three directed hops");
+  auto const& resolved = data->getPortalLoops().front();
+  for (auto const& hop : data->getPortalLiquidAdjacency()) {
+    require(hop.destinationEndpointId == bw::core::NextPortalEndpointId(
+                                             resolved.traversalOrder, hop.sourceEndpointId),
+            "Liquid adjacency did not follow canonical traversal order");
+    require(hop.resolvedWidth == 16.0f &&
+                hop.sill1 - hop.sill0 == hop.elevationOffset &&
+                data->getHydraulicCells()[hop.cell0].triangle.face == hop.face0 &&
+                data->getHydraulicCells()[hop.cell1].triangle.face == hop.face1,
+            "directed hop lost its generated geometry");
+    require(std::ranges::none_of(data->getPortalLiquidAdjacency(),
+                                 [&](auto const& other) {
+                                   return other.sourceEndpointId == hop.destinationEndpointId &&
+                                          other.destinationEndpointId == hop.sourceEndpointId;
+                                 }),
+            "a longer loop acquired an implicit reverse hop");
+  }
+  require(third == 2, "unexpected endpoint allocator state");
+  return data;
+}
+
+void directedSpillCannotSkipAnIntermediateSill() {
+  // Canonical Sills are all 5. B's deeper floor absorbs the entire spill
+  // without reaching its outgoing Sill. An undirected A--C shortcut would
+  // incorrectly wet C, and merging A with B would sink A below its Sill.
+  auto forward = directedRooms(20.0f, -10.0f);
+  requireNear(forward->getLiquidDepth({-100.0f, 0.0f}), 5.0,
+              "the directed donor did not retain its Sill volume");
+  requireNear(forward->getLiquidDepth({0.0f, 0.0f}), 15.0,
+              "the next endpoint did not receive the complete spill");
+  requireNear(forward->getLiquidDepth({100.0f, 0.0f}), 0.0,
+              "Liquid bypassed the intermediate source Sill");
+  requireNear(liquidVolume(forward), 20.0 * 2500.0,
+              "directed spill did not conserve volume");
+
+  auto reversed = directedRooms(20.0f, -10.0f, true);
+  requireNear(reversed->getLiquidDepth({-100.0f, 0.0f}), 5.0,
+              "reordered source did not spill to its Sill");
+  requireNear(reversed->getLiquidDepth({100.0f, 0.0f}), 5.0,
+              "reordered intermediate endpoint did not retain its Sill volume");
+  requireNear(reversed->getLiquidDepth({0.0f, 0.0f}), 10.0,
+              "reordered loop did not spill into the final endpoint");
+  requireNear(liquidVolume(reversed), 20.0 * 2500.0,
+              "reordered loop did not conserve volume");
+
+  auto below = directedRooms(4.0f, -10.0f);
+  requireNear(below->getLiquidDepth({-100.0f, 0.0f}), 4.0,
+              "Liquid moved before reaching the source Sill");
+  requireNear(below->getLiquidDepth({0.0f, 0.0f}), 0.0,
+              "a below-Sill source wetted its successor");
+  auto rebuilt = directedRooms(20.0f, -10.0f);
+  require(forward->getLiquidPoolElevations() == rebuilt->getLiquidPoolElevations(),
+          "directed settlement changed on an identical rebuild");
+}
+
+void directedLoopsReachEquilibriumAndOrdinaryDrains() {
+  auto filled = directedRooms(60.0f, 10.0f);
+  for (auto x : {-100.0f, 0.0f, 100.0f}) {
+    requireNear(filled->getLiquidDepth({x, 0.0f}), 20.0,
+                "a fully reached loop failed to reach relative equilibrium");
+  }
+  requireNear(liquidVolume(filled), 60.0 * 2500.0,
+              "a fully reached loop lost volume");
+  auto drained = directedRooms(20.0f, -10.0f, false, true);
+  requireNear(liquidVolume(drained), 0.0,
+              "a directed source did not empty into an ordinary drain");
+  auto blocked = directedRooms(4.0f, -10.0f, false, true);
+  requireNear(liquidVolume(blocked), 4.0 * 2500.0,
+              "a drain crossed an unreached source Sill");
+}
+
+void directedSpillIntegratesAffineCapacity() {
+  World world(400.0f, 10.0f);
+  auto* source = addRoom(world, {-100.0f, 0.0f}, 0.0f, 50.0f, 20.0f);
+  auto properties = source->getProperties();
+  properties.floorSpan = {0.0f, 0.0f, 10.0f};
+  properties.floorSpanAuthored = true;
+  source->setProperties(properties);
+  addRoom(world, {0.0f, 0.0f}, -20.0f, 50.0f);
+  addRoom(world, {100.0f, 0.0f}, 0.0f, 50.0f);
+  auto* layer = world.getActiveLayer();
+  auto loop = layer->addPortalLoop(
+      aperture(-75.0f, 0.0f, 7.0f), aperture(-25.0f, 0.0f, 7.0f));
+  [[maybe_unused]] auto third = layer->addPortalEndpointAfter(
+      loop, 1, aperture(75.0f, 0.0f, 7.0f));
+  auto data = world.getWorldData();
+  require(data->getPortalLiquidAdjacency().size() == 3,
+          "sloped source aperture did not resolve into directed hops");
+  requireNear(data->getLiquidDepth({-100.0f, 0.0f}), 2.0,
+              "sloped source did not retain a horizontal surface at its Sill");
+  requireNear(data->getLiquidDepth({-100.0f, 20.0f}), 0.0,
+              "directed spill did not expose the sloped shoreline");
+  // V(7) = area * 7^2 / (2 * 10) = 6125, leaving 43875 to spill.
+  requireNear(data->getLiquidDepth({0.0f, 0.0f}), 17.55,
+              "directed spill did not integrate affine donor capacity");
+  requireNear(data->getLiquidDepth({100.0f, 0.0f}), 0.0,
+              "affine spill bypassed the intermediate Sill");
+  requireNear(liquidVolume(data), 20.0 * 2500.0,
+              "directed affine settlement did not conserve volume");
+}
+
+void floodedIntermediateCellsRemainDirectedConduits() {
+  for (auto sourceCeiling : {100.0f, 29.0f}) {
+    for (auto seed : {160.0f, 500.0f}) {
+      World world(500.0f, 10.0f);
+      addRoom(world, {-150.0f, 0.0f}, 0.0f, sourceCeiling, seed);
+      addRoom(world, {-50.0f, 0.0f}, 0.0f, 29.0f);
+      addRoom(world, {50.0f, 0.0f}, 0.0f, 29.0f);
+      addRoom(world, {150.0f, 0.0f}, 0.0f, 100.0f);
+      auto* layer = world.getActiveLayer();
+      auto loop = layer->addPortalLoop(
+          aperture(-125.0f, 0.0f, 5.0f), aperture(-25.0f, 0.0f, 5.0f));
+      auto third = layer->addPortalEndpointAfter(
+          loop, 1, aperture(75.0f, 0.0f, 5.0f));
+      [[maybe_unused]] auto fourth = layer->addPortalEndpointAfter(
+          loop, third, aperture(175.0f, 0.0f, 5.0f));
+      auto data = world.getWorldData();
+      require(data->getPortalLiquidAdjacency().size() == 4 &&
+                  data->getPortalLiquidDiagnostics().empty(),
+              "a four-endpoint loop did not expose all directed hops");
+      requireNear(data->getLiquidDepth({-150.0f, 0.0f}),
+                  seed == 500.0f ? sourceCeiling : (sourceCeiling == 100.0f ? 51.0 : 29.0),
+                  "source did not distribute volume through flooded cells");
+      for (auto x : {-50.0f, 50.0f}) {
+        requireNear(data->getLiquidDepth({x, 0.0f}), 29.0,
+                    "intermediate capacity was exceeded");
+      }
+      requireNear(data->getLiquidDepth({150.0f, 0.0f}),
+                  seed == 500.0f ? 100.0 : (sourceCeiling == 100.0f ? 51.0 : 73.0),
+                  "flooded intermediate ceilings became false dams");
+      requireNear(liquidVolume(data),
+                  std::min(seed, sourceCeiling + 158.0f) * 2500.0,
+                  "a flooded directed conduit discarded reachable volume");
+    }
+  }
+}
+
+void lateLoopConflictsAreAtomicAndLiquidOnly() {
+  World world(400.0f, 10.0f);
+  addRoom(world, {-100.0f, 0.0f}, 0.0f, 50.0f, 20.0f);
+  addRoom(world, {0.0f, 0.0f}, 10.0f, 60.0f);
+  addRoom(world, {100.0f, 0.0f}, 20.0f, 70.0f);
+  auto* layer = world.getActiveLayer();
+  auto accepted = layer->addPortalLoop(
+      aperture(-75.0f, 0.0f, 5.0f), aperture(-25.0f, 0.0f, 15.0f));
+  auto rejected = layer->addPortalLoop(
+      aperture(25.0f, 0.0f, 15.0f), aperture(75.0f, 0.0f, 25.0f));
+  auto last = layer->addPortalEndpointAfter(
+      rejected, 1, aperture(-125.0f, 0.0f, 6.0f));
+  auto data = world.getWorldData();
+  require(data->getPortalLiquidDiagnostics().size() == 1 &&
+              data->getPortalLiquidDiagnostics().front().loopId == rejected &&
+              data->getPortalLiquidDiagnostics().front().diagnostic ==
+                  PortalLiquidDiagnostic::ContradictoryElevationCycle,
+          "a late offset conflict did not produce one loop diagnostic");
+  require(data->getPortalLiquidAdjacency().size() == 2 &&
+              std::ranges::all_of(data->getPortalLiquidAdjacency(),
+                                  [&](auto const& hop) { return hop.loopId == accepted; }),
+          "a rejected loop leaked its earlier valid hop");
+  auto const* loop = data->findPortalLoop(layer->getId(), rejected);
+  require(loop && loop->active && loop->endpoints.size() == 3,
+          "Liquid-only rejection deactivated the generated Portal loop");
+  for (auto const& endpoint : loop->endpoints) {
+    auto const& opening = endpoint.aperture;
+    require(data->circleIntersectsWall(opening.centre, 2.0f) < 0,
+            "Liquid-only rejection restored collision inside an aperture");
+    auto wall = opening.wallIndices.front();
+    auto replacements = data->getDetail().replacementsFor(
+        bw::core::arr::DetailSurfaceKind::Wall, wall);
+    require(std::ranges::count_if(replacements, [](auto const& triangle) {
+              return triangle.kind ==
+                     bw::core::arr::DetailTriangleKind::PortalFallback;
+            }) == 2,
+            "Liquid-only rejection removed Portal rendering geometry");
+  }
+  auto transform = bw::core::BuildPortalRigidTransform(*loop, last);
+  requireNear(transform.transformElevation(6.0f), 15.0,
+              "Liquid rejection changed player/render/Torch routing");
+  requireNear(data->getLiquidDepth({100.0f, 0.0f}), 0.0,
+              "a rejected loop changed settlement through an early hop");
+  requireNear(liquidVolume(data), 20.0 * 2500.0,
+              "atomic rejection lost Liquid volume");
+
+  // Exercise missing incident cells at a late endpoint with generated
+  // geometry: omit its incident cells from the hydraulic input only.
+  auto cells = data->getHydraulicCells();
+  auto missingFace = data->getContainingFaceIndex({-100.0f, 0.0f});
+  std::erase_if(cells, [&](auto const& cell) {
+    return cell.triangle.face == missingFace;
+  });
+  auto missing = bw::core::BuildPortalLiquidAdjacency(
+      data->getArrangement(), data->getWalls(), cells, {*loop});
+  require(missing.diagnostics.size() == 1 &&
+              missing.diagnostics.front().loopId == rejected &&
+              missing.diagnostics.front().diagnostic ==
+                  PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint &&
+              std::ranges::none_of(missing.adjacency,
+                                   [&](auto const& hop) { return hop.loopId == rejected; }),
+          "a missing incident cell did not reject the entire loop atomically");
+
+  // This offset deliberately disagrees with the rejected loop's first
+  // tentative hop; leaking its constraints would reject this valid loop too.
+  auto later = layer->addPortalLoop(
+      aperture(25.0f, 0.0f, 15.0f), aperture(75.0f, 0.0f, 26.0f));
+  auto after = world.getWorldData();
+  require(after->getPortalLiquidDiagnostics().size() == 1 &&
+              after->getPortalLiquidAdjacency().size() == 4 &&
+              std::ranges::any_of(after->getPortalLiquidAdjacency(),
+                                  [&](auto const& hop) { return hop.loopId == later; }),
+          "a failed trial poisoned the constraints for a later valid loop");
+  requireNear(liquidVolume(after), 20.0 * 2500.0,
+              "a later accepted loop lost Liquid volume");
+
+  auto shuffled = after->getPortalLoops();
+  std::ranges::reverse(shuffled);
+  auto reordered = bw::core::BuildPortalLiquidAdjacency(
+      after->getArrangement(), after->getWalls(), after->getHydraulicCells(),
+      shuffled);
+  require(reordered.diagnostics.size() == 1 &&
+              reordered.diagnostics.front().loopId == rejected &&
+              reordered.adjacency.size() == after->getPortalLiquidAdjacency().size(),
+          "trial order depended on snapshot vector order rather than stable IDs");
+  for (size_t index = 0; index < reordered.adjacency.size(); ++index) {
+    auto const& actual = reordered.adjacency[index];
+    auto const& expected = after->getPortalLiquidAdjacency()[index];
+    require(actual.loopId == expected.loopId &&
+                actual.sourceEndpointId == expected.sourceEndpointId &&
+                actual.cell0 == expected.cell0 && actual.cell1 == expected.cell1,
+            "stable loop order did not produce stable directed hops");
+  }
+}
 }  // namespace
 
 int main() {
@@ -264,6 +530,11 @@ int main() {
     differingFloorsMapRelativeElevationAndConserveVolume();
     widthDoesNotChangeInstantaneousEquilibriumAndDrainsStillWork();
     consistentAndContradictoryCyclesAreSettledDeterministically();
+    directedSpillCannotSkipAnIntermediateSill();
+    directedLoopsReachEquilibriumAndOrdinaryDrains();
+    directedSpillIntegratesAffineCapacity();
+    floodedIntermediateCellsRemainDirectedConduits();
+    lateLoopConflictsAreAtomicAndLiquidOnly();
     std::cout << "Portal apertures equilibrate Liquid deterministically\n";
     return 0;
   } catch (std::exception const& error) {

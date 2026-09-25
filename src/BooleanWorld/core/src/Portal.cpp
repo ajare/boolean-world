@@ -730,63 +730,65 @@ PortalLiquidAdjacencyResult BuildPortalLiquidAdjacency(
       });
 
   for (auto const* pair : orderedPairs) {
-    auto const sourceEndpointId = pair->traversalOrder.front();
-    auto const destinationEndpointId =
-        NextPortalEndpointId(pair->traversalOrder, sourceEndpointId);
-    auto const* sourceEndpoint =
-        FindPortalEndpoint(*pair, sourceEndpointId);
-    auto const* destinationEndpoint =
-        FindPortalEndpoint(*pair, destinationEndpointId);
-    if (!sourceEndpoint || !destinationEndpoint) {
-      result.diagnostics.push_back(
-          {pair->layerId, pair->loopId,
-           PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint});
-      continue;
-    }
-    auto firstCells = incidentCells(*sourceEndpoint);
-    auto secondCells = incidentCells(*destinationEndpoint);
-    if (firstCells.empty() || secondCells.empty()) {
-      result.diagnostics.push_back(
-          {pair->layerId, pair->loopId,
-           PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint});
-      continue;
-    }
-
-    auto const& first = sourceEndpoint->aperture;
-    auto const& second = destinationEndpoint->aperture;
-    auto const delta = double(second.bottom) - double(first.bottom);
+    // Stage the complete loop. Neither constraints nor hops escape a failed
+    // trial, including failures discovered only at a later endpoint.
     auto trial = offsets;
+    std::vector<PortalLiquidAdjacency> hops;
+    auto missingCells = false;
     auto consistent = true;
-    for (auto cell0 : firstCells) {
-      for (auto cell1 : secondCells) {
-        consistent &= trial.constrain(cell0, cell1, delta);
+    for (auto const sourceEndpointId : pair->traversalOrder) {
+      auto const destinationEndpointId =
+          NextPortalEndpointId(pair->traversalOrder, sourceEndpointId);
+      auto const* sourceEndpoint =
+          FindPortalEndpoint(*pair, sourceEndpointId);
+      auto const* destinationEndpoint =
+          FindPortalEndpoint(*pair, destinationEndpointId);
+      if (!sourceEndpoint || !destinationEndpoint) {
+        missingCells = true;
+        break;
+      }
+      auto firstCells = incidentCells(*sourceEndpoint);
+      auto secondCells = incidentCells(*destinationEndpoint);
+      if (firstCells.empty() || secondCells.empty()) {
+        missingCells = true;
+        break;
+      }
+
+      auto const& first = sourceEndpoint->aperture;
+      auto const& second = destinationEndpoint->aperture;
+      auto const delta = double(second.bottom) - double(first.bottom);
+      for (auto cell0 : firstCells) {
+        for (auto cell1 : secondCells) {
+          consistent &= trial.constrain(cell0, cell1, delta);
+        }
+      }
+      for (auto cell0 : firstCells) {
+        for (auto cell1 : secondCells) {
+          hops.push_back(
+              {pair->layerId,
+               pair->loopId,
+               sourceEndpointId,
+               destinationEndpointId,
+               cell0,
+               cell1,
+               cells[cell0].triangle.face,
+               cells[cell1].triangle.face,
+               first.bottom,
+               second.bottom,
+               delta,
+               first.width});
+        }
       }
     }
-    if (!consistent) {
+    if (missingCells || !consistent) {
       result.diagnostics.push_back(
           {pair->layerId, pair->loopId,
-           PortalLiquidDiagnostic::ContradictoryElevationCycle});
+           missingCells ? PortalLiquidDiagnostic::NoHydraulicCellAtEndpoint
+                        : PortalLiquidDiagnostic::ContradictoryElevationCycle});
       continue;
     }
     offsets = std::move(trial);
-
-    for (auto cell0 : firstCells) {
-      for (auto cell1 : secondCells) {
-        result.adjacency.push_back(
-            {pair->layerId,
-             pair->loopId,
-             sourceEndpointId,
-             destinationEndpointId,
-             cell0,
-             cell1,
-             cells[cell0].triangle.face,
-             cells[cell1].triangle.face,
-             first.bottom,
-             second.bottom,
-             delta,
-             first.width});
-      }
-    }
+    result.adjacency.insert(result.adjacency.end(), hops.begin(), hops.end());
   }
   return result;
 }
