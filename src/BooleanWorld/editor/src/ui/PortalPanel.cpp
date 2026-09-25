@@ -80,6 +80,34 @@ void renderPortalsView(ViewContext& context) {
     ImGui::Text("Destination: endpoint %u", portalLoop->getNextEndpointId(endpointId));
   } else {
     auto const* portal = layer->getPortal(endpointId);
+    auto name = portal->getName();
+    static string renameError;
+    static string renameErrorKey;
+    auto const errorKey = format("{}:{}:{}:{}", static_cast<void*>(doc),
+                                 layer->getId(), endpointId, name);
+    if (renameErrorKey != errorKey) renameError.clear();
+    renameErrorKey = errorKey;
+    if (!renameError.empty()) ImGui::TextWrapped("%s", renameError.c_str());
+    ImGui::PushID(static_cast<int>(layer->getId()));
+    ImGui::PushID(static_cast<int>(endpointId));
+    bool const renamed = widgets::InputText(
+        "Name##Portal", &name, ImGuiInputTextFlags_EnterReturnsTrue);
+    ImGui::PopID();
+    ImGui::PopID();
+    if (renamed) {
+      renameError.clear();
+      try {
+        transactUndoableActionAtomically(doc, CommandId::SetPortalName,
+            [=](Document* document) {
+              return setPortalName(document, layer, endpointId, name);
+            });
+      } catch (std::exception const& error) {
+        renameError = error.what();
+      }
+      // A rejected/no-op transaction restores the document snapshot as well.
+      // Do not retain pointers into the previous Layer for the rest of this frame.
+      return;
+    }
     auto targetLabel = [&](bw::core::Portal const& target) {
       return target.getName() + (target.getId() == endpointId ? " (self — Mirror)" : "");
     };
@@ -87,7 +115,8 @@ void renderPortalsView(ViewContext& context) {
     if (ImGui::BeginCombo("Target", preview.c_str())) {
       for (auto const& target : layer->getPortals()) {
         auto label = targetLabel(target);
-        if (ImGui::Selectable(label.c_str(), target.getId() == portal->getTargetId())) {
+        if (ImGui::Selectable(label.c_str(), target.getId() == portal->getTargetId()) &&
+            target.getId() != portal->getTargetId()) {
           auto targetId = target.getId();
           transactUndoableActionAtomically(doc, CommandId::SetPortalTarget,
               [=](Document* document) {

@@ -93,7 +93,14 @@ void namedCyclesFollowStableTargets() {
   layer->setPortalTarget(a, c);
   layer->setPortalTarget(c, b);
   layer->setPortalTarget(b, a);
-  layer->setPortalName(c, "Destination C");
+  layer->setPortalName(c, " \tDestination C\r\n");
+  for (auto const* invalid : {"  ", "  portal 1  "}) {
+    bool rejected = false;
+    try { layer->setPortalName(c, invalid); }
+    catch (bw::core::CoreException const&) { rejected = true; }
+    require(rejected && layer->getPortal(c)->getName() == "Destination C",
+            "invalid rename changed authored state");
+  }
   auto verify = [&](bw::core::World& copy, std::string const& stage) {
     auto* owner = copy.getActiveLayer();
     require(owner->getPortal(a)->getTargetId() == c &&
@@ -130,6 +137,21 @@ void namedCyclesFollowStableTargets() {
   verify(binaryCopy, "binary");
   bw::core::World copy(world);
   verify(copy, "copy");
+  bw::core::World assigned(200.0f, 10.0f);
+  assigned = world;
+  verify(assigned, "assignment");
+  bw::core::Layer layerCopy(*layer);
+  bw::core::Layer layerAssigned;
+  layerAssigned = *layer;
+  for (auto const* candidate : {&layerCopy, &layerAssigned}) {
+    require(candidate->getPortal(a)->getTargetId() == c &&
+            candidate->getPortal(c)->getTargetId() == b &&
+            candidate->getPortal(b)->getTargetId() == a &&
+            candidate->getPortal(c)->getName() == "Destination C" &&
+            candidate->getPortal(c)->getAperture().centre == wp::Vector2{13, 50} &&
+            candidate->getNextPortalAllocator() == layer->getNextPortalAllocator(),
+            "Layer value operations lost Portal state");
+  }
   std::vector<bw::core::PortalLoopSnapshot> snapshots;
   for (auto const& portal : layer->getPortals()) snapshots.push_back({layer->getId(), {}, portal});
   auto resolve = [&] { return bw::core::ResolvePortalLoops(data->getArrangement(), data->getWalls(), snapshots); };
@@ -145,6 +167,14 @@ void namedCyclesFollowStableTargets() {
   bool rejected = false;
   try { layer->setPortalTarget(a, foreign->getPortals().back().getId()); } catch (bw::core::CoreException const&) { rejected = true; }
   require(rejected && layer->getPortal(a)->getTargetId() == c, "invalid target mutated authoring");
+  auto crossLayer = serializeWorld(world);
+  auto const targetPosition = crossLayer.find("targetId: 2");
+  require(targetPosition != std::string::npos, "cross-Layer fixture target missing");
+  crossLayer.replace(targetPosition, std::string("targetId: 2").size(), "targetId: 3");
+  rejected = false;
+  try { (void)deserializeWorld(crossLayer); }
+  catch (std::exception const&) { rejected = true; }
+  require(rejected, "deserialization resolved a target in a foreign Layer");
   layer->setPortalAperture(c, aperture(13, 50, 24, 6, 31));
   auto invalid = world.getWorldData();
   require(!invalid->findPortalLoop(layer->getId(), bw::core::IndependentPortalLoopId, a)->active,
@@ -157,10 +187,16 @@ void namedCyclesFollowStableTargets() {
           bw::core::NextPortalEndpoint(*resolvedPair, a)->endpointId == b &&
           bw::core::NextPortalEndpoint(*resolvedPair, b)->endpointId == a,
           "two-Portal cycle did not preserve bidirectional routing");
-  layer->setPortalTarget(c, b);
+  layer->setPortalTarget(b, c);
+  layer->setPortalTarget(c, a);
   layer->removePortal(b);
-  require(layer->getPortal(a)->getTargetId() == a && layer->getPortal(c)->getTargetId() == c,
-          "destination deletion left dangling targets");
+  require(layer->getPortal(a)->getTargetId() == a && layer->getPortal(c)->getTargetId() == a,
+          "destination deletion reconnected a cycle or left dangling targets");
+  auto deleted = world.getWorldData();
+  auto const* endpoint = deleted->findPortalEndpoint(
+      layer->getId(), bw::core::IndependentPortalLoopId, c);
+  require(endpoint && endpoint->targetGraphDiagnostic != bw::core::PortalTargetGraphDiagnostic::None,
+          "deleting B from A -> B -> C -> A hid the resulting graph diagnostic");
 }
 
 void incompleteNamedTargetGraphsRemainAuthoredAndInactive() {
@@ -286,10 +322,15 @@ void namedMirrorsRoundTripAndResolveIndependently() {
           layer->getPortal(second)->getName() == "Portal 2" &&
           layer->getPortal(first)->getTargetId() == first,
           "Mirror defaults are wrong");
+  layer->setPortalName(second, "pOrTaL 2");
   layer->removePortal(first);
   auto replacement = layer->addPortal(aperture(-50, 17));
   require(replacement == 2 && layer->getPortal(replacement)->getName() == "Portal 1",
           "default names should reuse gaps, IDs must not");
+  bw::core::Layer namingCopy(*layer);
+  auto const next = namingCopy.addPortal(aperture(0, 0));
+  require(namingCopy.getPortal(next)->getName() == "Portal 3",
+          "automatic naming did not compare existing names case-insensitively");
   auto verify = [&](bw::core::World const& copy) {
     auto const* owner = copy.getActiveLayer();
     require(owner->getNextPortalAllocator() == 3 && owner->getPortals().size() == 2,
@@ -307,8 +348,10 @@ void namedMirrorsRoundTripAndResolveIndependently() {
   auto yaml = serializeWorld(world);
   for (auto const& [before, after] : std::vector<std::pair<std::string, std::string>>{
       {"targetId: 1", "targetId: 999"},
+      {"targetId: 1", "missingTargetId: 1"},
+      {"id: 2", "id: 1"},
       {"nextPortalId: 3", "nextPortalId: 2"},
-      {"Portal 2", "portal 1"}}) {
+      {"pOrTaL 2", "portal 1"}}) {
     auto malformed = yaml;
     auto position = malformed.find(before);
     require(position != std::string::npos, "Mirror serialization fixture field missing");

@@ -486,6 +486,14 @@ bool setPortalTarget(Document*, bw::core::Layer* layer, uint32_t portalId, uint3
   return true;
 }
 
+bool setPortalName(Document*, bw::core::Layer* layer, uint32_t portalId, string const& name) {
+  auto const* portal = layer ? layer->getPortal(portalId) : nullptr;
+  if (!portal) return false;
+  auto const previous = portal->getName();
+  layer->setPortalName(portalId, name);
+  return layer->getPortal(portalId)->getName() != previous;
+}
+
 bool createPortal(Document* doc, bw::core::Layer* layer) {
   bw::core::AuthoredAperture aperture;
   aperture.centre = doc->getGhost()->getPosition();

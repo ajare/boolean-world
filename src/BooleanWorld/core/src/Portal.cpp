@@ -341,8 +341,8 @@ Portal::Portal(uint32_t id, std::string name, AuthoredAperture aperture,
                uint32_t targetId)
     : mId(id), mName(std::move(name)), mAperture(aperture), mTargetId(targetId) {
   if (id == ~0u || targetId == ~0u || !AuthoredApertureIsValid(aperture) ||
-      mName.empty() || mName.find_first_not_of(" \t\r\n") != 0 ||
-      mName.find_last_not_of(" \t\r\n") != mName.size() - 1) {
+      mName.empty() || mName.find_first_not_of(" \t\r\n\f\v") != 0 ||
+      mName.find_last_not_of(" \t\r\n\f\v") != mName.size() - 1) {
     throw CoreException("Invalid Portal ID, name, aperture, or target");
   }
 }

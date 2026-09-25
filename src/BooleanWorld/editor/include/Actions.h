@@ -298,6 +298,7 @@ bool setTriggerLineSide(Document* doc, bw::core::WorldTriggerLine* triggerLine, 
 bool setPortalTarget(Document* doc, bw::core::Layer* layer, uint32_t portalId, uint32_t targetId);
 bool createPortal(Document* doc, bw::core::Layer* layer);
 bool deletePortal(Document* doc, bw::core::Layer* layer, uint32_t portalId);
+bool setPortalName(Document* doc, bw::core::Layer* layer, uint32_t portalId, std::string const& name);
 bool createPortalLoop(
     Document* doc, bw::core::Layer* layer,
     bw::core::AuthoredAperture const& first,

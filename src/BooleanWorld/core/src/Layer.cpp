@@ -1699,15 +1699,19 @@ void Layer::setPortalTarget(uint32_t portalId, uint32_t targetId) {
 void Layer::setPortalName(uint32_t portalId, string const& name) {
   auto found = ranges::find(mPortals, portalId, &Portal::getId);
   if (found == mPortals.end()) throw CoreException("Portal not found in Layer");
-  Portal validated(portalId, name, found->mAperture, found->mTargetId);
+  auto const first = name.find_first_not_of(" \t\r\n\f\v");
+  auto const trimmed = first == string::npos ? string{} :
+      name.substr(first, name.find_last_not_of(" \t\r\n\f\v") - first + 1);
+  Portal validated(portalId, trimmed, found->mAperture, found->mTargetId);
   auto fold = [](string text) {
     for (auto& c : text) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
     return text;
   };
   for (auto const& portal : mPortals)
-    if (portal.getId() != portalId && fold(portal.getName()) == fold(name))
+    if (portal.getId() != portalId && fold(portal.getName()) == fold(trimmed))
       throw CoreException("Duplicate Portal name in Layer");
-  found->mName = name;
+  if (found->mName == trimmed) return;
+  found->mName = trimmed;
   modify();
 }
 

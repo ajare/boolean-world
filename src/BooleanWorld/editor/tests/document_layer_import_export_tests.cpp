@@ -108,6 +108,35 @@ void importingALayerWhoseIdCollidesGetsANonCollidingOne() {
   std::filesystem::remove(path);
 }
 
+void namedPortalRelationshipsStayLocalOnImport() {
+  for (auto const* extension : {".layer", ".layer.yaml"}) {
+    auto path = tempPath(std::string("boolean-world-named-portals") + extension);
+    editor::Document document;
+    document.newDoc();
+    auto* source = document.getWorld()->getActiveLayer();
+    auto a = source->addPortal({{1, 2}, 18, 3, 27});
+    auto b = source->addPortal({{9, 8}, 22, 5, 29});
+    source->setPortalName(a, "Entrance");
+    source->setPortalTarget(a, b);
+    source->setPortalTarget(b, a);
+    document.exportLayer(source, path.string());
+    auto* imported = document.importLayer(path.string());
+    require(imported->getId() != source->getId() &&
+            imported->getPortal(a)->getName() == "Entrance" &&
+            imported->getPortal(a)->getTargetId() == b &&
+            imported->getPortal(b)->getTargetId() == a &&
+            imported->getPortal(a)->getAperture().centre == wp::Vector2{1, 2} &&
+            imported->getPortal(b)->getAperture().top == 29 &&
+            imported->getNextPortalAllocator() == source->getNextPortalAllocator(),
+            "Layer import lost named Portal state or internal relationships");
+    imported->removePortal(b);
+    require(imported->getPortal(a)->getTargetId() == a &&
+            source->getPortal(a)->getTargetId() == b && source->getPortal(b),
+            "imported Portal links escaped their owning Layer");
+    std::filesystem::remove(path);
+  }
+}
+
 void anUnsupportedExtensionIsRejectedForExportAndImport() {
   editor::Document document;
   document.newDoc();
@@ -162,6 +191,7 @@ int main() {
     aLayerExportsAndImportsThroughDotLayerBinaryFile();
     aLayerExportsAndImportsThroughDotLayerYamlFile();
     importingALayerWhoseIdCollidesGetsANonCollidingOne();
+    namedPortalRelationshipsStayLocalOnImport();
     anUnsupportedExtensionIsRejectedForExportAndImport();
     aDotLayerYamlFileIsNotConfusedWithAPlainYamlFile();
     std::cout << "Document exports and imports standalone Layer files\n";

@@ -815,6 +815,80 @@ void namedTargetsAreTransactional() {
           "target redo lost directed relationships");
 }
 
+void namedPortalLifecycleIsAtomic() {
+  editor::Document document;
+  document.newDoc();
+  auto* layer = document.getWorld()->getActiveLayer();
+  auto const layerId = layer->getId();
+  auto a = layer->addPortal({{1, 3}, 28, 0, 24});
+  auto b = layer->addPortal({{11, -7}, 20, 3, 27});
+  auto c = layer->addPortal({{-9, 15}, 24, 6, 30});
+  layer->setPortalTarget(a, b);
+  layer->setPortalTarget(b, c);
+  layer->setPortalTarget(c, a);
+  document.setSelectedPortal(layerId, b);
+  editor::transactUndoableActionAtomically(&document, editor::CommandId::SetPortalName,
+      [=](editor::Document* doc) {
+        return editor::setPortalName(doc, doc->getWorld()->getActiveLayer(), b, "  Exit B\t");
+      });
+  require(layer->getPortal(b)->getName() == "Exit B" &&
+          layer->getPortal(b)->getTargetId() == c && layer->getPortal(a)->getTargetId() == b &&
+          document.getSelectedPortalId() == b, "rename changed identity, links, or selection");
+  editor::undo(&document);
+  require(document.getWorld()->getActiveLayer()->getPortal(b)->getName() == "Portal 2",
+          "rename undo lost the original name");
+  editor::redo(&document);
+  auto const levels = editor::getUndoLevels();
+  for (auto const* name : {"  ", " PORTAL 1 "}) {
+    bool rejected = false;
+    try {
+      editor::transactUndoableActionAtomically(&document, editor::CommandId::SetPortalName,
+          [=](editor::Document* doc) {
+            return editor::setPortalName(doc, doc->getWorld()->getActiveLayer(), b, name);
+          });
+    } catch (std::exception const&) { rejected = true; }
+    require(rejected && editor::getUndoLevels() == levels &&
+            document.getWorld()->getActiveLayer()->getPortal(b)->getName() == "Exit B" &&
+            document.getSelectedPortalId() == b,
+            "rejected rename changed history, name, or selection");
+  }
+  require(!editor::transactUndoableActionAtomically(&document, editor::CommandId::SetPortalName,
+      [=](editor::Document* doc) {
+        return editor::setPortalName(doc, doc->getWorld()->getActiveLayer(), b, " Exit B ");
+      }) && editor::getUndoLevels() == levels, "no-op rename created undo history");
+  editor::Settings settings;
+  auto hover = document.getHover({11, -7}, settings, nullptr);
+  require(hover.indices == std::vector<uint32_t>{bw::core::IndependentPortalLoopId, b},
+          "rename redo lost stable hover identity");
+  editor::transactUndoableActionAtomically(&document, editor::CommandId::DeletePortal,
+      [=](editor::Document* doc) {
+        return editor::deletePortal(doc, doc->getWorld()->getActiveLayer(), b);
+      });
+  auto verifyDeleted = [&] {
+    auto* owner = document.getWorld()->getActiveLayer();
+    require(!owner->getPortal(b) && owner->getPortal(a)->getTargetId() == a &&
+            owner->getPortal(c)->getTargetId() == a && !document.hasSelection(),
+            "deletion reconnected the cycle or retained selection");
+  };
+  verifyDeleted();
+  require(editor::getUndoLevels() == levels + 1, "deletion was not one history entry");
+  editor::undo(&document);
+  layer = document.getWorld()->getActiveLayer();
+  require(layer->getPortal(b)->getName() == "Exit B" &&
+          layer->getPortal(b)->getAperture().centre == wp::Vector2{11, -7} &&
+          layer->getPortal(b)->getAperture().width == 20 &&
+          layer->getPortal(b)->getAperture().bottom == 3 &&
+          layer->getPortal(b)->getAperture().top == 27 &&
+          layer->getPortal(a)->getTargetId() == b && layer->getPortal(b)->getTargetId() == c &&
+          layer->getPortal(c)->getTargetId() == a &&
+          document.getSelectedPortalLayerId() == layerId && document.getSelectedPortalId() == b,
+          "one undo did not restore the complete deletion transaction");
+  editor::redo(&document);
+  verifyDeleted();
+  require(document.getWorld()->getActiveLayer()->addPortal({{0, 0}, 16, 0, 24}) > c,
+          "deletion redo reused a Portal identity");
+}
+
 void mirrorAuthoringRestoresStableSelection() {
   editor::Document document;
   document.newDoc();
@@ -1053,6 +1127,7 @@ int main() {
     audioEmitterEditsAreUndoableAndPreserveIdentity();
     mirrorAuthoringRestoresStableSelection();
     namedTargetsAreTransactional();
+    namedPortalLifecycleIsAtomic();
     portalAuthoringIsTransactionalAndRestoresStableSelection();
     aThrowingActionLeavesNoTransactionInProgressOrStrayUndoEntry();
     std::cout << "Undo history regressions passed\n";
